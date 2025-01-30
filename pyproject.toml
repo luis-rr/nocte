@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nocte"
+version = "0.1"
+description = "Analysis of neuronal oscillations, cycles and time events in electrophysiological recordings"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "tqdm>=4.65",
+    "numba>=0.59",
+    "h5py>=3.9",
+    "xarray>=2023.6",
+    "scikit-learn>=1.2",
+]
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["nocte"]

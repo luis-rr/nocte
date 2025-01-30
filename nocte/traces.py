@@ -1,0 +1,2508 @@
+import functools
+import logging
+
+import numba as nb
+import numpy as np
+import pandas as pd
+import scipy.interpolate
+import scipy.signal
+from tqdm.auto import tqdm
+
+from nocte import plot as splot
+from nocte import timeslice
+from nocte.analysis import sleep
+
+
+# @nb.njit(parallel=True)
+def _cross_corr_shifted_nb(
+        signal0: np.ndarray,
+        signal1: np.ndarray,
+        idcs: np.ndarray,
+        offset: int,
+):
+    """
+    Fast sliding window cross corr.
+    See parallelization diagnostics like:
+        xc._cross_corr_nb.parallel_diagnostics(level=4)
+
+    :param signal0:
+    :param signal1:
+
+    :param idcs:
+        shape <N, 2> indicating the pair of indices to cut c0 and c1 to comput xcorr.
+        c1 indices will additionally be offset by "offset".
+
+    :param offset:
+
+    :return: array of same length as idcs0
+    """
+    corr = np.ones(len(idcs)) * np.nan
+
+    idcs_shifted = idcs + offset
+
+    valid = (idcs_shifted >= 0) & (idcs_shifted <= len(signal1))
+    valid = valid[:, 0] & valid[:, 1]
+
+    # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
+    # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
+
+    valid_idcs, = np.where(valid)
+    iter_count = len(valid_idcs)
+
+    for j in nb.prange(iter_count):
+        i = valid_idcs[j]
+
+        start0, stop0 = idcs[i]
+        start1, stop1 = idcs_shifted[i]
+
+        section0 = signal0[start0:stop0]
+        section1 = signal1[start1:stop1]
+
+        corr[i] = np.sum(section0 * section1)
+
+    return corr
+
+
+@nb.njit(parallel=True)
+def _cross_corr_shifted_pearsons_nb(
+        signal0: np.ndarray,
+        signal1: np.ndarray,
+        idcs: np.ndarray,
+        offset: int,
+):
+    """
+    Fast sliding window cross corr.
+    See parallelization diagnostics like:
+        xc._cross_corr_nb.parallel_diagnostics(level=4)
+
+    :param signal0:
+    :param signal1:
+
+    :param idcs:
+        shape <N, 2> indicating the pair of indices to cut c0 and c1 to comput xcorr.
+        c1 indices will additionally be offset by "offset".
+
+    :param offset:
+
+    :return: array of same length as idcs0
+    """
+    corr = np.ones(len(idcs)) * np.nan
+
+    idcs_shifted = idcs + offset
+
+    valid = (idcs_shifted >= 0) & (idcs_shifted <= len(signal1))
+    valid = valid[:, 0] & valid[:, 1]
+
+    # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
+    # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
+
+    valid_idcs, = np.where(valid)
+    iter_count = len(valid_idcs)
+
+    for j in nb.prange(iter_count):
+        i = valid_idcs[j]
+
+        start0, stop0 = idcs[i]
+        start1, stop1 = idcs_shifted[i]
+
+        section0 = signal0[start0:stop0]
+        section1 = signal1[start1:stop1]
+
+        section0 = (section0 - np.mean(section0)) / np.std(section0)
+        section1 = (section1 - np.mean(section1)) / np.std(section1)
+
+        # print(np.min(section0), np.max(section0))
+        # print(np.min(section1), np.max(section1))
+
+        corr[i] = np.mean(section0 * section1)
+
+    return corr
+
+
+def _assert_multiple(sampling_period_ms, t):
+    is_multiple = (t % sampling_period_ms == 0)
+
+    if isinstance(is_multiple, np.ndarray):
+        is_multiple = np.all(is_multiple)
+
+    assert is_multiple, \
+        f'Signal sampled every {sampling_period_ms} ms, ' \
+        f'but asking for non-multiple {t} ms'
+
+
+# @nb.njit(parallel=True)
+def _rolling_cross_corr_discreete(
+        s0: np.ndarray,
+        s1: np.ndarray,
+        offsets: np.ndarray,
+        sliding_win: int,
+        sliding_step: int,
+        pbar=None,
+        pearson=False,
+):
+    length = min(len(s0), len(s1))
+
+    starts = np.arange(0, length - sliding_win + 1, sliding_step)
+    stops = np.arange(sliding_win, length + 1, sliding_step)
+    sliding_wins = np.array([starts, stops]).T
+
+    if pbar is not None:
+        offsets = pbar(offsets, desc='lag')
+
+    xcorr = np.empty((len(offsets), len(sliding_wins)))
+
+    for i, offset in enumerate(offsets):
+
+        if pearson:
+            value = _cross_corr_shifted_pearsons_nb(s0, s1, sliding_wins, offset=offset)
+
+        else:
+            value = _cross_corr_shifted_nb(s0, s1, sliding_wins, offset=offset)
+
+        xcorr[i] = value
+
+    return xcorr
+
+
+def _rolling_cross_corr_ms(
+        s0: np.ndarray,
+        s1: np.ndarray,
+        sampling_period_ms: float,
+        lags_ms: np.ndarray,
+        sliding_win_ms: float,
+        sliding_step_ms: float = None,
+        pbar=None,
+        pearson=False,
+):
+    lags_ms = np.asarray(lags_ms)
+    assert len(lags_ms) > 0
+
+    _assert_multiple(sampling_period_ms, lags_ms)
+    offsets = np.round(lags_ms / sampling_period_ms).astype(int)
+
+    _assert_multiple(sampling_period_ms, sliding_win_ms)
+    sliding_win = int(sliding_win_ms // sampling_period_ms)
+
+    if sliding_step_ms is None:
+        sliding_step_ms = sampling_period_ms
+    _assert_multiple(sampling_period_ms, sliding_step_ms)
+    sliding_step = int(sliding_step_ms // sampling_period_ms)
+
+    xcorr = _rolling_cross_corr_discreete(
+        s0,
+        s1,
+        offsets,
+        sliding_win,
+        sliding_step,
+        pbar,
+        pearson=pearson,
+    )
+
+    return xcorr
+
+
+def _estimate_sampling_period(times, atol=1.e-6) -> float:
+    dts = np.diff(times)
+    dts = np.unique(dts)
+
+    assert np.allclose(dts[0], dts, atol=atol), dts
+
+    # noinspection PyTypeChecker
+    return dts[0]
+
+
+class Traces:
+    """
+    Class for storing time series as a pd.DataFrame (self.traces) with
+    associated metadata as another pd.DataFrame (self.reg).
+    """
+
+    def __init__(
+        self,
+        reg: pd.DataFrame,
+        traces: pd.DataFrame,
+        copy=True,
+    ):
+        if copy:
+            traces = traces.copy()
+            reg = reg.copy()
+
+        self.traces: pd.DataFrame = traces
+        self.reg: pd.DataFrame = reg
+
+        assert isinstance(reg, pd.DataFrame)
+        assert 'ref' in reg.columns
+        assert reg.index.is_unique
+        assert reg.columns.is_unique
+
+        if self.reg.index.name is None:
+            default_index_name = 'trace_idx'
+            if default_index_name in reg.columns:
+                logging.warning(f'Default index name "{default_index_name}" already in columns. Drop or rename first?')
+            self.reg.rename_axis(index=default_index_name, inplace=True)
+
+        assert self.traces.index.is_unique
+        assert self.traces.columns.is_unique
+        if self.traces.index.name is None:
+            self.traces.rename_axis(index='time', inplace=True)
+        if self.traces.columns.name is None:
+            self.traces.rename_axis(columns=self.reg.index.name, inplace=True)
+
+        assert self.traces.columns.name == self.reg.index.name
+
+        assert len(self.reg.index) == len(self.traces.columns), \
+            f'Got {len(self.reg.index)} reg entries but {len(self.traces.columns)} traces'
+
+        assert np.all(self.reg.index == self.traces.columns)
+
+        # self.traces.sort_index(inplace=True)
+        # self.traces = self.traces.reindex(self.reg.index, axis=1)
+        # assert set(self.reg.index) == set(self.traces.columns)
+
+        self.traces.columns.name = self.reg.index.name
+
+    @classmethod
+    def from_loader_single(cls, loader, zoom_win, ref=None, load_hz=None, channels=None, pbar=None):
+
+        if ref is None:
+            zoom_wins = timeslice.Windows.build_around(
+                [zoom_win.start],
+                (0, zoom_win.length),
+            )
+        else:
+            zoom_wins = timeslice.Windows.build_around(
+                pd.Series([ref]),
+                zoom_win
+            )
+
+        result = cls.from_loader(
+            loader,
+            zoom_wins,
+            load_hz=load_hz,
+            channels=channels,
+            pbar=pbar,
+        )
+
+        if 'win_idx' in result.reg.columns:
+            result.reg.drop('win_idx', axis=1, inplace=True)
+
+        return result
+
+    @classmethod
+    def from_loader(cls, loader, zoom_wins, load_hz=None, channels=None, pbar=None):
+
+        if load_hz is None:
+            load_hz = loader.sampling_rate
+
+        if channels is None:
+            channels = loader.channels.index
+
+        traces = {}
+
+        iter_wins = zoom_wins.iter_wins_ref()
+
+        if pbar is not None:
+            if isinstance(pbar, bool) and pbar:
+                pbar = tqdm
+            iter_wins = pbar(iter_wins, total=len(zoom_wins))
+
+        for idx, ref, win in iter_wins:
+            win = win.clip(loader.win_ms)
+
+            win_rel = win.shift(-ref)
+
+            slice_rel = win_rel.to_slice_idx(loader.sampling_rate, load_hz)
+
+            rel_idcs = np.arange(slice_rel.start / slice_rel.step, slice_rel.stop / slice_rel.step, 1)
+
+            win_idcs = win.to_slice_idx(loader.sampling_rate, load_hz)
+
+            data = loader.load(win_idcs, channels)
+
+            data = pd.DataFrame(data.T, index=rel_idcs, columns=channels)
+            data.rename_axis('channel', axis=1, inplace=True)
+
+            traces[idx] = data
+
+        wins_idx_name = zoom_wins.index.name
+
+        traces = pd.concat(traces, axis=1, names=[wins_idx_name])
+
+        traces.sort_index(inplace=True)
+        assert traces.index.is_unique
+
+        traces.index = traces.index.astype(int)
+
+        traces.index = (traces.index * 1_000. / load_hz)
+
+        new_reg = traces.columns.to_frame(index=False)
+        merged_reg = pd.merge(
+            new_reg,
+            zoom_wins.wins.drop(['start', 'stop'], axis=1),
+            how='left',
+            left_on=wins_idx_name,
+            right_index=True,
+        )
+        assert merged_reg.index.is_unique
+
+        traces.columns = merged_reg.index
+
+        return cls.from_df(
+            reg=merged_reg,
+            traces=traces,
+        )
+
+    @classmethod
+    def from_multiindex_df(cls, df: pd.DataFrame):
+        desc = df.columns.to_frame(index=False)
+        traces = df.copy()
+        traces.columns = desc.index
+
+        return cls.from_df(
+            traces=traces,
+            reg=desc,
+        )
+
+    @classmethod
+    def from_df(cls, traces: pd.DataFrame, reg: pd.DataFrame = None):
+        """
+        From a dataframe where index indicates time in milliseconds.
+        Optionally provide extra info for the registry (desc), whose index must match the df columns.
+        """
+
+        traces = traces.copy()
+
+        if reg is None:
+            reg = traces.columns.to_frame(index=False)
+            traces.columns = reg.index
+
+        traces.sort_index(inplace=True)
+
+        reg = reg.copy()
+        if 'ref' not in reg.columns:
+            reg['ref'] = 0
+
+        return cls(
+            reg=reg,
+            traces=traces,
+        )
+
+    @classmethod
+    def from_series(cls, s: pd.Series):
+        return cls.from_df(s.to_frame())
+
+    @classmethod
+    def from_dict(cls, d: dict, names: list):
+        df = pd.concat(d, axis=1, names=names)
+        return cls.from_df(df)
+
+    @classmethod
+    def from_dict_resampled(
+            cls,
+            d: dict,
+            names: list,
+            start='milliseconds',
+            stop=None,
+            period=None,
+            reg: pd.DataFrame = None,
+            pbar=None,
+    ):
+        assert len(d) > 0
+
+        if start is None:
+            start = min(trace.index.min() for k, trace in d.items())
+
+        elif isinstance(start, str):
+            vmin = min(trace.index.min() for k, trace in d.items())
+            round_to = timeslice.ms(**{start: 1})
+            print(vmin, round_to)
+            start = np.floor(vmin / round_to) * round_to
+
+        if stop is None:
+            stop = max(trace.index.max() for k, trace in d.items())
+
+        if period is None:
+            period = min(np.min(np.diff(trace.index)) for k, trace in d.items())
+            period = np.ceil(period * 0.5)
+
+        logging.info(f'resampling from {start} to {stop} at {period}')
+
+        win = timeslice.Win(start, stop)
+
+        items = d.items()
+        if len(items) > 100 and pbar is None:
+            pbar = True
+
+        if pbar is not None:
+            if isinstance(pbar, bool) and pbar:
+                pbar = tqdm
+            items = pbar(items, total=len(items), desc='dict')
+
+        resampled = {}
+        for k, trace in items:
+            if isinstance(trace, pd.Series):
+                resampled[k] = win.interp_series(trace, step=period)
+            else:
+                assert isinstance(trace, pd.DataFrame)
+                resampled[k] = win.interp_df(trace, step=period)
+
+        lengths = np.array([trace.shape[0] for trace in resampled.values()])
+        assert np.all(lengths[0] == lengths)
+
+        time = pd.Index(list(resampled.values())[0].index)
+        for df in resampled.values():
+            df.reset_index(drop=True, inplace=True)
+
+        resampled = pd.concat(
+            resampled,
+            axis=1,
+            verify_integrity=False,
+            sort=False,
+            names=names,
+        )
+        resampled.index = time
+
+        return cls.from_df(resampled, reg=reg)
+
+    def to_hdf(self, path):
+        path = str(path)
+        self.reg.to_hdf(path, key='reg')
+        self.traces.to_hdf(path, key='traces')
+
+    @classmethod
+    def read_hdf(cls, path):
+        path = str(path)
+        # noinspection PyTypeChecker
+        return cls(
+            reg=pd.read_hdf(path, key='reg'),
+            traces=pd.read_hdf(path, key='traces'),
+            copy=False,
+        )
+
+    def to_dict(self, col, dropna=True):
+        assert self.reg[col].is_unique
+
+        return {
+            self.loc[k, col]: trace if not dropna else trace.dropna()
+            for k, trace in self.traces.items()
+        }
+
+    @classmethod
+    def concat_dict(cls, traces_dict: dict, key_name=None):
+
+        reg = pd.concat({
+            k: traces.reg
+            for k, traces in traces_dict.items()
+        }, axis=0, names=key_name)
+
+        reg.reset_index(inplace=True)
+        reg.rename(columns=dict(trace_idx='local_trace_idx'), inplace=True)
+
+        traces = pd.concat([
+            traces.traces
+            for traces in traces_dict.values()
+        ], axis=1)
+
+        traces.columns = reg.index
+
+        return cls(
+            reg=reg,
+            traces=traces,
+            copy=False,
+        )
+
+    @classmethod
+    def concat_list(cls, traces_list: list):
+
+        reg = pd.concat([traces.reg for traces in traces_list], axis=0)
+        reg = reg.reset_index(drop=True)
+
+        traces = pd.concat([traces.traces for traces in traces_list], axis=1)
+        traces = traces.T.reset_index(drop=True).T
+
+        return cls(
+            reg=reg,
+            traces=traces,
+            copy=False,
+        )
+
+    @classmethod
+    def concat_dict_aligned(cls, traces_dict: dict, names):
+        """
+        Concatenates multiple Traces objects assuming indices are regular and overlapping.
+        Sampling rates must match and sampling time must be aligned, but data may be missing
+        for some objects either at the beginning or at the end (longer or shorter recordings).
+
+        This function pads shorter traces objects with NaN rows so they all have the same index as the longest one.
+
+        This is much faster than concatenating DataFrames with pd.concat, which involves slow reindexing.
+        """
+
+        sampling_periods = np.array([traces.sampling_period == 1. for traces in traces_dict.values()])
+        step = sampling_periods[0]
+        assert np.all(sampling_periods == step), \
+            f'Traces with different sampling periods'
+
+        starts = np.array([traces.time[0] for traces in traces_dict.values()])
+        global_start = np.min(starts)
+        assert np.all(((starts - global_start) % sampling_periods[0]) == 0), \
+            f'Traces sampling is misaligned'
+
+        stops = np.array([traces.time[-1] for traces in traces_dict.values()])
+        global_stop = np.max(stops)
+
+        unified_index = pd.Index(np.arange(
+            global_start,
+            global_stop + step,
+            step,
+        ))
+
+        padded_dfs = []
+        for traces in traces_dict.values():
+            df = traces.traces
+            start = df.index[0]
+            stop = df.index[-1]
+            cols = df.columns
+
+            start_pad = pd.DataFrame(np.nan, index=np.arange(global_start, start, step), columns=cols)
+            stop_pad = pd.DataFrame(np.nan, index=np.arange(stop + step, global_stop + step, step), columns=cols)
+
+            padded = pd.concat([start_pad, df, stop_pad])
+            assert len(padded) == len(unified_index)
+            padded_dfs.append(padded)
+
+        combined_reg = pd.concat({
+            k: traces.reg
+            for k, traces in traces_dict.items()
+        }, axis=0, names=names)
+
+        combined_reg.reset_index(inplace=True, drop=False)
+        combined_reg.drop('trace_idx', axis=1, inplace=True)
+
+        combined_array = np.hstack([df.to_numpy() for df in padded_dfs])
+
+        combined_traces = pd.DataFrame(
+            combined_array,
+            columns=combined_reg.index,
+            index=unified_index
+        )
+
+        return cls(combined_reg, combined_traces, copy=False)
+
+    @functools.wraps(pd.DataFrame.value_counts)
+    def value_counts(self, *args, **kwargs):
+        return self.reg.value_counts(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.reset_index)
+    def reset_index(self, *args, drop=True, **kwargs):
+
+        reg = self.reg.reset_index(*args, drop=drop, **kwargs)
+
+        traces = self.traces.copy()
+        traces.columns = reg.index
+
+        return Traces(reg, traces)
+
+    @functools.wraps(pd.DataFrame.set_index)
+    def set_index(self, *args, **kwargs):
+
+        reg = self.reg.set_index(*args, **kwargs)
+        assert reg.index.is_unique
+
+        traces = self.traces.copy()
+        traces.columns = reg.index
+
+        return Traces(reg, traces)
+
+    @functools.wraps(pd.DataFrame.__eq__)
+    def __eq__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__eq__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__ne__)
+    def __ne__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__ne__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__ge__)
+    def __ge__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__ge__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__gt__)
+    def __gt__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__gt__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__le__)
+    def __le__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__le__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__lt__)
+    def __lt__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__lt__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__add__)
+    def __add__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__add__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__radd__)
+    def __radd__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__radd__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__sub__)
+    def __sub__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__sub__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__rsub__)
+    def __rsub__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__rsub__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__mul__)
+    def __mul__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__mul__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__rmul__)
+    def __rmul__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__rmul__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__truediv__)
+    def __truediv__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__truediv__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__rtruediv__)
+    def __rtruediv__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__rtruediv__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__floordiv__)
+    def __floordiv__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__floordiv__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__rfloordiv__)
+    def __rfloordiv__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__rfloordiv__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__neg__)
+    def __neg__(self):
+        return self.replace_traces(
+            self.traces.__neg__(),
+        )
+
+    @functools.wraps(pd.DataFrame.__neg__)
+    def __mod__(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.__mod__(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.__array__)
+    def __array__(self, *args, **kwargs):
+        return self.traces.__array__(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.__getitem__)
+    def __getitem__(self, *args, **kwargs):
+        return self.reg.__getitem__(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.__setitem__)
+    def __setitem__(self, *args, **kwargs):
+        return self.reg.__setitem__(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.__array_ufunc__)
+    def __array_ufunc__(self, *args, **kwargs):
+        return self.traces.__array_ufunc__(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.sample)
+    def sample(self, *args, **kwargs):
+        reg = self.reg.sample(*args, **kwargs)
+        return Traces(
+            reg=reg,
+            traces=self.traces.loc[:, reg.index],
+        )
+
+    def shuffle(self):
+        return self.sample(frac=1, replace=False)
+
+    def get(self, idx=None) -> pd.Series:
+        """return a single trace. If no index it's given, we assume there is only one"""
+        if idx is None:
+            assert len(self.traces.columns) == 1
+            idx = self.index[0]
+
+        return self.traces.loc[:, idx]
+
+    def get_df(self, col, expect_unique=True) -> pd.DataFrame:
+        """
+        return the traces with the columns changed to be a given property
+        """
+        traces = self.traces
+
+        new_col = self.reg[col]
+        assert not expect_unique or new_col.is_unique
+        traces = traces.T.set_index(new_col).T
+
+        return traces
+
+    def _repr_html_(self):
+        """pretty print on notebooks"""
+        # noinspection PyProtectedMember
+        return self.reg._repr_html_()
+
+    # def tighten(self):
+    #     """
+    #     Reevaluate start/stop in the reg to match that of the traces.
+    #     This is useful after manually trimming traces (e.g. through dropna).
+    #     """
+    #
+    #     reg = self.reg.copy()
+    #
+    #     reg['start'] = self.time.min() + self['ref']
+    #     reg['stop'] = self.time.max() + self['ref']
+    #
+    #     return self.__class__(
+    #         reg=reg,
+    #         traces=self.traces,
+    #     )
+
+    def groupby_mix(self, by, how, drop=None):
+
+        if not isinstance(by, list):
+            by = [by]
+
+        if drop is None:
+            # noinspection PyUnresolvedReferences
+            different = (self.reg.groupby(by).nunique() > 1).any()
+            drop = different.index[different]
+
+        by = [self.reg[col] for col in by]
+
+        agg_traces = {}
+        agg_reg = {}
+
+        for k, straces in self.traces.T.groupby(by):
+            straces = straces.T
+            sreg = self.reg.loc[straces.columns]
+            sreg = sreg.drop(drop, axis=1).drop_duplicates()
+            assert len(sreg) == 1
+            idx = sreg.index[0]
+
+            agg_reg[idx] = sreg.iloc[0]
+            # noinspection PyTypeChecker
+            agg_traces[idx] = how(straces, axis=1)
+
+        agg_reg = pd.DataFrame.from_dict(agg_reg, orient='index')
+        agg_reg.sort_index(inplace=True)
+
+        agg_traces = pd.DataFrame(agg_traces)
+        agg_traces.sort_index(inplace=True, axis=1)
+
+        return Traces(
+            reg=agg_reg,
+            traces=agg_traces,
+        )
+
+    def groupby_mean(self, by, **kwargs):
+        return self.groupby_mix(by, how=pd.DataFrame.mean, **kwargs)
+
+    def groupby_std(self, by, **kwargs):
+        return self.groupby_mix(by, how=pd.DataFrame.std, **kwargs)
+
+    def groupby_max(self, by, **kwargs):
+        return self.groupby_mix(by, how=pd.DataFrame.max, **kwargs)
+
+    def histograms(self, bins=None, density=None, weights=None) -> pd.DataFrame:
+        if bins is None:
+            bins = 100
+
+        if isinstance(bins, int):
+            bins = np.linspace(
+                np.nanmin(self.traces.values),
+                np.nanmax(self.traces.values),
+                bins + 1,
+            )
+
+        df = pd.DataFrame({
+            k: np.histogram(trace, bins=bins, density=density, weights=weights)[0]
+            for k, trace in self.traces.items()
+        })
+
+        df.index = pd.IntervalIndex.from_breaks(bins)
+
+        return df
+
+    def normalize_by_quantiles(self, qmin=0.05, qmax=.95, win=None):
+
+        if win is not None:
+            traces = self.crop(win)
+            assert len(traces.time) > 0, f'No data in {win}'
+
+        else:
+            traces = self
+
+        vmin = traces.traces.quantile(qmin)
+        vmax = traces.traces.quantile(qmax)
+
+        return (self - vmin) / (vmax - vmin)
+
+    def iter_grouped(self, groupby, pbar=None):
+
+        grouped = self.reg.groupby(groupby, sort=False)
+
+        if pbar is True:
+            pbar = tqdm
+
+        if pbar is not None:
+            grouped = pbar(grouped, total=len(grouped.groups))
+
+        for k, sub_reg in grouped:
+            sub_traces = Traces(
+                reg=sub_reg,
+                traces=self.traces.loc[:, sub_reg.index],
+            )
+
+            yield k, sub_traces
+
+    def iter_props(self):
+        for k, trace in self.traces.items():
+            yield k, self.reg.loc[k], trace
+
+    @functools.wraps(pd.DataFrame.clip)
+    def clip(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.clip(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.replace)
+    def replace(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.replace(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.fillna)
+    def fillna(self, *args, **kwargs):
+        return self.replace_traces(
+            self.traces.fillna(*args, **kwargs),
+        )
+
+    @functools.wraps(pd.DataFrame.abs)
+    def abs(self):
+        return self.replace_traces(
+            self.traces.abs(),
+        )
+
+    def unique_sorted(self, col, order=None):
+        """
+        Returns unique values of a column with a particular preference for some of them in their ordering.
+        For example, if
+            vals = ['x', 'y', 'a', 'c']
+
+        and
+            order = ['a', 'b', 'c']
+
+        this will return
+
+            sorted_vals = ['a', 'c', 'x', 'y']
+
+        This is useful when we want to iterate over the values for plotting and we know the general order,
+        but not the particular case, so we are as consistent as possible across plot.
+
+        """
+
+        vals = self[col].unique()
+
+        order_idcs = {key: idx for idx, key in enumerate(order)}
+
+        sorted_vals = sorted(vals, key=lambda x: order_idcs.get(x, float('inf')))
+
+        return sorted_vals
+
+
+    def log10(self):
+        return self.apply(np.log10)
+
+    def square(self):
+        return self.apply(np.square)
+
+    def unwrap(self, period=1, axis=0):
+        return self.replace_traces(
+            np.unwrap(self.traces.values, period=period, axis=axis)
+        )
+
+    def crop(
+            self,
+            win: timeslice.Win,
+            **kwargs,
+    ):
+        win = timeslice.Win(*win)
+        new = self.apply(lambda trace: win.crop_df(trace, **kwargs))
+        return new
+
+    def crop_centered(
+            self,
+            duration,
+            **kwargs,
+    ):
+        win = timeslice.Win.build_centered(np.mean(self.time), duration)
+        return self.crop(win, **kwargs)
+
+    def shift_time(
+            self,
+            ref_time: float,
+            adjust_ref=False,
+    ):
+        new = self.replace_traces(
+            self.traces.set_index(self.time + ref_time)
+        )
+
+        if adjust_ref:
+            new['ref'] = new['ref'] - ref_time
+
+        return new
+
+    def cross_corr_rolling_by(
+            self,
+            pair_by,
+            sort_by=None,
+            **kwargs,
+    ):
+        if sort_by is None:
+            sort_by = pair_by
+
+        def sort_pair(a, b):
+            if self.reg.loc[a, sort_by] < self.reg.loc[b, sort_by]:
+                return a, b
+            else:
+                return b, a
+
+        groups = {
+            pair_idx: sort_pair(a, b)
+            for pair_idx, (a, b) in self.reg.groupby(pair_by).groups.items()
+        }
+
+        pairs = pd.DataFrame.from_dict(groups, orient='index', columns=['first', 'second'])
+
+        xcorrs = self.cross_corr_rolling(
+            pairs=pairs,
+            **kwargs,
+        )
+
+        return pairs, xcorrs
+
+    def cross_corr_rolling(
+            self,
+            pairs: pd.DataFrame,
+            lags_ms: np.ndarray,
+            sliding_win_ms: float,
+            sliding_step_ms: float = None,
+            pbar=None,
+            pbar_single=None,
+            pearson=True,
+    ):
+        sampling_period = self.sampling_period
+
+        if sliding_step_ms is None:
+            sliding_step_ms = sampling_period
+
+        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
+            lags_ms = np.arange(*lags_ms, sampling_period)
+
+        if isinstance(pairs, list):
+            pairs = pd.DataFrame([(0, 1)], columns=['first', 'second'])
+
+        to_iter = pairs[['first', 'second']].itertuples()
+
+        xcorrs = {}
+
+        if isinstance(pbar, bool) and not pbar:
+            pass
+
+        else:
+            if isinstance(pbar, bool) and pbar:
+                pbar = tqdm
+
+            if pbar is not None:
+                to_iter = pbar(to_iter, total=len(pairs))
+
+        for i, k0, k1 in to_iter:
+            xcorr = _rolling_cross_corr_ms(
+                self.traces[k0].values,
+                self.traces[k1].values,
+                sampling_period_ms=sampling_period,
+                lags_ms=lags_ms,
+                sliding_win_ms=sliding_win_ms,
+                sliding_step_ms=sliding_step_ms,
+                pbar=pbar_single,
+                pearson=pearson,
+            )
+
+            win_centers = (
+                    np.arange(xcorr.shape[1]) * sliding_step_ms
+                    + self.traces.index.min()
+                    + sliding_win_ms * .5
+            )
+
+            xcorrs[i] = pd.DataFrame(
+                xcorr.T,
+                index=win_centers,
+                columns=lags_ms,
+            )
+
+        return xcorrs
+
+    def corr_rolling(
+            self,
+            template: np.ndarray,
+            lags_ms: np.ndarray,
+            sliding_win_ms: float,
+            sliding_step_ms: float = None,
+            pbar=None,
+            pbar_single=None,
+            pearson=True,
+    ):
+        sampling_period = self.sampling_period
+
+        if sliding_step_ms is None:
+            sliding_step_ms = sampling_period
+
+        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
+            lags_ms = np.arange(*lags_ms, sampling_period)
+
+        to_iter = self.index
+
+        xcorrs = {}
+
+        if isinstance(pbar, bool) and not pbar:
+            pass
+
+        else:
+            if isinstance(pbar, bool) and pbar:
+                pbar = tqdm
+
+            if pbar is not None:
+                to_iter = pbar(to_iter, total=len(self.index))
+
+        if isinstance(template, pd.Series):
+            template = template.values
+
+        for k in to_iter:
+            xcorr = _rolling_cross_corr_ms(
+                self.traces[k].values,
+                template,
+                sampling_period_ms=sampling_period,
+                lags_ms=lags_ms,
+                sliding_win_ms=sliding_win_ms,
+                sliding_step_ms=sliding_step_ms,
+                pbar=pbar_single,
+                pearson=pearson,
+            )
+
+            win_centers = (
+                    np.arange(xcorr.shape[1]) * sliding_step_ms
+                    + self.traces.index.min()
+                    + sliding_win_ms * .5
+            )
+
+            xcorrs[k] = pd.DataFrame(
+                xcorr.T,
+                index=win_centers,
+                columns=lags_ms,
+            )
+
+        return xcorrs
+
+    def auto_corr_rolling(
+            self,
+            lags_ms: np.ndarray,
+            sliding_win_ms: float,
+            sliding_step_ms: float = None,
+            pbar=None,
+            pbar_each=None,
+            pearson=True,
+            key=None,
+    ):
+
+        if key is not None:
+            assert self[key].is_unique
+
+        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
+            lags_ms = np.arange(*lags_ms, self.sampling_period)
+
+        acorrs = {}
+
+        traces_iter = self.traces.items()
+        if pbar is not None:
+            traces_iter = pbar(
+                self.traces.items(),
+                total=len(self.index),
+            )
+
+        for k, trace in traces_iter:
+            acorr = _rolling_cross_corr_ms(
+                trace.values,
+                trace.values,
+                sampling_period_ms=self.sampling_period,
+                lags_ms=lags_ms,
+                sliding_win_ms=sliding_win_ms,
+                sliding_step_ms=sliding_step_ms,
+                pbar=pbar_each,
+                pearson=pearson,
+            )
+
+            win_centers = (
+                    np.arange(acorr.shape[1]) * sliding_step_ms
+                    + self.traces.index.min()
+                    + sliding_win_ms * .5
+            )
+
+            acorr = pd.DataFrame(
+                acorr.T,
+                index=win_centers,
+                columns=lags_ms,
+            )
+
+            acorrs[k] = acorr
+
+        if key is not None:
+            acorrs = {
+                self.loc[k, key]: v
+                for k, v in acorrs.items()
+            }
+
+        return acorrs
+
+    def auto_corr(self, pearson=True):
+
+        def _single_acorr(trace):
+
+            # note that the presence of nans means different
+            # trace may have effective different lengths
+            # which means the normalization (where we divide by the length)
+            # needs to be done per trace
+            trace = trace.dropna()
+
+            if pearson:
+                trace = trace - trace.mean()
+
+            lags = trace.index - trace.index[len(trace.index) // 2]
+
+            # noinspection PyUnresolvedReferences
+            acorr = scipy.signal.correlate(
+                trace,
+                trace,
+                mode='same',
+            )
+
+            acorr = pd.Series(acorr, index=lags)
+
+            if pearson:
+                acorr = acorr / (trace.var() * len(trace))
+
+            return acorr
+
+        return self.apply(_single_acorr)
+
+    @staticmethod
+    def _match_traces_wins(reg: pd.DataFrame, windows, **kwargs):
+
+        reg: pd.DataFrame = reg.copy()
+        reg.drop(['ref'], axis=1, inplace=True)
+
+        if reg.index.name is None:
+            reg.index.name = 'index_reg'
+
+        reg_index_name = reg.index.name
+        reg.reset_index(inplace=True)
+
+        wins = windows.wins.copy()
+
+        if wins.index.name is None or wins.index.name == reg_index_name:
+            wins.index.name = 'index_wins'
+
+        wins.reset_index(inplace=True)
+
+        merged = pd.merge(
+            wins,
+            reg,
+            how='left',
+            **kwargs,
+        )
+
+        merged.dropna(subset=reg_index_name, inplace=True)
+
+        return merged, reg_index_name
+
+    @staticmethod
+    def _cut(
+            traces,
+            zoom_wins,
+            upsampling_ms=100,
+            interp_kind='linear',
+    ):
+        traces = zoom_wins.interp_df(
+            traces,
+            step=upsampling_ms,
+            kind=interp_kind,
+        )
+
+        return pd.concat(traces, axis=1, names=['pulse_idx'])
+
+    @classmethod
+    def from_series_cut(
+            cls,
+            series: pd.Series,
+            zoom_wins: timeslice.Windows,
+            upsampling_ms=None,
+            interp_kind='linear',
+            show_pbar=None,
+    ):
+        if upsampling_ms is None:
+            period = np.diff(series.index)[0]
+            upsampling_ms = period * .5
+
+        traces = zoom_wins.interp_series(
+            series,
+            step=upsampling_ms,
+            kind=interp_kind,
+            show_pbar=show_pbar,
+        )
+
+        traces_df = pd.concat(traces, axis=1, names=[zoom_wins.index.name])
+
+        reg = zoom_wins.wins.drop(['start', 'stop'], axis=1)
+
+        return cls.from_df(
+            reg=reg,
+            traces=traces_df,
+        )
+
+    def cut(
+            self,
+            zoom_wins,
+            upsampling_ms=100,
+            interp_kind='linear',
+            show_pbar=None,
+    ):
+        interp_traces = zoom_wins.interp_df(
+            self.traces,
+            step=upsampling_ms,
+            kind=interp_kind,
+            show_pbar=show_pbar,
+        )
+
+        traces = pd.concat(interp_traces, axis=1, names=[zoom_wins.index.name])
+
+        new = traces.columns.to_frame(index=False)
+
+        new.rename(columns={new.columns[-1]: f'precut_{new.columns[-1]}'}, inplace=True)
+
+        wins_reg = zoom_wins.wins.reindex(new.iloc[:, 0])
+        wins_reg.index = new.index
+
+        traces_reg = self.reg.drop(['ref'], axis=1)
+        traces_reg = traces_reg.reindex(new.iloc[:, 1])
+        traces_reg.index = new.index
+
+        reg = pd.concat([wins_reg, traces_reg, new], axis=1)
+
+        dups = reg.columns.duplicated()
+        if np.any(dups):
+            logging.warning(
+                f'Dropping duplicated columns: ' + ', '.join(list(reg.columns[dups]))
+                + '. Maybe you want cut_merge?'
+            )
+            reg = reg.loc[:, ~dups]
+
+        traces.columns = reg.index
+
+        return self.from_df(
+            traces=traces,
+            reg=reg,
+        )
+
+    def cut_merge(self, windows, set_index=True, **kwargs):
+
+        matched_reg, reg_index_name = Traces._match_traces_wins(
+            self.reg,
+            windows,
+            **kwargs,
+        )
+
+        multi_cut = []
+
+        for k, sel_wins in matched_reg.groupby(reg_index_name, sort=False):
+            sel_wins = timeslice.Windows(sel_wins)
+
+            traces_idcs = sel_wins[reg_index_name].unique()
+            sel_traces = self.traces.loc[:, traces_idcs]
+
+            cut_traces = Traces._cut(
+                sel_traces,
+                sel_wins,
+            )
+            # assert len(cut_traces.columns) == len(sel_wins)
+
+            cut_traces.columns = sel_wins.index
+
+            multi_cut.append(cut_traces)
+
+        result = self.from_df(
+            reg=matched_reg.sort_index(axis=0),
+            traces=pd.concat(multi_cut, axis=1).rename_axis(columns=matched_reg.index.name).sort_index(axis=1),
+        )
+
+        if set_index and result[windows.index.name].is_unique:
+            result = result.set_index(windows.index.name)
+
+        return result
+
+    def _get_label(self, label):
+        if label is None:
+            return label
+
+        else:
+            if isinstance(label, list):
+                assert all(lab in self.reg.columns for lab in label)
+
+                label = self.reg[label].apply(
+                    lambda row: ' '.join([f'{v}' for v in row.values]),
+                    axis=1
+                )
+                label = label.values
+
+            elif label in self.reg.columns:
+                label = self.reg[label].values
+
+            return label
+
+    def _get_time(self):
+        t = self.traces.index
+
+        if isinstance(t, pd.IntervalIndex):
+            t = t.mid
+
+        return t
+
+    def plot_overlaid(self, ax, label=None, linewidth=1., alpha=.8, **kwargs):
+
+        label = self._get_label(label)
+        ax.plot(
+            self._get_time(),
+            self.traces.values,
+            linewidth=linewidth,
+            alpha=alpha,
+            label=label,
+            **kwargs,
+        )
+
+    def plot_overlaid_sum(
+            self,
+            ax,
+            sum_f=pd.DataFrame.median,
+            label=None,
+            linewidth=1.5,
+            alpha=.4,
+            **kwargs
+    ):
+
+        self.plot_overlaid(
+            ax,
+            linewidth=linewidth * .25,
+            alpha=alpha,
+            **kwargs,
+        )
+
+        t = self._get_time()
+
+        # noinspection PyTypeChecker
+        summary = sum_f(self.traces, axis=1)
+
+        # kwargs['color'] = 'k'
+
+        ax.plot(
+            t,
+            summary.values,
+            linewidth=linewidth,
+            alpha=1,
+            zorder=1e3,
+            label=label,
+            # path_effects=[
+            #     matplotlib.patheffects.Stroke(linewidth=1.5, foreground='k'),
+            #     matplotlib.patheffects.Normal(),
+            # ],
+            **kwargs,
+        )
+
+    def plot_spread(self, ax, y_offset=None, y_scale=1, linewidth=0.5, alpha=1, **kwargs):
+
+        if y_offset is None:
+            y_offset = self.max().quantile(.99)
+
+        offsets = np.arange(len(self.traces.columns)) * y_offset
+
+        ax.plot(
+            self._get_time(),
+            self.traces.values * y_scale + offsets,
+            linewidth=linewidth,
+            alpha=alpha,
+            **kwargs,
+        )
+
+    def plot_spread_fill(self, ax, y_offset=None, y_scale=1, linewidth=0.5, alpha=1, edgecolor='none', **kwargs):
+
+        if y_offset is None:
+            y_offset = self.max().quantile(.99)
+
+        offsets = ((len(self.traces.columns) - 1) - np.arange(len(self.traces.columns))) * y_offset
+
+        x = self._get_time()
+
+        for i, (k, trace) in enumerate(self.traces.items()):
+            ax.fill_between(
+                x,
+                np.zeros(len(x)) + offsets[i],
+                trace.values * y_scale + offsets[i],
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                alpha=alpha,
+                **kwargs,
+            )
+
+    def copy(self):
+        return self.__class__(
+            reg=self.reg.copy(),
+            traces=self.traces.copy(),
+        )
+
+    def add_props(self, **kwargs):
+        reg = self.reg.copy()
+
+        for name, column in kwargs.items():
+            reg[name] = column
+
+        return self.__class__(
+            reg=reg,
+            traces=self.traces,
+        )
+
+    def add_cols(self, extra: pd.DataFrame):
+        reg = pd.concat([self.reg, extra], axis=1)
+        return self.__class__(
+            reg=reg,
+            traces=self.traces,
+        )
+
+    def set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None):
+        """add extra columns describing properties of these windows"""
+        assert len(extra) == len(self.index)
+        new = self.copy()
+
+        if suffix is not None:
+            extra = extra.add_suffix(suffix)
+
+        if prefix is not None:
+            extra = extra.add_prefix(prefix)
+
+        for col, vals in extra.items():
+            new[col] = vals
+
+        return new
+
+    @functools.wraps(pd.merge)
+    def merge_reg(self, extra: pd.DataFrame, **kwargs):
+        return self.__class__(
+            pd.merge(
+                self.reg,
+                extra,
+                **kwargs,
+            ),
+            self.traces,
+        )
+
+    @functools.wraps(pd.DataFrame.drop)
+    def drop(self, *args, **kwargs):
+        return self.__class__(
+            self.reg.drop(*args, **kwargs),
+            self.traces,
+        )
+
+    def add_trace(self, trace: pd.Series, props: pd.Series):
+        k = self.index.max() + 1
+
+        copy = self.copy()
+
+        copy.traces[k] = trace
+        copy.reg.loc[k] = props
+
+        return copy
+
+    def groupby(self, groupbys):
+        return TracesGrouped(self, groupbys)
+
+    def sel(self, but=False, **col_values):
+        mask = np.ones(len(self.index), dtype=np.bool_)
+        for col, value in col_values.items():
+            col_vals = self.reg[col]
+            asking_nan = isinstance(value, (int, float)) and np.isnan(value)
+            mask = mask & ((col_vals == value) | (col_vals.isna() & asking_nan))
+
+        return self.sel_mask(mask, but=but)
+
+    def sel_isin(self, but=False, **col_values):
+        mask = np.ones(len(self.index), dtype=np.bool_)
+        for col, values in col_values.items():
+            mask = mask & (self.reg[col].isin(values))
+
+        return self.sel_mask(mask, but=but)
+
+    def sel_between(self, but=False, **col_ranges):
+        mask = np.ones(len(self.index), dtype=np.bool_)
+        for col, vrange in col_ranges.items():
+            mask = mask & (self.reg[col].between(*vrange))
+
+        return self.sel_mask(mask, but=but)
+
+    def sel_mask(self, mask, but=False):
+        if but:
+            mask = ~mask
+
+        return self.__class__(
+            reg=self.reg.loc[mask],
+            traces=self.traces.loc[:, mask],
+        )
+
+    @property
+    def loc(self):
+        return self.reg.loc
+
+    @property
+    def iloc(self):
+        return self.reg.iloc
+
+    @property
+    def index(self):
+        return self.reg.index
+
+    @property
+    def values(self):
+        return self.traces.values
+
+    @property
+    def columns(self):
+        return self.reg.columns
+
+    @property
+    def time(self):
+        return self.traces.index
+
+    def time_abs(self, k):
+        return self.time + self.reg.loc[k, 'ref']
+
+    @property
+    def tloc(self):
+        return self.traces.loc
+
+    def lookup(self, times, interp=True) -> pd.Series:
+        """
+        Look up a different time for each trace.
+        For example, imagine these traces are time series of different animals
+        and each one of them has a different cycle-duration.
+
+        :param times: A series of times with index equal to this traces index.
+            Alternatively, a str identifying a column to lookup.
+
+        :param interp: Whether to interpolate the traces to look up the given
+            times if they don't perfectly align with our sampling
+        """
+
+        if isinstance(times, str):
+            times = self[times]
+
+        if isinstance(times, (np.ndarray, pd.Index)):
+            times = pd.Series(times, index=self.index)
+
+        if np.isscalar(times):
+            times = pd.Series(times, index=self.index)
+
+        def lookup_single(s, t):
+            if interp:
+                lerp = scipy.interpolate.interp1d(
+                    s.index,
+                    s.values,
+                )
+                return lerp(t).item()
+            else:
+                return s.loc[t]
+
+        return pd.Series({
+            k: lookup_single(self.get(k), t)
+            for k, t in times.items()
+        })
+
+    def is_local_peak(self, times):
+
+        if isinstance(times, str):
+            times = self[times]
+
+        prev_idx = self.time[self.time.get_indexer(times) - 1]
+        next_idx = self.time[self.time.get_indexer(times) + 1]
+
+        prev_val = self.lookup(prev_idx)
+        this_val = self.lookup(times)
+        next_val = self.lookup(next_idx)
+
+        mask = (prev_val <= this_val) & (next_val <= this_val)
+
+        return mask
+
+    def apply(self, *args, **kwargs):
+        new = self.traces.apply(*args, **kwargs)
+        return self.replace_traces(new)
+
+    @functools.wraps(pd.DataFrame.applymap)
+    def applymap(self, func):
+        to_map = func
+        if isinstance(func, dict):
+            to_map = lambda x: func[x]
+
+        mapped = self.traces.applymap(to_map)
+
+        return self.replace_traces(mapped)
+
+    def replace_traces(self, others: [dict, np.ndarray, pd.DataFrame]):
+
+        if isinstance(others, dict):
+            others: pd.DataFrame = pd.DataFrame(others)
+
+        if not isinstance(others, pd.DataFrame):
+            assert others.shape == self.traces.shape
+            others: pd.DataFrame = pd.DataFrame(
+                others,
+                index=self.traces.index,
+                columns=self.traces.columns,
+            )
+
+        missing = others.columns.difference(self.reg.index)
+        if len(missing) > 0:
+            logging.warning(f'Missing reg entries for {len(missing)} traces')
+
+        common = others.columns.intersection(self.reg.index)
+
+        return self.__class__(
+            reg=self.reg.loc[common],
+            traces=others.loc[:, common],
+        )
+
+    def sort_values(self, *args, **kwargs):
+        reg = self.reg.sort_values(*args, **kwargs)
+
+        return self.__class__(
+            reg=reg,
+            traces=self.traces.reindex(reg.index, axis=1),
+        )
+
+    def contains_nan(self) -> bool:
+        return np.any(
+            self.traces.isna().values
+        )
+
+    def dropna(self, **kwargs):
+        traces = self.traces.dropna(**kwargs)
+
+        return self.__class__(
+            reg=self.reg.loc[traces.columns, :],
+            traces=traces,
+        )
+
+    def drop_empty(self):
+        return self.dropna(axis=1, how='all')
+
+    def get_rel_win(self):
+        return timeslice.Win(
+            self.time.min(),
+            self.time.max(),
+        )
+
+    @property
+    def sampling_period(self) -> float:
+        return _estimate_sampling_period(self.time)
+
+    @property
+    def sampling_rate(self) -> float:
+        sampling_rate = 1. / (self.sampling_period * timeslice.MS_TO_S)
+
+        if sampling_rate.is_integer():
+            sampling_rate = int(sampling_rate)
+
+        return sampling_rate
+
+    def gradient(self):
+        sampling_period = self.sampling_period
+        return self.apply(
+            lambda trace: np.gradient(trace, sampling_period)
+        )
+
+    def diff(self):
+        return self.apply(pd.Series.diff)
+
+    @functools.wraps(pd.DataFrame.max)
+    def max(self, *args, **kwargs):
+        return self.traces.max(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.min)
+    def min(self, *args, **kwargs):
+        return self.traces.min(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.idxmax)
+    def idxmax(self, *args, **kwargs):
+        return self.traces.idxmax(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.idxmin)
+    def idxmin(self, *args, **kwargs):
+        return self.traces.idxmin(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.mean)
+    def mean(self, *args, **kwargs):
+        return self.traces.mean(*args, **kwargs)
+
+    def mean_rolling(self, *args, center=True, min_periods=1, **kwargs):
+        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+
+        return self.replace_traces(
+            rolling.mean(),
+        )
+
+    def sum_rolling(self, *args, center=True, min_periods=1, **kwargs):
+        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+
+        return self.replace_traces(
+            rolling.sum(),
+        )
+
+    def median_rolling(self, *args, center=True, min_periods=1, **kwargs):
+        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+
+        return self.replace_traces(
+            rolling.median(),
+        )
+
+    def std_rolling(self, *args, center=True, min_periods=1, **kwargs):
+        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+
+        return self.replace_traces(
+            rolling.std(),
+        )
+
+    def zscore_rolling(self, sliding_win_ms):
+        win_size = sliding_win_ms / self.sampling_period
+
+        assert win_size == int(win_size)
+
+        win_size = int(win_size)
+        assert win_size > 0
+
+        mean = self.mean_rolling(win_size)
+        std = self.std_rolling(win_size)
+
+        return (self - mean.traces) / std.traces
+
+    @functools.wraps(pd.DataFrame.median)
+    def median(self, *args, **kwargs):
+        return self.traces.median(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.quantile)
+    def quantile(self, *args, **kwargs):
+        return self.traces.quantile(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.std)
+    def std(self, *args, **kwargs):
+        return self.traces.std(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.var)
+    def var(self, *args, **kwargs):
+        return self.traces.var(*args, **kwargs)
+
+    @functools.wraps(pd.DataFrame.sum)
+    def sum(self, *args, **kwargs):
+        return self.traces.sum(*args, **kwargs)
+
+    def zscore(self):
+        return (self - self.mean()) / self.std()
+
+    def resample(self, period, start=None, stop=None):
+
+        if start is None:
+            start = self.time.min()
+
+        if stop is None:
+            stop = self.time.max()
+
+        win = timeslice.Win(start, stop)
+
+        return self.__class__.from_df(
+            reg=self.reg,
+            traces=win.interp_df(self.traces, step=period),
+        )
+
+    def downsample_factor(self, factor, offset=None):
+        return self.__class__(
+            reg=self.reg,
+            traces=self.traces.iloc[offset::factor],
+        )
+
+    def contiguous_sampling(self, atol=1.e-6) -> bool:
+        dts = np.diff(self.time)
+        return np.allclose(dts[0], dts, atol=atol)
+
+    def downsample(self, period):
+        current = self.sampling_period
+
+        assert np.isclose(period % current, 0), \
+            f'New period ({period}) must be a multiple of current period ({current})'
+
+        factor = int(period / current)
+
+        return self.downsample_factor(factor)
+
+    def interp(self, times: pd.Series, kind='linear', **kwargs):
+        times = np.asarray(times)
+
+        lerp = scipy.interpolate.interp1d(
+            self.time,
+            self.traces.values,
+            axis=0,
+            kind=kind,
+            **kwargs,
+        )
+
+        interpolated = lerp(times)
+
+        new_traces = pd.DataFrame(
+            interpolated,
+            index=times,
+            columns=self.traces.columns,
+        )
+
+        return self.replace_traces(new_traces)
+
+    def filter_pass(self, hz: tuple, **kwargs):
+        """
+        A combined call to low_pass / high_pass / band_pass.
+
+        This is useful to quickly switch the filtering in an analysis
+        with just one parameter.
+
+        :param hz: Must be a tuple (or None) defining a Hz range for a band pass filter.
+        If one of the ends is inf, it turns into a high or low pass filter:
+
+            Low pass:
+                (-np.inf, 5)
+                (None, 5)
+
+            Band pass:
+                (20, 50)
+
+            high pass:
+                (50, np.inf)
+                (50, None)
+
+            No filter:
+                None
+                (-np.inf, np.inf)
+
+        """
+        if hz is None:
+            return self
+
+        low, high = hz
+        low_open = low is None or np.isclose(low, 0) or np.isinf(low) or np.isnan(low)
+        high_open = high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+
+        if low_open and not high_open:
+            return self.low_pass(high, **kwargs)
+
+        elif not low_open and high_open:
+            return self.high_pass(low, **kwargs)
+
+        elif not low_open and not high_open:
+            return self.band_pass(low, high, **kwargs)
+
+        else:
+            return self
+
+    def filtfilt(self, *params):
+        """a version that tolerates nans at the start/end of each col"""
+        padded = self.traces.ffill().bfill().values
+        filtered_data = scipy.signal.filtfilt(*params, padded, axis=0)
+        filtered_data[np.isnan(self.traces.values)] = np.nan
+
+        new_traces = pd.DataFrame(
+            filtered_data,
+            index=self.traces.index,
+            columns=self.traces.columns,
+        )
+        return self.replace_traces(new_traces)
+
+    def band_pass(self, low_hz, high_hz, *, order=2):
+        assert self.contiguous_sampling()
+
+        sampling_hz = self.sampling_rate
+
+        nyquist_freq = sampling_hz / 2
+        low_hz = low_hz / nyquist_freq
+        high_hz = high_hz / nyquist_freq
+
+        # noinspection PyUnresolvedReferences
+        params = scipy.signal.butter(order, [low_hz, high_hz], btype='band')
+
+        return self.filtfilt(*params)
+
+    def low_pass(self, high_hz, *, order=2):
+        assert self.contiguous_sampling()
+
+        sampling_hz = self.sampling_rate
+
+        nyquist_freq = sampling_hz / 2
+        high = high_hz / nyquist_freq
+
+        # noinspection PyUnresolvedReferences
+        params = scipy.signal.butter(order, high, btype='low')
+
+        return self.filtfilt(*params)
+
+    def high_pass(self, low_hz, *, order=2):
+        assert self.contiguous_sampling()
+
+        sampling_hz = self.sampling_rate
+
+        nyquist_freq = sampling_hz / 2
+        low = low_hz / nyquist_freq
+
+        # noinspection PyUnresolvedReferences
+        params = scipy.signal.butter(order, low, btype='high')
+
+        return self.filtfilt(*params)
+
+    def spectral_analysis_single(self, k, spec_func, take_abs, **kwargs):
+        """Apply a spectral analysis function to a single trace"""
+
+        assert self.contiguous_sampling()
+
+        sampling_rate = self.sampling_rate
+
+        data = self.traces[k]
+
+        f_stft, t_stft, z_xx = spec_func(data, fs=sampling_rate, **kwargs)
+
+        time_offset = self.time.min()
+
+        time = t_stft * timeslice.ms(seconds=1) + time_offset
+
+        spec = z_xx.T
+
+        if take_abs:
+            spec = np.abs(spec)
+
+        df = pd.DataFrame(
+            spec,
+            columns=f_stft,
+            index=time,
+        )
+
+        df.sort_index(axis=1, inplace=True)
+        df.sort_index(axis=0, inplace=True)
+
+        return df.rename_axis(index='time', columns='freq')
+
+    def spectral_analysis(self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs):
+        """
+        Apply a spectral analysis function to each trace
+
+        spec_func must return the same as scipy.signal.spectrogram, that is:
+        freqs (M array), time (N array), spec (MxN array)
+        """
+        res = {}
+
+        for k in pbar(self.index):
+            spec = self.spectral_analysis_single(k, spec_func, take_abs=take_abs, **kwargs)
+
+            if db:
+                spec = 10 * np.log10(spec)
+
+            res[k] = spec
+
+        return res
+
+    def spec_stft(self, nperseg=256, noverlap=128, **kwargs):
+        """Short-Time Fourier Transform (STFT)"""
+        return self.spectral_analysis(
+            scipy.signal.stft,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            **kwargs,
+        )
+
+    def spec_wavelet(self, freqs=None, wavelet='morl', **kwargs):
+        """Wavelet Transform (Morlet wavelet)"""
+        import pywt
+        sampling_rate = self.sampling_rate
+
+        if freqs is None:
+            freqs = np.geomspace(1, 100, 101) # np.arange(1, 128)
+
+        center_frequency = 0.84  # Morlet wavelet typical center frequency
+        scales = center_frequency / (freqs / sampling_rate)
+
+        def wavelet_single(data, fs, **kwargs):
+            coef, freqs_wt = pywt.cwt(data, sampling_period=1. / fs, **kwargs)
+            freqs_wt = freqs  # convert scales to frequency
+            return freqs_wt, np.arange(0, len(self.time)) / sampling_rate, coef
+
+        return self.spectral_analysis(
+            wavelet_single,
+            scales=scales,
+            wavelet=wavelet,
+            **kwargs,
+        )
+
+    def spectrograms_overlapping(self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs):
+        """Approximation to multi-taper spectrogram by using overlapping tukey windows"""
+
+        return self.spectral_analysis(
+            scipy.signal.spectrogram,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window=window,
+            **kwargs,
+        )
+
+    def spectrograms(self, segment_ms=1_000, overlap_ms=None, **kwargs):
+        """Specgrograms with sensible defaults"""
+        assert self.contiguous_sampling()
+
+        period = self.sampling_period
+        nperseg = int(segment_ms / period)
+        nperseg = int(np.clip(nperseg, 1, np.inf))
+
+        if overlap_ms is None:
+            overlap_ms = segment_ms * .95
+        noverlap = int(overlap_ms / period)
+        noverlap = int(np.clip(noverlap, 0, nperseg - 1))
+
+        return self.spectral_analysis(
+            scipy.signal.spectrogram,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            **kwargs,
+        )
+
+    def welch(
+            self,
+            win_len_ms=None,
+            db=False,
+            **kwargs,
+    ):
+        assert self.contiguous_sampling()
+
+        sampling_rate = self.sampling_rate
+
+        power_spectral_density, sample_frequences = sleep.welch(
+            self.traces.values,
+            sampling_rate=sampling_rate,
+            win_len_ms=win_len_ms,
+            db=db,
+            **kwargs,
+        )
+
+        power = pd.DataFrame(
+            power_spectral_density,
+            index=sample_frequences,
+            columns=self.traces.columns,
+        )
+
+        return self.replace_traces(power)
+
+    def welch_rolling(
+            self,
+            win_len_ms=None,
+            db=False,
+            sliding_len_ms=timeslice.ms(seconds=10),
+            sliding_step_ms=timeslice.ms(seconds=1),
+            pbar=None,
+            **kwargs,
+    ):
+        assert self.contiguous_sampling()
+        sampling_rate = self.sampling_rate
+
+        def welch_section(traces: pd.DataFrame):
+            power_spectral_density, sample_frequences = sleep.welch(
+                traces.values,
+                sampling_rate=sampling_rate,
+                win_len_ms=win_len_ms,
+                db=db,
+                **kwargs,
+            )
+
+            return sample_frequences, power_spectral_density.T
+
+        return self.apply_rolling(
+            welch_section,
+            length_ms=sliding_len_ms,
+            step_ms=sliding_step_ms,
+            pbar=pbar,
+            name='freq',
+        )
+
+    def band_power(self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False):
+        assert self.contiguous_sampling()
+
+        welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
+
+        power, bands = sleep.band_power(
+            self.traces.values,
+            sampling_rate=self.sampling_rate,
+            bands=bands,
+            welch_ms=welch_ms,
+            db=db,
+            add_total=add_total,
+        )
+
+        return pd.DataFrame(
+            power,
+            index=bands,
+            columns=self.traces.columns,
+        )
+
+    def band_power_rolling(
+            self,
+            bands=sleep.FREQ_BANDS,
+            sliding_len_ms=timeslice.ms(seconds=10),
+            sliding_step_ms=timeslice.ms(seconds=1),
+            db=False,
+            add_total=True,
+            pbar=None,
+            welch_ms=None,
+    ):
+        """
+        Extract the spectral power for each time trace using a sliding window.
+        Note the windows will overlap and the value generated is assigned to its center.
+        This means we cannot cover the beginning and end of the trace.
+        """
+        assert self.get_rel_win().length >= sliding_len_ms, \
+            f'Data shorter than sliding window ({self.get_rel_win().length} vs {sliding_len_ms})'
+
+        assert not self.contains_nan()
+
+        if isinstance(bands, list):
+            assert all(isinstance(b, str) for b in bands)
+            bands = sleep.FREQ_BANDS.loc[bands]
+
+        welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
+
+        assert sliding_len_ms >= welch_ms, \
+            f'Sliding window ({sliding_len_ms} ms) must be bigger than ' \
+            f'Welch window ({welch_ms}ms; lowest freq: {bands.freq_min.replace(0, np.nan).min()} Hz)'
+
+        def band_power_section(traces: pd.DataFrame):
+            power, freqs = sleep.band_power(
+                traces.values,
+                sampling_rate=self.sampling_rate,
+                bands=bands,
+                welch_ms=welch_ms,
+                add_total=add_total,
+                db=db,
+            )
+
+            return freqs, power.T
+
+        return self.apply_rolling(
+            band_power_section,
+            length_ms=sliding_len_ms,
+            step_ms=sliding_step_ms,
+            pbar=pbar,
+            name='freq_band',
+        )
+
+    def apply_rolling(
+            self,
+            func,
+            length_ms,
+            step_ms=None,
+            pbar=None,
+            name='',
+    ):
+        """
+        Extract some function for each time trace using a sliding window.
+        Note the windows will overlap and the value generated is assigned to its center.
+        This means we cannot cover the beginning and end of the trace.
+
+        :param func: function to apply, should return a tuple: columns and values
+        values should be a numpy array of shape <num traces, num features>
+        columns should be the labes for the features and they are assumed to be the same across
+        all calls to this function (for efficicency reasons).
+
+        :param step_ms:
+            how much the sliding window is shifted on each step,
+            it should be aligned with the sampling rate of the signal
+
+        :param length_ms:
+            size of the sliding window
+
+        :param pbar:
+
+        :param name: name of the feature extracted from the traces.
+
+        :return: a new Traces object
+        """
+
+        if step_ms is None:
+            step_ms = self.sampling_period
+
+        # note we want indices to slice signal, which may not start at t=0
+        signal_tstart, signal_tstop = self.get_rel_win()
+        signal_sampling_rate = self.sampling_rate
+        start_off_ms = 0
+        stop_off_ms = 0
+
+        win_samples = timeslice.Windows.build_sliding_samples(
+            start_ms=0 + start_off_ms,
+            stop_ms=(signal_tstop - signal_tstart) + stop_off_ms,
+            sampling_rate=signal_sampling_rate,
+            length_ms=length_ms,
+            step_ms=step_ms,
+        )
+
+        sliding_steps = win_samples.index
+
+        no_bar = isinstance(pbar, bool) and not pbar
+
+        if not no_bar:
+
+            if pbar is None:  # default
+                if len(sliding_steps) > 100:
+                    pbar = tqdm
+
+            if pbar is not None:
+                if isinstance(pbar, bool) and pbar:
+                    pbar = tqdm
+
+                sliding_steps = pbar(sliding_steps, desc='sliding win')
+
+        starts = win_samples['start']
+        stops = win_samples['stop']
+        refs = win_samples['ref']
+
+        cols = []
+
+        results = []
+        for i in sliding_steps:
+            section = self.traces.iloc[starts[i]:stops[i]]
+            cols, result = func(section)
+            results.append(result.ravel(order='C'))
+
+        results = np.stack(results)
+
+        results_df = pd.DataFrame(
+            results,
+            columns=pd.MultiIndex.from_product(
+                [self.traces.columns, cols],
+                names=[self.traces.columns.name, name],
+            ),
+            index=self.time[refs.values],
+        )
+
+        new_reg = results_df.columns.to_frame(index=False)
+
+        merged_reg = pd.merge(
+            new_reg,
+            self.reg,
+            how='left',
+            left_on=self.traces.columns.name,
+            right_index=True,
+        )
+        assert merged_reg.index.is_unique
+        # merged_reg.drop(self.traces.columns.name, axis=1, inplace=True)
+
+        results_df.columns = merged_reg.index
+
+        return self.from_df(
+            reg=merged_reg,
+            traces=results_df,
+        )
+
+
+class TracesGrouped:
+    def __init__(self, traces: Traces, groupbys):
+
+        if isinstance(groupbys, str):
+            groupbys = [groupbys]
+
+        if isinstance(groupbys, (list, tuple)):
+            uniques = [
+                np.sort(traces.reg[col].dropna().unique())
+                for col in groupbys
+            ]
+
+            groupbys = dict(zip(groupbys, uniques))
+
+        self.groupbys: dict = groupbys
+
+        valid = traces.reg[list(self.groupbys.keys())].notna().all(axis=1)
+
+        self.traces = traces.sel_mask(valid)
+
+    def squeeze(self):
+        return TracesGrouped(
+            self.traces,
+            groupbys={
+                col: [v for v in vals if v in self.traces.reg[col].dropna().values]
+                for col, vals in self.groupbys.items()
+            }
+        )
+
+    def get_by(self, idx: int):
+        return list(self.groupbys.keys())[idx]
+
+    def get_unique(self, col) -> list:
+        if isinstance(col, int):
+            col = self.get_by(col)
+
+        return self.groupbys[col]
+
+    def generate_grouping_colors_brightness(self, brightness_range=(1.5, 1), cmap=None):
+        assert len(self.groupbys) == 2
+
+        colors = {}
+
+        groups_0_unique = self.get_unique(0)
+        groups_1_unique = self.get_unique(1)
+
+        brightness_factors = np.linspace(*brightness_range, len(groups_1_unique))
+
+        for i, g0 in enumerate(groups_0_unique):
+
+            for j, g1 in enumerate(groups_1_unique):
+
+                if cmap is None:
+                    color = f'C{i}'
+                else:
+                    color = cmap(i / (len(groups_0_unique) - 1))
+
+                brightness_factor = brightness_factors[j]
+
+                colors[g0, g1] = splot.darken_color(color, brightness_factor)
+
+        colors = pd.Series(colors)
+
+        colors.index.names = self.groupbys
+
+        return colors
+
+    def generate_grouping_colors(self):
+        assert len(self.groupbys) == 1
+
+        colors = {}
+        for i, v0 in enumerate(self.get_unique(0)):
+            colors[v0] = f'C{i}'
+
+        colors = pd.Series(colors)
+        colors.index.names = list(self.groupbys.keys())
+
+        return colors
+
+    def generate_grouping_colors_vs_flat(self, flat='grey'):
+        assert len(self.groupbys) == 2
+
+        colors = {}
+        for i, v0 in enumerate(self.get_unique(0)):
+            for j, v1 in enumerate(self.get_unique(1)):
+                if j == 0:
+                    colors[v0, v1] = f'C{i}'
+                else:
+                    colors[v0, v1] = flat
+
+        colors = pd.Series(colors)
+        colors.index.names = list(self.groupbys.keys())
+
+        return colors
+
+    def iter_grouped(self):
+        for k, sel in self.traces.iter_grouped(self.groupbys):
+            if len(self.groupbys) == 1:
+                k, = k
+            yield k, sel
+
+    def plot_multi_ax(self, axs, colors, group_kwargs=None, how='overlaid', **kwargs):
+        if group_kwargs is None:
+            group_kwargs = {}
+
+        for k, sel in self.traces.iter_grouped(self.groupbys):
+
+            if len(self.groupbys) == 1:
+                k0, = k
+                plot_kwargs = dict(
+                    color=colors[k0],
+                    label=f'{k0} (n={len(sel.index)})',
+                )
+
+            else:
+                assert len(self.groupbys) == 2
+                k0, k1 = k
+
+                plot_kwargs = dict(
+                    color=colors.xs(key=(k0, k1), level=list(self.groupbys.keys())).item(),
+                    label=f'{k1} (n={len(sel.index)})',
+                )
+
+            plot_kwargs = {**plot_kwargs, **group_kwargs.get(k0, {}), **kwargs}
+
+            ax = axs[k0]
+
+            if how == 'overlaid':
+                sel.plot_overlaid_sum(ax=ax, **plot_kwargs)
+            else:
+                sel.plot_spread(ax=ax, **plot_kwargs)
+
+    def swapgroupbys(self):
+        return TracesGrouped(
+            self.traces,
+            groupbys={
+                k: self.groupbys[k]
+                for k in list(self.groupbys.keys())[::-1]
+            },
+        )
+
+    @property
+    def index(self):
+        return self.traces.index
+
+    def replace_traces(self, others):
+        return TracesGrouped(
+            self.traces.replace_traces(others),
+            self.groupbys,
+        )
