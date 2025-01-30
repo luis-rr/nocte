@@ -16,8 +16,8 @@ import pandas as pd
 from tqdm.auto import tqdm as pbar
 
 import nocte.traces
-from nocte.stacks import Stack, StackSet
 from nocte import timeslice
+from nocte.stacks import Stack, StackSet
 
 
 def get_root():

@@ -16,6 +16,8 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from tqdm.auto import tqdm
 
+from contextlib import contextmanager
+
 from nocte import timeslice
 from nocte.stacks import Stack
 from nocte.timeslice import ms
@@ -1532,19 +1534,6 @@ def p_value_stars(p_value: float) -> str:
     return level_string[p_value_stars_level(p_value)]
 
 
-def savefig(f, name):
-    figs_path = pathlib.Path('/gpfs/laur/data/fenkl/from_luis')
-
-    name = name.replace(' ', '_')
-    name = name.replace('\n', '_')
-
-    full_path = figs_path / f'{name}.pdf'
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f'Saving: {full_path}')
-    f.savefig(full_path, dpi=600)
-
-
 def plot_pulse_shade(
         ax,
         pulse_win,
@@ -1680,3 +1669,33 @@ def mannwhitneyu_test(
         **kwargs,
 
     )
+
+@contextmanager
+def hide_plots():
+    was_interactive = plt.isinteractive()
+    plt.ioff()
+    try:
+        yield
+    finally:
+        if was_interactive:
+            plt.ion()
+
+
+def savefig(f, name, base_path=''):
+
+    name = name.replace(' ', '_')
+    name = name.replace('\n', '_')
+
+    base = pathlib.Path(base_path) if base_path else pathlib.Path()
+
+    full_path = base / name
+
+    if full_path.suffix == '':
+        full_path = full_path.with_suffix('.pdf')
+
+    if not full_path.parent.exists():
+        print(f'Creating: {full_path.parent}')
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f'Saving: {full_path}')
+    f.savefig(full_path, dpi=600)

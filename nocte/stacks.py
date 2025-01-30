@@ -32,7 +32,6 @@ add a couple of methods. The underlying data can be accessed as stack.data.
 import functools
 import itertools
 import logging
-import typing
 
 import h5py
 import numpy as np
