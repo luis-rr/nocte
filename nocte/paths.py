@@ -289,6 +289,15 @@ class Registry:
 
         self.reg = self.reg.loc[df['raw_path'].notna()].copy()
 
+        optional_cols = [
+            'probe0', 'probe1', 'probe2', 'probe3',
+            'side0', 'side1', 'side2', 'side3',
+            'ch0', 'ch1', 'ch2', 'ch3',
+        ]
+        for col in optional_cols:
+            if col not in self.reg.columns:
+                self.reg[col] = np.nan
+
         invalid = self._detect_invalid_probe_info()
         if invalid.any():
             logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
