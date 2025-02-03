@@ -168,14 +168,14 @@ class Events(DataFrameWrapper):
             pd.concat([self.reg, all_new_cols], axis=1)
         )
 
-    def lookup_values_interp(self, name, data: pd.Series, cols=None, kind='linear'):
+    def lookup_values_interp(self, name, data: pd.Series, cols=None):
         cols = self._time_cols_param(cols, strip=True)
 
         if isinstance(cols, str):
             cols = [cols]
 
         new_cols = pd.DataFrame({
-            f'{col}_{name}': interpolate_trace(data, self.reg[f'{col}_time'], kind=kind).values
+            f'{col}_{name}': interpolate_trace(data, self.reg[f'{col}_time']).values
             for col in cols
         }, index=self.reg.index)
 

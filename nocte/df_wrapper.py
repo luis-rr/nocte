@@ -15,13 +15,11 @@ class DataFrameWrapper:
     def __init__(self, reg: pd.DataFrame):
         self.reg = reg
 
-    @functools.wraps(pd.DataFrame.index)
     @property
     def index(self) -> pd.Index:
         """pd.DataFrame accessor"""
         return self.reg.index
 
-    @functools.wraps(pd.DataFrame.columns)
     @property
     def columns(self) -> pd.Index:
         """pd.DataFrame accessor"""

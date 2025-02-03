@@ -42,6 +42,7 @@ def test_build_between_df():
 
 def test_build_from_contiguous_values():
     wins = Windows.build_from_contiguous_values([0, 0, 0, 1, 1, 1, 0, 2, 2, 2], include_right=False)
+    # noinspection PyUnresolvedReferences
     assert (wins.total_by_cat() == pd.Series({0: 4, 1: 3, 2: 3})).all()
 
 

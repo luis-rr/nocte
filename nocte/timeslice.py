@@ -1461,7 +1461,7 @@ class Windows(DataFrameWrapper):
 
         return sections
 
-    def interp_series(self, s: pd.Series, step: float, reset='ref', show_pbar=False, kind='linear'):
+    def interp_series(self, s: pd.Series, step: float, reset='ref', show_pbar=False):
 
         sections = {}
 
@@ -1473,11 +1473,11 @@ class Windows(DataFrameWrapper):
             if isinstance(reset, str):
                 win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
-            sections[idx] = win.interp_series(s, step=step, reset=win_reset, kind=kind)
+            sections[idx] = win.interp_series(s, step=step, reset=win_reset)
 
         return sections
 
-    def interp_df(self, df: pd.DataFrame, step: float, reset='ref', show_pbar=False, kind='linear'):
+    def interp_df(self, df: pd.DataFrame, step: float, reset='ref', show_pbar=False):
 
         sections = {}
 
@@ -1489,7 +1489,7 @@ class Windows(DataFrameWrapper):
             if isinstance(reset, str):
                 win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
-            sections[idx] = win.interp_df(df, step=step, reset=win_reset, kind=kind, show_pbar=False)
+            sections[idx] = win.interp_df(df, step=step, reset=win_reset, show_pbar=False)
 
         return sections
 
@@ -1630,6 +1630,8 @@ class Windows(DataFrameWrapper):
             return True
 
         edges = self.reg[['start', 'stop']].sort_values(['start', 'stop']).values.flatten()
+
+        # noinspection PyTypeChecker
         return np.all(np.diff(edges) >= 0)
 
     def are_integer(self) -> bool:
@@ -1661,6 +1663,8 @@ class Windows(DataFrameWrapper):
 
     def are_in_samples(self) -> bool:
         """check if current windows are defined in "samples" (integer) rather than "time" (float) """
+
+        # noinspection PyTypeChecker
         return np.all([np.issubdtype(t, np.integer) for t in self.reg.dtypes[['start', 'stop', 'ref']]])
 
     def is_ref_inside(self) -> pd.Series:
@@ -2997,12 +3001,12 @@ def milliseconds_to_timestamp(milliseconds: float):
     For pretty-printing with more options see strf_ms
     """
 
-    seconds, ms = divmod(milliseconds, 1000)
+    seconds, mils = divmod(milliseconds, 1000)
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
 
-    return f"{int(days):02}d {int(hours):02}:{int(minutes):02}:{int(seconds):02}.{int(ms):03}"
+    return f"{int(days):02}d {int(hours):02}:{int(minutes):02}:{int(seconds):02}.{int(mils):03}"
 
 
 def timestamp_to_milliseconds(timestamp) -> float:

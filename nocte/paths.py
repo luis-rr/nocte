@@ -404,6 +404,7 @@ class Registry(DataFrameWrapper):
     def is_bilat(self, area: str) -> pd.Series:
         count = np.zeros(len(self.reg))
         for col in ['probe0', 'probe1', 'probe2', 'probe3']:
+            # noinspection PyUnresolvedReferences
             count = count + (self[col].str.lower() == area.lower()).astype(int)
 
         return count >= 2
@@ -703,11 +704,11 @@ class Registry(DataFrameWrapper):
     def load_timestamps(self, col):
 
         def parse_entry(string):
-            desc, time_str = string.split(' - ')
+            entry_desc, time_str = string.split(' - ')
 
             time_ms = timeslice.timestamp_to_milliseconds(time_str)
 
-            return desc, time_ms
+            return entry_desc, time_ms
 
         events_desc = self[col].dropna()
 

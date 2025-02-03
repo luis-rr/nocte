@@ -1393,26 +1393,6 @@ class Stack:
 
         return spec_db
 
-    def extract_spectrogram(self, segment_ms=1_000, overlap_ms=None, dim='time'):
-        """
-        Extract the spectrogram along the time dimention.
-        All other dimensions are treated as independent traces.
-        """
-
-        reg = []
-        data = []
-
-        if len(self.shape) == 1:
-            return self._extract_spectrogram_1d(segment_ms=segment_ms, overlap_ms=overlap_ms)
-
-        for sel, subs in self.iter_except(dim, pbar=tqdm):
-            res = subs.extract_spectrogram_1d(segment_ms=segment_ms, overlap_ms=overlap_ms)
-
-            reg.append(sel)
-            data.append(res)
-
-        return stackup_multidim(data, pd.DataFrame(reg))
-
     def histogram_along(self, dim: str, new: str, bins=100, quiet=False):
         """
         Extract a histogram for every single value along a dimension.
@@ -1775,14 +1755,14 @@ class Stack:
         idcs = np.arange(0, len(self.coords[dim]), factor)
         return self.isel(**{dim: idcs})
 
-    def upsample(self, upsample_hz, win=None, dim='time', kind='linear'):
+    def upsample(self, upsample_hz, win=None, dim='time'):
         """
         Upsample a stack by linearly interpolating along one dimension
 
         :param upsample_hz:
         :param win:
         :param dim:
-        :param kind:
+
         :return:
         """
         if win is None:
@@ -1796,7 +1776,7 @@ class Stack:
 
         new_idcs = np.arange(*win, new_sampling_period)
 
-        return self.interp(new_idcs, dim=dim, kind=kind)
+        return self.interp(new_idcs, dim=dim)
 
     def interp_between(self, win: timeslice.Win, step, **kwargs):
         win = timeslice.Win(*win)
@@ -1809,7 +1789,6 @@ class Stack:
 
         :param new_idcs:
         :param dim:
-        :param kind:
         :param pbar:
         :return:
         """

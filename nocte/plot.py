@@ -12,6 +12,7 @@ import matplotlib.ticker
 import matplotlib.transforms
 import numpy as np
 import pandas as pd
+import scipy.stats
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from tqdm.auto import tqdm
@@ -178,7 +179,7 @@ def set_time_ticks(
         axis.set_label_text(label)
 
 
-def _auto_select_tick_steps(ax, which='x') -> tuple:
+def _auto_select_tick_steps(ax, which='x') -> tuple[float, float]:
     """
     Select the steps of minor and major ticks according
     to the ax current data limits, so that they match common time units.
@@ -212,6 +213,8 @@ def _auto_select_tick_steps(ax, which='x') -> tuple:
     for thresh, steps in sections.items():
         if duration <= thresh:
             return steps
+
+    return sections[np.inf]
 
 
 def set_ticks_solar_time(ax, which='x'):
@@ -1635,7 +1638,7 @@ def wilcoxon_test(
 ):
     assert len(baseline) == len(effect)
 
-    import scipy.stats
+    # noinspection PyTypeChecker
     stat, p = scipy.stats.wilcoxon(baseline, effect, alternative=alternative)
 
     n = len(baseline)
@@ -1658,7 +1661,7 @@ def mannwhitneyu_test(
         alternative='two-sided',
         **kwargs,
 ):
-    import scipy.stats
+    # noinspection PyTypeChecker
     u, p = scipy.stats.mannwhitneyu(baseline, effect, alternative=alternative)
 
     plot_test(

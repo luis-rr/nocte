@@ -1238,7 +1238,6 @@ class Traces(DataFrameWrapper):
             series: pd.Series,
             zoom_wins: timeslice.Windows,
             upsampling_ms=None,
-            interp_kind='linear',
             show_pbar=None,
     ):
         if upsampling_ms is None:
@@ -1248,7 +1247,6 @@ class Traces(DataFrameWrapper):
         traces = zoom_wins.interp_series(
             series,
             step=upsampling_ms,
-            kind=interp_kind,
             show_pbar=show_pbar,
         )
 
@@ -1646,10 +1644,10 @@ class Traces(DataFrameWrapper):
             traces=self.traces.reindex(reg.index, axis=1),
         )
 
-    def contains_nan(self) -> bool:
-        return np.any(
+    def contains_nan(self):
+        return bool(np.any(
             self.traces.isna().values
-        )
+        ))
 
     def dropna(self, **kwargs):
         traces = self.traces.dropna(**kwargs)
@@ -1809,7 +1807,7 @@ class Traces(DataFrameWrapper):
 
         return self.downsample_factor(factor)
 
-    def interp(self, times: pd.Series, kind='linear', **kwargs):
+    def interp(self, times: pd.Series):
 
         times = np.asarray(times)
 
@@ -1994,8 +1992,8 @@ class Traces(DataFrameWrapper):
         center_frequency = 0.84  # Morlet wavelet typical center frequency
         scales = center_frequency / (freqs / sampling_rate)
 
-        def wavelet_single(data, fs, **kwargs):
-            coef, freqs_wt = pywt.cwt(data, sampling_period=1. / fs, **kwargs)
+        def wavelet_single(data, fs, **wv_kwargs):
+            coef, freqs_wt = pywt.cwt(data, sampling_period=1. / fs, **wv_kwargs)
             freqs_wt = freqs  # convert scales to frequency
             return freqs_wt, np.arange(0, len(self.time)) / sampling_rate, coef
 

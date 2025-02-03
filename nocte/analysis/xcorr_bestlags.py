@@ -74,6 +74,7 @@ class XCorrBestLags:
                     np.linspace(self.reg[c].min(), self.reg[c].max(), 101)
                 )
 
+        # noinspection PyTypeChecker
         h, xedges, yedges, im = ax.hist2d(
             self.reg[c0],
             self.reg[c1],
@@ -120,6 +121,7 @@ class XCorrBestLags:
         if lag_bins is None:
             lag_bins = np.arange(self.reg['lag'].min() - .5, self.reg['lag'].max() + 1, 1)
 
+        # noinspection PyTypeChecker
         ax.hist(
             self.reg['lag'],
             lag_bins,

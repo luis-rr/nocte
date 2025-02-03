@@ -390,7 +390,7 @@ def plot_betas_grouped_single(
 
         y_offset = i * y_spacing
 
-        if shaded == False:
+        if not shaded:
             ax.plot(
                 traces.traces + y_offset,
                 color=color,
@@ -401,7 +401,7 @@ def plot_betas_grouped_single(
         else:
             iqr = IQR
 
-            if shaded != True:
+            if not shaded:
                 iqr = shaded
 
             low = traces.quantile(iqr[0], axis=1)
