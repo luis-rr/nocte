@@ -245,9 +245,11 @@ def calculate_matching(
 ) -> pd.DataFrame:
     sns = _trim_events_outside(full_xcorr, sns)
 
-    sections = Windows.build_sliding_on_stack(
-        full_xcorr,
-        chunk_size,
+    sections = Windows.build_sliding(
+        start_ms=full_xcorr.coords['time'].min(),
+        stop_ms=full_xcorr.coords['time'].max(),
+        sampling_rate=full_xcorr.estimate_sampling_rate(),
+        length_ms=chunk_size,
         step_ms=chunk_size,
         ignore_remaining=False,
     )

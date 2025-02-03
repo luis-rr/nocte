@@ -158,8 +158,10 @@ def valid_cross_corr(
         raise ValueError(
             f'Signal must be at least {min_valid}ms. Given {signal.get_rel_win().length}ms')
 
-    sliding_wins = timeslice.Windows.build_sliding_on_stack(
-        signal,
+    sliding_wins = timeslice.Windows.build_sliding(
+        start_ms=signal.coords['time'].min(),
+        stop_ms=signal.coords['time'].max(),
+        sampling_rate=signal.estimate_sampling_rate(),
         length_ms=win_length_ms,
         step_ms=sliding_step_ms,
         ignore_remaining=True,

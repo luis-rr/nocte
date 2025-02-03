@@ -4,7 +4,6 @@ import pandas as pd
 from tqdm.asyncio import tqdm
 
 from nocte.df_wrapper import DataFrameWrapper
-from nocte.stacks import Stack
 
 
 class DataDict(DataFrameWrapper):

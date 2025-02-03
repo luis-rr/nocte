@@ -193,8 +193,11 @@ def extract_power_sliding(
 
     extract_power_kwargs = dict(bands=bands, welch_ms=welch_ms, add_total=add_total)
 
-    sliding_wins = timeslice.Windows.build_sliding_on_stack(
-        main,
+    # note we want indices to slice signal, which may not start at t=0
+    sliding_wins = timeslice.Windows.build_sliding(
+        start_ms=main.coords['time'].min(),
+        stop_ms=main.coords['time'].max(),
+        sampling_rate=main.estimate_sampling_rate(),
         length_ms=sliding_win_len_ms,
         step_ms=sliding_step_ms,
     )

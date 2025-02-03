@@ -855,15 +855,23 @@ class Windows(DataFrameWrapper):
         return cls(df)
 
     @classmethod
-    def build_sliding_on_stack(
-            cls, signal, length_ms, start_off_ms=0, stop_off_ms=0, dim='time', **kwargs):
+    def build_sliding(
+            cls,
+            start_ms,
+            stop_ms,
+            length_ms,
+            sampling_rate,
+            start_off_ms=0,
+            stop_off_ms=0,
+            **kwargs
+    ):
         """
-
-        Build equal-sized sliding windows in SAMPLES to analyze a stack.
+        Build equal-sized sliding windows in SAMPLES to analyze a time series.
         See build_sliding_samples
 
-        :param signal: a Stack to use as a reference
-        :param dim: the dimetion of the Stack to slide along
+        :param start_ms: when the recording starts (assuming sample=0 equals this time)
+        :param stop_ms: when the recording stops (assuming sample=-1 equals this time)
+        :param sampling_rate: take a guess
         :param kwargs: other args to build_sliding_samples
 
         :param length_ms:
@@ -872,22 +880,17 @@ class Windows(DataFrameWrapper):
 
         :return:
         """
-        # note we want indices to slice signal, which may not start at t=0
-        signal_tstart = signal.coords[dim].min()
-        signal_tstop = signal.coords[dim].max()
-        signal_sampling_rate = signal.estimate_sampling_rate()
-
         win_samples = cls.build_sliding_samples(
             start_ms=0 + start_off_ms,
-            stop_ms=(signal_tstop - signal_tstart) + stop_off_ms,
-            sampling_rate=signal_sampling_rate,
+            stop_ms=(stop_ms - start_ms) + stop_off_ms,
+            sampling_rate=sampling_rate,
             length_ms=length_ms,
             **kwargs,
         )
 
         win_ms = win_samples.sample_to_ms(
-            signal_sampling_rate,
-            tstart=signal_tstart,
+            sampling_rate,
+            tstart=start_ms,
         )
 
         win_samples = win_samples.add_cols(win_ms.reg[['start', 'stop', 'ref']].add_suffix('_ms'))
@@ -896,8 +899,11 @@ class Windows(DataFrameWrapper):
 
     @classmethod
     def build_sliding_samples(
-            cls, start_ms, stop_ms,
-            length_ms, sampling_rate,
+            cls,
+            start_ms,
+            stop_ms,
+            length_ms,
+            sampling_rate,
             step_ms=None,
             ignore_remaining=True,
     ):
@@ -949,39 +955,6 @@ class Windows(DataFrameWrapper):
         )
 
         return wins
-
-    @classmethod
-    def build_sliding(cls, start, stop, length, spread=0, center=True, edges='crop'):
-        assert edges in ('crop', 'drop', 'keep')
-
-        start = to_ms(start)
-        stop = to_ms(stop)
-        length = to_ms(length)
-        spread = to_ms(spread)
-
-        starts = np.arange(start, stop, length + spread)
-        stops = starts + length
-
-        if center:
-            spare = stop - stops.max()
-            starts += spare * .5
-            stops += spare * .5
-
-        assert np.all(starts <= stops)
-
-        if edges != 'keep':
-            if edges == 'crop':
-                starts = np.maximum(starts, start)
-                stops = np.minimum(stops, stop)
-            else:
-                assert edges == 'drop'
-                starts = starts[start <= starts]
-                stops = stops[stops <= stop]
-
-            assert np.all(start <= starts)
-            assert np.all(stops <= stop)
-
-        return cls.from_arrays(starts, stops, ref=0)
 
     @classmethod
     def build_between(cls, times: np.ndarray, start=None, stop=None):
