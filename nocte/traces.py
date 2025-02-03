@@ -4,7 +4,6 @@ import logging
 import numba as nb
 import numpy as np
 import pandas as pd
-import scipy.interpolate
 import scipy.signal
 from tqdm.auto import tqdm
 
@@ -1575,11 +1574,8 @@ class Traces(DataFrameWrapper):
 
         def lookup_single(s, t):
             if interp:
-                lerp = scipy.interpolate.interp1d(
-                    s.index,
-                    s.values,
-                )
-                return lerp(t).item()
+                np.interp(t, s.index, s.values).item()
+
             else:
                 return s.loc[t]
 
@@ -1814,17 +1810,13 @@ class Traces(DataFrameWrapper):
         return self.downsample_factor(factor)
 
     def interp(self, times: pd.Series, kind='linear', **kwargs):
+
         times = np.asarray(times)
 
-        lerp = scipy.interpolate.interp1d(
-            self.time,
-            self.traces.values,
-            axis=0,
-            kind=kind,
-            **kwargs,
-        )
-
-        interpolated = lerp(times)
+        interpolated = np.column_stack([
+            np.interp(times, self.time, self.traces[col].values)
+            for col in self.traces.columns
+        ])
 
         new_traces = pd.DataFrame(
             interpolated,

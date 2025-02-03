@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import scipy.interpolate
 from tqdm.auto import tqdm as pbar
 
 from nocte import timeslice, io_neuropixel
@@ -134,9 +133,10 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
         )
         true_time = np.linspace(t0, t1, true_samples.shape[1])
 
-        lerp = scipy.interpolate.interp1d(true_time, true_samples)
         resample_time = np.arange(t0, t1, target_period_ms)
-        resampled_data = lerp(resample_time).astype(true_samples.dtype)
+
+        resampled_data = np.interp(resample_time, true_time, true_samples)
+        resampled_data = resampled_data.astype(true_samples.dtype)
 
         idcs = timeslice.ms_to_idcs(target_hz, np.array([t0, t1]))
         memmap[:, idcs[0]:idcs[1]] = resampled_data

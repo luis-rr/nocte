@@ -1803,7 +1803,7 @@ class Stack:
         new_idcs = win.arange(step)
         return self.interp(new_idcs, **kwargs)
 
-    def interp(self, new_idcs: np.ndarray, dim='time', kind='linear', pbar=None):
+    def interp(self, new_idcs: np.ndarray, dim='time', pbar=None):
         """
         Interpolate a stack along one dimension
 
@@ -1819,19 +1819,12 @@ class Stack:
         assert (np.max(new_idcs) <= self.coords[dim].max()), \
             f'New {dim} stops at {np.max(new_idcs)} but last sample is at {self.coords[dim].max()}'
 
-        import scipy.interpolate
         current = self.coords[dim].values
 
         new_vals = []
 
         for sel, trace in self.iter_except(dim, pbar=pbar):
-            stack_lerp = scipy.interpolate.interp1d(
-                current,
-                trace.values,
-                kind=kind,
-            )
-
-            resampled = stack_lerp(new_idcs)
+            resampled = np.interp(new_idcs, current, trace.values)
 
             new_vals.append(resampled)
 

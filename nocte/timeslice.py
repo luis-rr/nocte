@@ -9,7 +9,6 @@ from datetime import timedelta
 import numba
 import numpy as np
 import pandas as pd
-import scipy.interpolate
 from tqdm.auto import tqdm as pbar
 from nocte.df_wrapper import DataFrameWrapper
 
@@ -499,8 +498,7 @@ class Win(tuple):
             series: pd.Series,
             step,
             reset=None, shift=0,
-            kind='linear', bounds_error=False,
-            **kwargs
+            bounds_error=False,
     ) -> pd.Series:
         """
         Resample the data within the given window using linear interpolation.
@@ -530,15 +528,13 @@ class Win(tuple):
 
             old_time = series.index.values - shift
 
-            lerp = scipy.interpolate.interp1d(
+            new_series = np.interp(
+                new_time,
                 old_time,
                 series.values,
-                kind=kind,
-                bounds_error=bounds_error,
-                **kwargs,
+                left=np.nan if not bounds_error else None,
+                right=np.nan if not bounds_error else None
             )
-
-            new_series = lerp(new_time)
 
         if isinstance(reset, bool):
             reset = None if not reset else 'start'

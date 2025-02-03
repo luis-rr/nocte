@@ -6,7 +6,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-import scipy.interpolate
 
 from nocte import plot as splot
 from nocte import timeslice, stacks
@@ -14,21 +13,21 @@ from nocte.timeslice import S_TO_MS
 from nocte.df_wrapper import DataFrameWrapper
 
 
-def interpolate_trace(data: pd.Series, times: np.array, kind='linear') -> pd.Series:
-    lerp = scipy.interpolate.interp1d(
+def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
+    values = np.interp(
+        times,
         data.index,
         data.values,
-        bounds_error=False,
-        fill_value=np.nan,
-        kind=kind,
+        left=np.nan,
+        right=np.nan
     )
 
-    return pd.Series(lerp(times), index=times)
+    return pd.Series(values, index=times)
 
 
-def interpolate_traces(data: pd.DataFrame, times: np.array, kind='linear') -> pd.DataFrame:
+def interpolate_traces(data: pd.DataFrame, times: np.array) -> pd.DataFrame:
     df = {
-        i: interpolate_trace(trace, times, kind=kind)
+        i: interpolate_trace(trace, times)
         for i, (col, trace) in enumerate(data.items())
     }
 
@@ -37,31 +36,6 @@ def interpolate_traces(data: pd.DataFrame, times: np.array, kind='linear') -> pd
     df.columns = data.columns
 
     return df
-
-
-def interpolate_trace_wrapped(data: pd.Series, times: np.array, kind='linear', period=2 * np.pi) -> pd.Series:
-    """Same as above but taking into account that "data" is circular
-    (for example the phase of a signal)
-    """
-
-    def wrap(trace):
-        return (np.unwrap(trace) + (period * .5)) % period - (period * .5)
-
-    data_unwrapped = pd.Series(np.unwrap(data.values, period=period), index=data.index)
-
-    lerp = scipy.interpolate.interp1d(
-        data_unwrapped.index,
-        data_unwrapped.values,
-        bounds_error=False,
-        fill_value=np.nan,
-        kind=kind,
-    )
-
-    new = lerp(times)
-
-    new_wrapped = wrap(new)
-
-    return pd.Series(new_wrapped, index=times)
 
 
 class Events(DataFrameWrapper):
