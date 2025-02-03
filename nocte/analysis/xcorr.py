@@ -14,7 +14,7 @@ If x-corr is high with a positive lag, it means we are comparing ch0 with future
 
 import numpy as np
 from numba import njit, prange
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import timeslice
 from nocte.stacks import Stack
@@ -181,7 +181,7 @@ def valid_cross_corr(
     norm = 1  # (np.std(s0) * np.std(s1))
 
     if show_pbar:
-        lags_idx = pbar(lags_idx, desc='lag')
+        lags_idx = tqdm(lags_idx, desc='lag')
 
     idcs = sliding_wins[['start', 'stop']].values.astype(int).copy()
     xcorr = np.empty((len(lags_idx), len(sliding_wins)))

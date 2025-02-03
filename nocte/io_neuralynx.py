@@ -26,6 +26,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 from nocte import io_common
 from nocte import timeslice
@@ -472,11 +473,9 @@ class NCSLoaderUneven(NCSLoader):
 
     @staticmethod
     def _get_records_props(header, load_step=10_000) -> pd.DataFrame:
-        from tqdm.auto import tqdm as pbar
-
         props = {}
         with open(header['full_path'], 'rb') as fid:
-            for r in pbar(np.arange(0, header['record_count'], load_step)):
+            for r in tqdm(np.arange(0, header['record_count'], load_step)):
                 records = NeuralynxBaseLoader.read_records(
                     fid,
                     NCSLoader.RECORD,

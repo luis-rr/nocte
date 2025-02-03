@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.mixture import GaussianMixture
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import plot as splot
 from nocte import timeslice
@@ -47,7 +47,7 @@ def classify_by_gm_log10(beta, max_detours=ms(seconds=10)):
 def extract_rem_wins_multi(exp_beta: tr.Traces, key='exp_name', **kwargs):
     return {
         (k if key is None else exp_beta.loc[k, key]): extract_rem_wins(beta, **kwargs)
-        for k, beta in pbar(exp_beta.traces.items(), total=len(exp_beta.index), desc='rem wins')
+        for k, beta in tqdm(exp_beta.traces.items(), total=len(exp_beta.index), desc='rem wins')
     }
 
 

@@ -4,7 +4,7 @@ Code to analyise trains of pulses
 
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import plot as splot
 from nocte import timeslice
@@ -271,7 +271,7 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
 def collect_train_period_lens(exp_rem_wins, analysis_wins, edges='keep'):
     all_periods = []
 
-    for exp_name, trains in pbar(analysis_wins.iter_groupby('exp_name'), total=analysis_wins['exp_name'].nunique()):
+    for exp_name, trains in tqdm(analysis_wins.iter_groupby('exp_name'), total=analysis_wins['exp_name'].nunique()):
         rem_wins = exp_rem_wins[exp_name]
 
         rem = rem_wins.sel(cat='rem')

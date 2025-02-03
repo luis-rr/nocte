@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import timeslice, io_neuropixel
 
@@ -40,7 +40,7 @@ def extract_onsets(
 
     chunks = zip(breaks[:-1], breaks[1:])
 
-    chunks = pbar(chunks, desc='onsets', total=len(breaks) - 1)
+    chunks = tqdm(chunks, desc='onsets', total=len(breaks) - 1)
 
     all_onsets = []
     for i0, i1 in chunks:
@@ -59,7 +59,7 @@ def extract_onsets(
 def extract_onsets_multiprobe(all_raw, load_win_ms):
     all_onset_idcs = pd.DataFrame.from_dict({
         probe: extract_onsets(raw, load_win_ms=load_win_ms)
-        for probe, raw in pbar(all_raw.items(), desc='probes')
+        for probe, raw in tqdm(all_raw.items(), desc='probes')
     })
 
     all_onset_idcs.sort_index(axis=1, inplace=True)
@@ -116,7 +116,7 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
 
     chunks = zip(ref_times.index[:-1], ref_times.index[1:])
 
-    chunks = pbar(chunks, total=len(ref_times) - 1, desc='interp')
+    chunks = tqdm(chunks, total=len(ref_times) - 1, desc='interp')
 
     for onset0, onset1 in chunks:
         i0 = ref_times.loc[onset0, 'idx']
@@ -263,7 +263,7 @@ def main(
 
     all_raw = multi_npix_from_folder(raw_path, clean=clean, quiet=True)
 
-    for probe, channels in pbar(channels_per_probe.items(), desc='probes'):
+    for probe, channels in tqdm(channels_per_probe.items(), desc='probes'):
 
         target_file = folder_path_out / f'interp_imec_{probe}.bin'
 

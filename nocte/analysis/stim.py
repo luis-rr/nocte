@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import timeslice
 from nocte.analysis import video as vid
@@ -91,7 +91,7 @@ def encode_light_wins(wins, start_on=True):
 def load_light_wins_multi(reg, only_pulse=False, max_pulse_length=ms(minutes=2)):
     exp_light_wins = {}
 
-    for exp_name in pbar(reg.experiment_names):
+    for exp_name in tqdm(reg.experiment_names):
         light_wins = load_light_wins(reg, exp_name, max_pulse_length=max_pulse_length)
 
         if light_wins is not None:
@@ -112,7 +112,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
 
     to_extract = []
 
-    for exp_name, red_vid in pbar(vid_paths.items(), desc='find', total=len(vid_paths)):
+    for exp_name, red_vid in tqdm(vid_paths.items(), desc='find', total=len(vid_paths)):
         lum_path = reg.get_entry(exp_name).get_path_luminance()
 
         if not red_vid.exists():
@@ -124,7 +124,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
         else:
             to_extract.append((exp_name, red_vid, lum_path))
 
-    for exp_name, red_vid, lum_path in pbar(to_extract, desc='fix'):
+    for exp_name, red_vid, lum_path in tqdm(to_extract, desc='fix'):
 
         if not vid.series_exists(lum_path, raw_key):
             vid.extract_exp_luminance(red_vid, lum_path, key=raw_key)
@@ -146,7 +146,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
 def load_all_lum_traces(reg):
     exp_lum = {}
 
-    for exp_name in pbar(reg.experiment_names):
+    for exp_name in tqdm(reg.experiment_names):
         lum_path = reg.get_entry(exp_name).get_path_luminance()
 
         try:

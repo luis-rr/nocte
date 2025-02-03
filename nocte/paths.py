@@ -13,7 +13,7 @@ from socket import gethostname
 
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 import nocte.traces
 from nocte import timeslice
@@ -590,7 +590,7 @@ class Registry(DataFrameWrapper):
     def _collect_paths_glob(self, pattern):
         exp_paths = {}
 
-        for exp_name in pbar(self.experiment_names, desc='find'):
+        for exp_name in tqdm(self.experiment_names, desc='find'):
             paths = [str(p) for p in self.get_path(exp_name).glob(pattern)]
 
             if len(paths) > 0:
@@ -759,7 +759,7 @@ class Registry(DataFrameWrapper):
         to_load = self.experiment_names
 
         if show_pbar is not False:
-            show_pbar = pbar if show_pbar is True else show_pbar
+            show_pbar = tqdm if show_pbar is True else show_pbar
             to_load = show_pbar(to_load, desc='load beta')
 
         for exp_name in to_load:
@@ -816,7 +816,7 @@ class Registry(DataFrameWrapper):
 
     def load_all_beta_norm_multi(self, **kwargs) -> dict:
         exp_beta = {}
-        for exp_name in pbar(self.experiment_names, desc='load beta'):
+        for exp_name in tqdm(self.experiment_names, desc='load beta'):
             try:
                 exp_beta[exp_name] = self.load_all_beta_norm(exp_name, **kwargs)
 
@@ -872,7 +872,7 @@ class Registry(DataFrameWrapper):
                         logging.warning(f'{exp_name}: Missing expected x-corr {p0}-{c0} vs {p1}-{c1}: {path}')
 
         # noinspection PyTypeChecker
-        for (key, exp_name), (path, swap) in pbar(all_paths.items(), desc='load x-corr'):
+        for (key, exp_name), (path, swap) in tqdm(all_paths.items(), desc='load x-corr'):
             print(f'loading {path}')
             xcorr = Stack.load_hdf(str(path), 'xcorr')
 

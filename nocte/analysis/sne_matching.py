@@ -7,7 +7,7 @@ import matplotlib.colors
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import plot as splot
 from nocte.analysis.sne import SharpNegativeEvents
@@ -65,7 +65,7 @@ def _extract_event_pairs_dag(
 
     iter_nodes = nodes.T
     if show_pbar:
-        iter_nodes = pbar(iter_nodes, desc='get nodes')
+        iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
     xcorr_values = np.array([
         xcorr.sel(time=t0s[node[0]], lag=lags[i]).data.item()
@@ -115,7 +115,7 @@ def _find_gradient_dagmat(dagmat, max_ahead, show_pbar=True):
 
     iter_nodes = nodes.T
     if show_pbar:
-        iter_nodes = pbar(iter_nodes, desc='get nodes')
+        iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
     for i, j in iter_nodes:
         remaining_values = cumvalue_mat[i + 1:i + 1 + max_ahead, j + 1:j + 1 + max_ahead]
@@ -255,11 +255,11 @@ def calculate_matching(
     missing_times = np.count_nonzero(~sns.reg['ref_time'].isin(full_xcorr.coords['time']))
     if missing_times > 0:
         logging.warning(f'{missing_times}/{len(sns)} events misaligned with xcorr sampling rate. Interpolating xcorr')
-        full_xcorr = full_xcorr.interp(np.sort(sns.reg['ref_time'].unique()), pbar=pbar if len(sns) > 1000 else None)
+        full_xcorr = full_xcorr.interp(np.sort(sns.reg['ref_time'].unique()), pbar=tqdm if len(sns) > 1000 else None)
 
     full_matching = []
 
-    for _, *win in pbar(sections.wins[['start_ms', 'stop_ms']].itertuples(), desc='chunks', total=len(sections)):
+    for _, *win in tqdm(sections.wins[['start_ms', 'stop_ms']].itertuples(), desc='chunks', total=len(sections)):
         win = Win(*win)
 
         sns_sel = sns.sel_between(ref_time=win)

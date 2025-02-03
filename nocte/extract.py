@@ -9,7 +9,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import timeslice, stacks
 from nocte.analysis import sne, sleep, sne_matching
@@ -156,7 +156,7 @@ class ChunkedExperiment:
         """
         win_sections = self.wins.wins[['start', 'stop']].itertuples()
         if pbar_desc is not None:
-            win_sections = pbar(win_sections, total=len(self.wins), desc=pbar_desc)
+            win_sections = tqdm(win_sections, total=len(self.wins), desc=pbar_desc)
 
         for idx, (_, start_idx, stop_idx) in enumerate(win_sections):
             main_raw = self.raw.load(
@@ -292,7 +292,7 @@ def extract_all_xcorr(reg, sliding_win, suffix='', low_hz=40, areas=('CLA', 'BST
 
     missing = reg.collect_paths_xcorr(sliding_win, suffix=suffix, missing=True, areas=areas, low_hz=low_hz)
 
-    to_extract = pbar(missing.itertuples(), desc='experiments', total=len(missing))
+    to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
     for _, exp_name, results_path, probe0, probe1, ch0, ch1 in to_extract:
         try:
@@ -355,7 +355,7 @@ def extract_sliding(
     chunk_win = Win(0, 0)
     current_chunk = None
 
-    for win_idx in pbar(wins_ms.wins.index, desc='sliding win'):
+    for win_idx in tqdm(wins_ms.wins.index, desc='sliding win'):
 
         current_win = Win(*wins_ms.wins.loc[win_idx, ['start', 'stop']])
 
@@ -425,7 +425,7 @@ def process_experiment_power(
 
 def extract_all_power(reg, band, sliding_win, sliding_step, areas=('CLA',), ignore_failures=True):
     missing = reg.collect_paths_power(band, sliding_win, sliding_step, missing=True, areas=areas)
-    to_extract = pbar(missing.itertuples(), desc='experiments', total=len(missing))
+    to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
     for _, exp_name, results_path, probe, local_ch in to_extract:
         try:
@@ -508,7 +508,7 @@ def process_experiment_sne(
 
 def extract_all_sne(reg, areas=('CLA',), suffix='', ignore_failures=True, load_win=None, missing=True):
     missing = reg.collect_paths_sne(missing=missing, areas=areas, suffix=suffix)
-    to_extract = pbar(missing.itertuples(), desc='experiments', total=len(missing))
+    to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
     for _, exp_name, results_path, probe, local_ch in to_extract:
         try:
@@ -577,7 +577,7 @@ def extract_all_matchings(
         ignore_failures=True,
 ):
     missing = reg.collect_paths_matching(missing=True, area=area, suffix=suffix)
-    to_extract = pbar(missing.itertuples(), desc='experiments', total=len(missing))
+    to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
     for _, exp_name, results_path in to_extract:
         try:

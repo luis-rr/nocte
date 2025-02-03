@@ -9,7 +9,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import stacks, timeslice, io_neuralynx
 from nocte import traces as tr
@@ -49,7 +49,7 @@ def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -
 
     iteration = idcs
     if len(iteration) > 100:
-        iteration = pbar(iteration, 'frames')
+        iteration = tqdm(iteration, 'frames')
 
     for i, _ in enumerate(iteration):
 
@@ -141,7 +141,7 @@ def load_movie_frames_ms(exp_info, show_times):
 
     frames = {}
 
-    for i, t in enumerate(pbar(show_times, desc='load frames')):
+    for i, t in enumerate(tqdm(show_times, desc='load frames')):
         frames[t] = load_movie_frame_idx(
             video_path,
             np.searchsorted(frame_times, t)
@@ -182,7 +182,7 @@ def extract_lights_on(frames: stacks.Stack) -> pd.Series:
     # hsv = np.array([colorsys.rgb_to_hsv(*frame) for frame in pbar(one_pix.values)])
     # signal = np.mean(hsv[:, [0, 1]], axis=1)
 
-    hls = np.array([colorsys.rgb_to_hls(*frame) for frame in pbar(one_pix.values)])
+    hls = np.array([colorsys.rgb_to_hls(*frame) for frame in tqdm(one_pix.values)])
     signal = hls[:, 1]
 
     return pd.Series(signal, index=frames.coords['time'])
@@ -370,14 +370,14 @@ def load_deeplabcut(path, sampling_rate=50.):
 def load_deeplabcut_multi(exp_paths):
     return {
         exp_name: load_deeplabcut(tracking_path)
-        for exp_name, tracking_path in pbar(exp_paths.items(), desc='load', total=len(exp_paths))
+        for exp_name, tracking_path in tqdm(exp_paths.items(), desc='load', total=len(exp_paths))
     }
 
 
 def adjust_deeplabcut_time_multi(reg, exp_tracking):
     result = {}
 
-    for exp_name, tracking in pbar(exp_tracking.items(), desc='adjust'):
+    for exp_name, tracking in tqdm(exp_tracking.items(), desc='adjust'):
 
         if exp_name not in reg.experiment_names:
             logging.warning(f'{exp_name} missing from reg. Skipping adjustment.')

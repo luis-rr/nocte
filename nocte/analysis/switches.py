@@ -7,7 +7,7 @@ import matplotlib.colors
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import plot as splot
 from nocte import stacks, timeslice, events
@@ -328,7 +328,7 @@ class Cycles:
         if cycle_idcs is None:
             cycle_idcs = np.sort(self.lead_wins['cycle_idx'].unique())
 
-        for k, cycle_idx in enumerate(pbar(cycle_idcs)):
+        for k, cycle_idx in enumerate(tqdm(cycle_idcs)):
             wins = grouped.get_group(cycle_idx)
             y = k
 

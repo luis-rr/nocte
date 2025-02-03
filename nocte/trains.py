@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 
 from nocte import timeslice
 
@@ -412,7 +412,7 @@ class SpikeTrains:
 
         grouped = self.spikes.groupby(gid_col)[time_col]
         if show_pbar:
-            grouped = pbar(grouped, desc='spks.cells')
+            grouped = tqdm(grouped, desc='spks.cells')
 
         df = pd.DataFrame.from_dict({
             gid: np.histogram(times, bins=tbins, density=False)[0]
@@ -439,7 +439,7 @@ class SpikeTrains:
 
         grouped = tdiffs.groupby(self.spikes['gid'])
         if show_pbar:
-            grouped = pbar(grouped, desc='spks.cells')
+            grouped = tqdm(grouped, desc='spks.cells')
 
         # noinspection PyUnresolvedReferences
         tbins_index = pd.IntervalIndex.from_breaks(tbins)

@@ -9,7 +9,7 @@ from datetime import timedelta
 import numba
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm as pbar
+from tqdm.auto import tqdm
 from nocte.df_wrapper import DataFrameWrapper
 
 S_TO_MS = 1e3
@@ -566,7 +566,7 @@ class Win(tuple):
             show_pbar = len(df.columns) > 10
 
         if show_pbar:
-            df_iter = pbar(df_iter, total=len(df.columns), desc='interp')
+            df_iter = tqdm(df_iter, total=len(df.columns), desc='interp')
 
         new_df = {
             k: self.interp_series(series, step, **kwargs)
@@ -1071,7 +1071,7 @@ class Windows(DataFrameWrapper):
 
         all_transitions = []
 
-        for i in pbar(transition_idcs):
+        for i in tqdm(transition_idcs):
             t0, t1 = values.index[[i, i + 1]]
 
             all_transitions.append({
@@ -1254,7 +1254,7 @@ class Windows(DataFrameWrapper):
 
         slicing = self.reg[['start', 'stop', dim]].itertuples()
         if show_pbar:
-            slicing = pbar(slicing, total=len(self), desc='gen values')
+            slicing = tqdm(slicing, total=len(self), desc='gen values')
 
         for _, start, stop, cat in slicing:
             mode.loc[start:stop] = cat
@@ -1399,7 +1399,7 @@ class Windows(DataFrameWrapper):
         it = self.reg.T.items()
 
         if show_pbar:
-            it = pbar(it, total=len(self.reg))
+            it = tqdm(it, total=len(self.reg))
 
         for idx, props in it:
             yield idx, Win(props['start'], props['stop']), props[other_cols]
@@ -1409,7 +1409,7 @@ class Windows(DataFrameWrapper):
         grouped = self.groupby(*args, **kwargs)
 
         if show_pbar:
-            grouped = pbar(grouped, total=len(grouped))
+            grouped = tqdm(grouped, total=len(grouped))
 
         for key, group in grouped:
             yield key, Windows(group)
@@ -1731,7 +1731,7 @@ class Windows(DataFrameWrapper):
 
         others_bounds = others.reg[['start', 'stop']].itertuples()
         if show_pbar:
-            others_bounds = pbar(others_bounds, total=len(others))
+            others_bounds = tqdm(others_bounds, total=len(others))
 
         all_cropped = []
         for _, start, stop in others_bounds:
