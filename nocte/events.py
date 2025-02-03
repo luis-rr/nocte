@@ -11,6 +11,7 @@ import scipy.interpolate
 from nocte import plot as splot
 from nocte import timeslice, stacks
 from nocte.timeslice import S_TO_MS
+from nocte.df_wrapper import DataFrameWrapper
 
 
 def interpolate_trace(data: pd.Series, times: np.array, kind='linear') -> pd.Series:
@@ -63,7 +64,7 @@ def interpolate_trace_wrapped(data: pd.Series, times: np.array, kind='linear', p
     return pd.Series(new_wrapped, index=times)
 
 
-class Events:
+class Events(DataFrameWrapper):
     """
     This class acts mostly as a wrapper around a dataframe registry containing
     metadata about LFP events.
@@ -72,8 +73,9 @@ class Events:
     """
 
     def __init__(self, reg: pd.DataFrame):
-        self.reg: pd.DataFrame = reg.rename_axis(index='event_id')
-        assert self.reg.index.is_unique
+        reg = reg.rename_axis(index='event_id')
+        assert reg.index.is_unique
+        super().__init__(reg)
 
     @classmethod
     def from_hdf(cls, path, desc=None):
@@ -109,20 +111,8 @@ class Events:
 
         return self.__class__(reg)
 
-    def __getitem__(self, item):
-        return self.reg.__getitem__(item)
-
-    def __setitem__(self, key, value):
-        return self.reg.__setitem__(key, value)
-
     def __len__(self):
         return len(self.reg)
-
-    def __str__(self):
-        return self.reg.__str__()
-
-    def __repr__(self):
-        return self.reg.__repr__()
 
     def to_wins(self):
         wins = self.reg[['start_time', 'ref_time', 'stop_time']].copy()
@@ -132,31 +122,6 @@ class Events:
     def _repr_html_(self):
         # noinspection PyProtectedMember
         return self.reg._repr_html_()
-
-    def sel_mask(self, mask):
-        return self.__class__(self.reg.loc[mask])
-
-    def sel_between(self, **kwargs):
-        mask = np.array([self.reg[key].between(*vrange).values for key, vrange in kwargs.items()])
-        mask = np.all(mask, axis=0)
-        return self.sel_mask(mask)
-
-    def sel(self, **kwargs):
-        masks = [
-            np.ones(len(self), dtype=bool)
-        ]
-
-        for key, value in kwargs.items():
-            masks.append((self.reg[key] == value))
-
-        mask = np.all(masks, axis=0)
-
-        return self.sel_mask(mask)
-
-    def sample(self, *args, **kwargs):
-        return self.__class__(
-            self.reg.sample(*args, **kwargs)
-        )
 
     def sample_uniformly(self, on, count=10, jitter=0):
         values = self.reg[on]
@@ -172,11 +137,6 @@ class Events:
         indices = np.unique(indices)
 
         return self.sel_mask(values.index[indices])
-
-    def sort_values(self, *args, **kwargs):
-        return self.__class__(
-            self.reg.sort_values(*args, **kwargs)
-        )
 
     def lookup_values(self, name, values: pd.Index, cols=None, by='idx'):
         cols = self._time_cols_param(cols, strip=True)
@@ -285,6 +245,8 @@ class Events:
         ts = pd.concat(ts)
 
         assert len(ts) == len(self)
+
+        # noinspection PyTypeChecker
         return ts.reindex(self.reg.index)
 
     def get_inter_event_intervals(self, first='ref', second='ref', sortby='ref', ascending=True) -> pd.Series:
@@ -399,11 +361,6 @@ class Events:
             timeslice.Win.build_centered(0, sliding_win),
             np.arange(*valid_win, step),
             nmin=nmin,
-        )
-
-    def shuffle(self):
-        return self.__class__(
-            self.reg.sample(frac=1, replace=False)
         )
 
     def plot_traces_highlighted(self, ax, traces: stacks.Stack):

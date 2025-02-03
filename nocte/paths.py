@@ -18,6 +18,32 @@ from tqdm.auto import tqdm as pbar
 import nocte.traces
 from nocte import timeslice
 from nocte.stacks import Stack, StackSet
+from nocte.df_wrapper import DataFrameWrapper
+
+
+def get_root_laur():
+    """path to laur data folder"""
+    windows_base = Path('\\\\gpfs.corp.brain.mpg.de\\laur')
+    linux_base = Path('/gpfs/laur')
+
+    if windows_base.exists():
+        return windows_base
+    else:
+        assert linux_base.exists()
+        return linux_base
+
+
+def patch_root_laur(patched: pd.Series):
+    windows_base = Path('\\\\gpfs.corp.brain.mpg.de\\laur')
+    linux_base = Path('/gpfs/laur')
+
+    if windows_base.exists():
+        patched = patched.str.replace(str(linux_base), str(windows_base), regex=False)
+    else:
+        assert linux_base.exists()
+        patched = patched.str.replace(str(windows_base), str(linux_base), regex=False)
+
+    return patched
 
 
 def get_root():
@@ -257,7 +283,7 @@ class Entry:
         return traces
 
 
-class Registry:
+class Registry(DataFrameWrapper):
     def __init__(self, df: pd.DataFrame):
         assert df.index.is_unique, df.index[df.index.duplicated()]
 
@@ -277,7 +303,8 @@ class Registry:
         assert (df.groupby('animal')['lesion'].nunique() <= 1).all()
 
         df = df.replace('?', np.nan)
-        self.reg = df.copy()
+
+        super().__init__(df.copy())
 
         paths = pd.Series({
             name: self.get_path(name) for name in self.experiment_names
@@ -338,8 +365,11 @@ class Registry:
     def _patch_paths(paths):
 
         patched = paths.dropna().astype(str)
-        patched = patched.str.replace('\\\\gpfs.corp.brain.mpg.de', '\\gpfs', regex=False)
+
+        patched = patch_root_laur(patched)
+
         patched = patched.str.replace('\\', '/', regex=False)
+
         paths_exist = patched.map(lambda p: Path(p).exists()).reindex(patched.index, fill_value=False)
         alt = patched.str.replace('/gpfs/laur/experiments/FenkLorenz', '/gpfs/laur/data/fenkl')
         alt_exist = alt.dropna().map(lambda p: Path(p).exists()).reindex(alt.index, fill_value=False)
@@ -370,74 +400,6 @@ class Registry:
 
         return cls(df)
 
-    def sel_mask(self, mask, but=False):
-        """
-        Select using a boolean mask
-        """
-        if but:
-            mask = ~mask
-
-        return self.__class__(self.loc[mask])
-
-    def sel_masks(self, criterias, *, how='all', but=False):
-        """
-        Select using multiple boolean masks to be combined
-        """
-        assert how in ('all', 'any')
-
-        if how == 'all':
-            mask = np.all(criterias, axis=0)
-        else:
-            mask = np.any(criterias, axis=0)
-
-        return self.sel_mask(mask, but=but)
-
-    def sel(self, *, how='all', but=False, **col_values):
-        """
-        Select by direct comparison of some column.
-        For example:
-            wins.sel(cat='baseline')
-        """
-        criterias = [
-            (self[col] == value)
-            for col, value in col_values.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
-
-    def sel_between(self, *, but=False, how='all', **col_ranges):
-        """
-        Select by direct comparison of some column where values in a range are acceptable.
-        For example:
-            wins.sel_between(duration=(0, 60_000))
-        """
-        criterias = [
-            self[col].between(*value_range)
-            for col, value_range in col_ranges.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
-
-    def sel_isin(self, *, but=False, how='all', **col_values):
-        """
-        Select by direct comparison of some column where any of the values are acceptable.
-        For example:
-            wins.sel_isin(cat=['sws', 'rem'])
-        """
-        criterias = [
-            self[col].isin(values)
-            for col, values in col_values.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
-
-    @functools.wraps(pd.DataFrame.__getitem__)
-    def __getitem__(self, *args, **kwargs):
-        return self.reg.__getitem__(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.__setitem__)
-    def __setitem__(self, *args, **kwargs):
-        return self.reg.__setitem__(*args, **kwargs)
 
     def is_bilat(self, area: str) -> pd.Series:
         count = np.zeros(len(self.reg))
@@ -666,20 +628,6 @@ class Registry:
     @functools.wraps(pd.DataFrame.loc)
     def loc(self):
         return self.reg.loc
-
-    @functools.wraps(pd.DataFrame.value_counts)
-    def value_counts(self, *args, **kwargs):
-        return self.reg.value_counts(*args, **kwargs)
-
-    @property
-    def index(self) -> pd.Index:
-        """pd.DataFrame accessor"""
-        return self.reg.index
-
-    @property
-    def columns(self) -> pd.Index:
-        """pd.DataFrame accessor"""
-        return self.reg.columns
 
     @property
     def experiment_names(self):

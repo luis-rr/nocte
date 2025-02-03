@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 from nocte import plot as splot
 from nocte import timeslice
 from nocte.analysis import sleep
+from nocte.df_wrapper import DataFrameWrapper
 
 
 # @nb.njit(parallel=True)
@@ -211,7 +212,7 @@ def _estimate_sampling_period(times, atol=1.e-6) -> float:
     return dts[0]
 
 
-class Traces:
+class Traces(DataFrameWrapper):
     """
     Class for storing time series as a pd.DataFrame (self.traces) with
     associated metadata as another pd.DataFrame (self.reg).
@@ -227,8 +228,8 @@ class Traces:
             traces = traces.copy()
             reg = reg.copy()
 
+        super().__init__(reg.copy())
         self.traces: pd.DataFrame = traces
-        self.reg: pd.DataFrame = reg
 
         assert isinstance(reg, pd.DataFrame)
         assert 'ref' in reg.columns
@@ -589,10 +590,6 @@ class Traces:
 
         return cls(combined_reg, combined_traces, copy=False)
 
-    @functools.wraps(pd.DataFrame.value_counts)
-    def value_counts(self, *args, **kwargs):
-        return self.reg.value_counts(*args, **kwargs)
-
     @functools.wraps(pd.DataFrame.reset_index)
     def reset_index(self, *args, drop=True, **kwargs):
 
@@ -726,28 +723,9 @@ class Traces:
     def __array__(self, *args, **kwargs):
         return self.traces.__array__(*args, **kwargs)
 
-    @functools.wraps(pd.DataFrame.__getitem__)
-    def __getitem__(self, *args, **kwargs):
-        return self.reg.__getitem__(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.__setitem__)
-    def __setitem__(self, *args, **kwargs):
-        return self.reg.__setitem__(*args, **kwargs)
-
     @functools.wraps(pd.DataFrame.__array_ufunc__)
     def __array_ufunc__(self, *args, **kwargs):
         return self.traces.__array_ufunc__(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.sample)
-    def sample(self, *args, **kwargs):
-        reg = self.reg.sample(*args, **kwargs)
-        return Traces(
-            reg=reg,
-            traces=self.traces.loc[:, reg.index],
-        )
-
-    def shuffle(self):
-        return self.sample(frac=1, replace=False)
 
     def get(self, idx=None) -> pd.Series:
         """return a single trace. If no index it's given, we assume there is only one"""
@@ -773,22 +751,6 @@ class Traces:
         """pretty print on notebooks"""
         # noinspection PyProtectedMember
         return self.reg._repr_html_()
-
-    # def tighten(self):
-    #     """
-    #     Reevaluate start/stop in the reg to match that of the traces.
-    #     This is useful after manually trimming traces (e.g. through dropna).
-    #     """
-    #
-    #     reg = self.reg.copy()
-    #
-    #     reg['start'] = self.time.min() + self['ref']
-    #     reg['stop'] = self.time.max() + self['ref']
-    #
-    #     return self.__class__(
-    #         reg=reg,
-    #         traces=self.traces,
-    #     )
 
     def groupby_mix(self, by, how, drop=None):
 
@@ -1564,33 +1526,7 @@ class Traces:
     def groupby(self, groupbys):
         return TracesGrouped(self, groupbys)
 
-    def sel(self, but=False, **col_values):
-        mask = np.ones(len(self.index), dtype=np.bool_)
-        for col, value in col_values.items():
-            col_vals = self.reg[col]
-            asking_nan = isinstance(value, (int, float)) and np.isnan(value)
-            mask = mask & ((col_vals == value) | (col_vals.isna() & asking_nan))
-
-        return self.sel_mask(mask, but=but)
-
-    def sel_isin(self, but=False, **col_values):
-        mask = np.ones(len(self.index), dtype=np.bool_)
-        for col, values in col_values.items():
-            mask = mask & (self.reg[col].isin(values))
-
-        return self.sel_mask(mask, but=but)
-
-    def sel_between(self, but=False, **col_ranges):
-        mask = np.ones(len(self.index), dtype=np.bool_)
-        for col, vrange in col_ranges.items():
-            mask = mask & (self.reg[col].between(*vrange))
-
-        return self.sel_mask(mask, but=but)
-
-    def sel_mask(self, mask, but=False):
-        if but:
-            mask = ~mask
-
+    def _apply_mask(self, mask):
         return self.__class__(
             reg=self.reg.loc[mask],
             traces=self.traces.loc[:, mask],
@@ -1605,16 +1541,8 @@ class Traces:
         return self.reg.iloc
 
     @property
-    def index(self):
-        return self.reg.index
-
-    @property
     def values(self):
         return self.traces.values
-
-    @property
-    def columns(self):
-        return self.reg.columns
 
     @property
     def time(self):

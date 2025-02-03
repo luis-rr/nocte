@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.interpolate
 from tqdm.auto import tqdm as pbar
+from nocte.df_wrapper import DataFrameWrapper
 
 S_TO_MS = 1e3
 MS_TO_S = 1. / S_TO_MS
@@ -579,26 +580,30 @@ class Win(tuple):
         return pd.DataFrame(new_df, columns=df.columns)
 
 
-class Windows:
+class Windows(DataFrameWrapper):
     """Define periods of time to classify events or cut traces"""
 
     def __init__(self, windows):
         """
         :param windows: a windows DataFrame
         """
-        self.wins = windows.copy()
+        assert 'start' in windows.columns
+        assert 'stop' in windows.columns
 
-        assert 'start' in self.wins.columns
-        assert 'stop' in self.wins.columns
+        if windows.index.name is None:
+            windows = windows.rename_axis(index='win_idx')
 
-        if self.wins.index.name is None:
-            self.wins.rename_axis(index='win_idx', inplace=True)
+        super().__init__(windows)
+
+    @property
+    def wins(self):
+        return self.reg
 
     def store_hdf(self, path: str, key):
         """
         save these windows in an HDF5 file
         """
-        self.wins.to_hdf(path, key)
+        self.reg.to_hdf(path, key)
 
     @classmethod
     def load_hdf(cls, path: str, key):
@@ -617,7 +622,7 @@ class Windows:
         """
         desc = []
 
-        for _, start, stop, cat in self.wins[['start', 'stop', 'cat']].itertuples():
+        for _, start, stop, cat in self.reg[['start', 'stop', 'cat']].itertuples():
             start = milliseconds_to_timestamp(start)
             stop = milliseconds_to_timestamp(stop)
 
@@ -703,7 +708,7 @@ class Windows:
             win,
         )
 
-        new_wins = new_wins.add_cols(self.wins.loc[:, self.columns_extra])
+        new_wins = new_wins.add_cols(self.reg.loc[:, self.columns_extra])
 
         return new_wins
 
@@ -761,7 +766,7 @@ class Windows:
             duration,
         )
 
-        cols = self.wins.loc[:, self.columns_extra]
+        cols = self.reg.loc[:, self.columns_extra]
 
         if old is not None:
             cols = pd.concat([
@@ -789,7 +794,7 @@ class Windows:
 
         all_windows = []
         for name, win in wins.items():
-            windows = cls.build_around(marks, win).wins
+            windows = cls.build_around(marks, win).reg
             windows['cat'] = name
             all_windows.append(windows)
 
@@ -889,7 +894,7 @@ class Windows:
             tstart=signal_tstart,
         )
 
-        win_samples = win_samples.add_cols(win_ms.wins[['start', 'stop', 'ref']].add_suffix('_ms'))
+        win_samples = win_samples.add_cols(win_ms.reg[['start', 'stop', 'ref']].add_suffix('_ms'))
 
         return win_samples
 
@@ -1141,7 +1146,7 @@ class Windows:
         wins['ref'] = wins['start']
 
         if isinstance(values, pd.Series):
-            wins = cls(wins).sample_to_ms_by_time_index(values.index).wins
+            wins = cls(wins).sample_to_ms_by_time_index(values.index).reg
 
         if mid_sr:
             sampling_periods: np.array = np.unique(np.diff(values.index))
@@ -1159,11 +1164,11 @@ class Windows:
 
         if hasattr(many, 'items'):
             dfs = {
-                idx: c.wins for idx, c in many.items()
+                idx: c.reg for idx, c in many.items()
             }
         else:
             dfs = {
-                idx: c.wins for idx, c in enumerate(many)
+                idx: c.reg for idx, c in enumerate(many)
             }
 
         results = pd.concat(dfs, **kwargs)
@@ -1187,7 +1192,7 @@ class Windows:
     def concat_list(cls, many, axis=0, reset_index=True, **kwargs):
         """
         """
-        dfs = [c.wins for c in many]
+        dfs = [c.reg for c in many]
         results = pd.concat(dfs, axis=axis, **kwargs)
 
         if reset_index:
@@ -1197,7 +1202,7 @@ class Windows:
         return cls(results)
 
     def rename_index(self, name):
-        return self.__class__(self.wins.rename_axis(index=name))
+        return self.__class__(self.reg.rename_axis(index=name))
 
     def generate_cat(self, times: pd.Index, col='cat', right=False) -> pd.Series:
         """
@@ -1242,16 +1247,16 @@ class Windows:
         assert self.are_exclusive()
 
         if start is None:
-            start = self.wins[['start', 'stop']].values.min()
+            start = self.reg[['start', 'stop']].values.min()
 
         if stop is None:
-            stop = self.wins[['start', 'stop']].values.max()
+            stop = self.reg[['start', 'stop']].values.max()
 
         index = np.arange(start, stop, sampling_period)
 
         mode = pd.Series(fillna, index=index)
 
-        slicing = self.wins[['start', 'stop', dim]].itertuples()
+        slicing = self.reg[['start', 'stop', dim]].itertuples()
         if show_pbar:
             slicing = pbar(slicing, total=len(self), desc='gen values')
 
@@ -1262,15 +1267,15 @@ class Windows:
 
     def reset_index(self, sort_by=('start', 'stop', 'ref'), drop=True):
         """return a copy of these windows where the windows have been sorted in time and the index reset"""
-        sort_by = pd.Index(list(sort_by)).intersection(self.wins.columns)
-        wins = self.wins.sort_values(list(sort_by)).reset_index(drop=drop)
+        sort_by = pd.Index(list(sort_by)).intersection(self.reg.columns)
+        wins = self.reg.sort_values(list(sort_by)).reset_index(drop=drop)
         return self.__class__(wins)
 
     def scale(self, factor, cols=('start', 'stop', 'ref')):
         cols = list(cols)
 
         new = self.copy()
-        new.wins[cols] *= factor
+        new.reg[cols] *= factor
         return new
 
     def ms_to_sample(self, sampling_rate):
@@ -1283,7 +1288,7 @@ class Windows:
 
         new = self.copy()
         cols = ['start', 'stop', 'ref']
-        new.wins[cols] = np.round(sampling_rate * new.wins[cols].values * MS_TO_S).astype(int)
+        new.reg[cols] = np.round(sampling_rate * new.reg[cols].values * MS_TO_S).astype(int)
 
         assert new.are_in_samples()
 
@@ -1296,10 +1301,10 @@ class Windows:
         wins_ms = self.copy()
 
         time_cols = ['start', 'stop', 'ref']
-        wins_ms.wins[time_cols] = S_TO_MS * self.wins[time_cols] / sampling_rate + to_ms(tstart)
+        wins_ms.reg[time_cols] = S_TO_MS * self.reg[time_cols] / sampling_rate + to_ms(tstart)
 
-        if 'length' in wins_ms.wins.columns:
-            wins_ms.wins['length'] = wins_ms.lengths()
+        if 'length' in wins_ms.reg.columns:
+            wins_ms.reg['length'] = wins_ms.lengths()
 
         return wins_ms
 
@@ -1317,7 +1322,7 @@ class Windows:
             return self.sample_to_ms(sampling_rate, tstart=np.min(index))
 
         else:
-            wins = self.wins.copy()
+            wins = self.reg.copy()
 
             for col in 'start', 'stop', 'ref':
                 if col in wins.columns:
@@ -1344,7 +1349,7 @@ class Windows:
 
         wins = self.copy()
 
-        wins.wins[col] = wins.wins[col].map(
+        wins.reg[col] = wins.reg[col].map(
             lambda x: renaming[x] if x in renaming else x
         )
 
@@ -1356,21 +1361,21 @@ class Windows:
         inv = self.invert(start=start, stop=stop)
 
         wins_ms = pd.concat(
-            [self.wins, inv.wins],
+            [self.reg, inv.reg],
             axis=0, ignore_index=True, sort=False)
 
         wins_ms = Windows(wins_ms)
 
-        if 'cat' in wins_ms.wins.columns:
-            wins_ms.wins['cat'].fillna(cat, inplace=True)
+        if 'cat' in wins_ms.reg.columns:
+            wins_ms.reg['cat'].fillna(cat, inplace=True)
 
-        if 'length' in wins_ms.wins.columns:
-            wins_ms.wins['length'] = wins_ms.lengths()
+        if 'length' in wins_ms.reg.columns:
+            wins_ms.reg['length'] = wins_ms.lengths()
 
-        wins_ms.wins.sort_values('start', inplace=True)
+        wins_ms.reg.sort_values('start', inplace=True)
 
         if reset_index:
-            wins_ms.wins.reset_index(drop=True, inplace=True)
+            wins_ms.reg.reset_index(drop=True, inplace=True)
 
         return wins_ms
 
@@ -1393,12 +1398,12 @@ class Windows:
             for idx, win, props in wins.iter_wins_items():
                 print(win, props['cat'])
         """
-        other_cols = self.wins.columns.difference(['start', 'stop'])
+        other_cols = self.reg.columns.difference(['start', 'stop'])
 
-        it = self.wins.T.items()
+        it = self.reg.T.items()
 
         if show_pbar:
-            it = pbar(it, total=len(self.wins))
+            it = pbar(it, total=len(self.reg))
 
         for idx, props in it:
             yield idx, Win(props['start'], props['stop']), props[other_cols]
@@ -1416,10 +1421,10 @@ class Windows:
     def get(self, win_idx=None) -> Win:
         """return a single window. If no index it's given, we assume there is only one"""
         if win_idx is None:
-            assert len(self.wins.index) == 1
+            assert len(self.reg.index) == 1
             win_idx = self.index[0]
 
-        start, stop = self.wins.loc[win_idx, ['start', 'stop']]
+        start, stop = self.reg.loc[win_idx, ['start', 'stop']]
         return Win(start, stop)
 
     def get_rel(self, win_idx=None) -> Win:
@@ -1428,7 +1433,7 @@ class Windows:
         If no index it's given, we assume there is only one.
         """
         if win_idx is None:
-            assert len(self.wins.index) == 1
+            assert len(self.reg.index) == 1
             win_idx = self.index[0]
 
         return self.get(win_idx).shift(-self.loc[win_idx, 'ref'])
@@ -1439,10 +1444,10 @@ class Windows:
         If no index it's given, we assume there is only one.
         """
         if win_idx is None:
-            assert len(self.wins.index) == 1
+            assert len(self.reg.index) == 1
             win_idx = self.index[0]
 
-        return self.wins.loc[win_idx]
+        return self.reg.loc[win_idx]
 
     def crop_df(self, df: pd.DataFrame, reset='ref', by=None, show_pbar=False) -> dict:
 
@@ -1454,7 +1459,7 @@ class Windows:
             # look up reset time specific for this window
             win_reset = reset
             if isinstance(reset, str):
-                win_reset = win.to_relative_time(self.wins.loc[idx, reset])
+                win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
             sections[idx] = win.crop_df(df, by=by, reset=win_reset)
 
@@ -1470,7 +1475,7 @@ class Windows:
             # look up reset time specific for this window
             win_reset = reset
             if isinstance(reset, str):
-                win_reset = win.to_relative_time(self.wins.loc[idx, reset])
+                win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
             sections[idx] = win.interp_series(s, step=step, reset=win_reset, kind=kind)
 
@@ -1486,80 +1491,42 @@ class Windows:
             # look up reset time specific for this window
             win_reset = reset
             if isinstance(reset, str):
-                win_reset = win.to_relative_time(self.wins.loc[idx, reset])
+                win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
             sections[idx] = win.interp_df(df, step=step, reset=win_reset, kind=kind, show_pbar=False)
 
         return sections
 
     # Methods from pandas DataFrame
-
     def copy(self):
-        return self.__class__(self.wins.copy())
+        return self.__class__(self.reg.copy())
 
     @functools.wraps(pd.DataFrame.groupby)
     def groupby(self, *args, **kwargs):
-        return self.wins.groupby(*args, **kwargs)
+        return self.reg.groupby(*args, **kwargs)
 
     @functools.wraps(pd.DataFrame.drop)
     def drop(self, *args, **kwargs):
-        return self.__class__(self.wins.drop(*args, **kwargs))
-
-    @property
-    def empty(self):
-        """pd.DataFrame accessor"""
-        return self.wins.empty
-
-    @property
-    def columns(self):
-        """pd.DataFrame accessor"""
-        return self.wins.columns
+        return self.__class__(self.reg.drop(*args, **kwargs))
 
     @property
     def columns_extra(self):
         """return all columns EXCEPT the time windows"""
-        return self.wins.columns.drop(['start', 'stop', 'ref'])
-
-    @property
-    def index(self) -> pd.Index:
-        """pd.DataFrame accessor"""
-        return self.wins.index
+        return self.reg.columns.drop(['start', 'stop', 'ref'])
 
     @property
     def loc(self):
         """pd.DataFrame accessor"""
-        return self.wins.loc
+        return self.reg.loc
 
     @property
     def iloc(self):
         """pd.DataFrame accessor"""
-        return self.wins.iloc
-
-    @functools.wraps(pd.DataFrame.__getitem__)
-    def __getitem__(self, *args, **kwargs):
-        return self.wins.__getitem__(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.__setitem__)
-    def __setitem__(self, *args, **kwargs):
-        return self.wins.__setitem__(*args, **kwargs)
-
-    def __str__(self):
-        return self.wins.__str__()
-
-    def __repr__(self):
-        return self.wins.__repr__()
+        return self.reg.iloc
 
     def _repr_html_(self):
         # noinspection PyProtectedMember
-        return self.wins._repr_html_()
-
-    @functools.wraps(pd.DataFrame.__setitem__)
-    def value_counts(self, *args, **kwargs):
-        return self.wins.value_counts(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.sort_values)
-    def sort_values(self, sortby, ascending=True):
-        return self.__class__(self.wins.sort_values(sortby, ascending=ascending))
+        return self.reg._repr_html_()
 
     def describe(self, quiet=False):
         """
@@ -1576,7 +1543,7 @@ class Windows:
             f' covering {strf_ms(self.total())}'
         )
 
-        if 'cat' in self.wins.columns:
+        if 'cat' in self.reg.columns:
             desc_cats = ', '.join([f'{strf_ms(v)} {k}' for k, v in self.total_by_cat().items()])
             desc = f'{desc} ({desc_cats})'
 
@@ -1595,8 +1562,8 @@ class Windows:
         if len(self) == 0:
             return True
 
-        pre = (self.wins['start'] - self.wins['ref'])
-        post = (self.wins['stop'] - self.wins['ref'])
+        pre = (self.reg['start'] - self.reg['ref'])
+        post = (self.reg['stop'] - self.reg['ref'])
 
         uni_pre = np.allclose(pre.values, pre.values[0], atol=atol)
         uni_post = np.allclose(post.values, post.values[0], atol=atol)
@@ -1638,22 +1605,22 @@ class Windows:
 
         ref = self.relative_time('ref')
 
-        before = self.wins['start'] - ref
-        after = self.wins['stop'] - ref
+        before = self.reg['start'] - ref
+        after = self.reg['stop'] - ref
 
         prop = length / lengths
 
         result = self.copy()
 
-        result.wins['start'] = prop * before + ref
-        result.wins['stop'] = prop * after + ref
+        result.reg['start'] = prop * before + ref
+        result.reg['stop'] = prop * after + ref
 
         assert result.are_uniform(), result.lengths()
 
         return result
 
     def get_edges(self):
-        return np.sort(np.unique(self.wins[['start', 'stop']].values.flatten()))
+        return np.sort(np.unique(self.reg[['start', 'stop']].values.flatten()))
 
     def get_breaks(self):
         assert self.are_tight()
@@ -1666,7 +1633,7 @@ class Windows:
         if len(self) == 1:
             return True
 
-        edges = self.wins[['start', 'stop']].sort_values(['start', 'stop']).values.flatten()
+        edges = self.reg[['start', 'stop']].sort_values(['start', 'stop']).values.flatten()
         return np.all(np.diff(edges) >= 0)
 
     def are_integer(self) -> bool:
@@ -1674,8 +1641,8 @@ class Windows:
         :return: whether the windows are expressed in integer values. Usually to represent sample indices.
         """
         return (
-                np.issubdtype(self.wins['start'].dtype, np.integer) and
-                np.issubdtype(self.wins['stop'].dtype, np.integer)
+                np.issubdtype(self.reg['start'].dtype, np.integer) and
+                np.issubdtype(self.reg['stop'].dtype, np.integer)
         )
 
     def are_tight(self, inclusive=None) -> bool:
@@ -1693,12 +1660,12 @@ class Windows:
         if inclusive:
             assert self.are_integer(), 'inclusive windows should be defined with integer edges'
 
-        edges = self.wins[['start', 'stop']].sort_values(['start', 'stop'])
+        edges = self.reg[['start', 'stop']].sort_values(['start', 'stop'])
         return (edges['start'].values[1:] - edges['stop'][:-1]).max() <= (1 if inclusive else 0)
 
     def are_in_samples(self) -> bool:
         """check if current windows are defined in "samples" (integer) rather than "time" (float) """
-        return np.all([np.issubdtype(t, np.integer) for t in self.wins.dtypes[['start', 'stop', 'ref']]])
+        return np.all([np.issubdtype(t, np.integer) for t in self.reg.dtypes[['start', 'stop', 'ref']]])
 
     def is_ref_inside(self) -> pd.Series:
         """check if ref is between start and stop"""
@@ -1738,10 +1705,10 @@ class Windows:
 
         new = self.copy()
 
-        new.wins['start'] = np.maximum(new.wins['start'], win_ms.start)
-        new.wins['stop'] = np.minimum(new.wins['stop'], win_ms.stop)
+        new.reg['start'] = np.maximum(new.reg['start'], win_ms.start)
+        new.reg['stop'] = np.minimum(new.reg['stop'], win_ms.stop)
 
-        new.wins = new.wins[new.wins['start'] <= new.wins['stop']]
+        new.reg = new.reg[new.reg['start'] <= new.reg['stop']]
 
         if reset:
             new = new.shift(-win_ms.start)
@@ -1762,7 +1729,7 @@ class Windows:
         """
         assert self.are_exclusive() and others.are_exclusive()
 
-        others_bounds = others.wins[['start', 'stop']].itertuples()
+        others_bounds = others.reg[['start', 'stop']].itertuples()
         if show_pbar:
             others_bounds = pbar(others_bounds, total=len(others))
 
@@ -1770,7 +1737,7 @@ class Windows:
         for _, start, stop in others_bounds:
             cropped = self.crop_to_main((start, stop))
 
-            cropped = cropped.wins.rename_axis(index='original_win_idx').reset_index(drop=drop)
+            cropped = cropped.reg.rename_axis(index='original_win_idx').reset_index(drop=drop)
 
             all_cropped.append(cropped)
 
@@ -1801,12 +1768,12 @@ class Windows:
         new = self.copy()
 
         win = (
-            (new.wins['ref'] - new.wins['start']).min(),
-            (new.wins['stop'] - new.wins['ref']).min(),
+            (new.reg['ref'] - new.reg['start']).min(),
+            (new.reg['stop'] - new.reg['ref']).min(),
         )
 
-        new.wins['start'] = new.wins['ref'] - win[0]
-        new.wins['stop'] = new.wins['ref'] + win[1]
+        new.reg['start'] = new.reg['ref'] - win[0]
+        new.reg['stop'] = new.reg['ref'] + win[1]
 
         assert len(new.lengths().drop_duplicates()) <= 1
 
@@ -1814,11 +1781,11 @@ class Windows:
 
     def __len__(self):
         """number of windows"""
-        return len(self.wins)
+        return len(self.reg)
 
     def lengths(self) -> pd.Series:
         """length of each window"""
-        return self.wins['stop'] - self.wins['start']
+        return self.reg['stop'] - self.reg['start']
 
     def mid(self) -> pd.Series:
         """middle time of each window"""
@@ -1877,7 +1844,7 @@ class Windows:
         :return:
         """
         # noinspection PyTypeChecker
-        return self.lengths() * q + self.wins['start']
+        return self.lengths() * q + self.reg['start']
 
     def relative_time(self, q) -> pd.Series:
         """
@@ -1891,7 +1858,7 @@ class Windows:
             if q == 'mid':
                 return self.mid()
             else:
-                return self.wins[q]
+                return self.reg[q]
         else:
             return self.quantile_time(q)
 
@@ -1903,9 +1870,9 @@ class Windows:
         """return a series matching each category to the total time covered by its windows"""
 
         if isinstance(by, str):
-            by = self.wins[by]
+            by = self.reg[by]
 
-        return (self.wins['stop'] - self.wins['start']).groupby(by).sum()
+        return (self.reg['stop'] - self.reg['start']).groupby(by).sum()
 
     def get_rel_win(self, ref='ref', atol=1.e-8, ):
         """
@@ -1919,8 +1886,8 @@ class Windows:
 
         ref_t = self.relative_time(ref)
 
-        pre = (self.wins['start'] - ref_t)
-        post = (self.wins['stop'] - ref_t)
+        pre = (self.reg['start'] - ref_t)
+        post = (self.reg['stop'] - ref_t)
 
         return Win(pre.mean(), post.mean())
 
@@ -1929,14 +1896,14 @@ class Windows:
         Get the minimum window that includes all of these windows
         :return:
         """
-        start = self.wins[['start', 'stop']].values.min()
-        stop = self.wins[['start', 'stop']].values.max()
+        start = self.reg[['start', 'stop']].values.min()
+        stop = self.reg[['start', 'stop']].values.max()
         return Win(start, stop)
 
     def add_cols(self, extra: pd.DataFrame):
         """add extra columns describing properties of these windows"""
         assert len(extra) == len(self)
-        return self.__class__(pd.concat([self.wins, extra], axis=1))
+        return self.__class__(pd.concat([self.reg, extra], axis=1))
 
     def set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None):
         """add extra columns describing properties of these windows"""
@@ -1952,67 +1919,6 @@ class Windows:
         for col, vals in extra.items():
             new[col] = vals
         return new
-
-    def sel_mask(self, mask, but=False):
-        """
-        Select using a boolean mask
-        """
-        if but:
-            mask = ~mask
-
-        return self.__class__(self.loc[mask])
-
-    def sel_masks(self, criterias, *, how='all', but=False):
-        """
-        Select using multiple boolean masks to be combined
-        """
-        assert how in ('all', 'any')
-
-        if how == 'all':
-            mask = np.all(criterias, axis=0)
-        else:
-            mask = np.any(criterias, axis=0)
-
-        return self.sel_mask(mask, but=but)
-
-    def sel(self, *, how='all', but=False, **col_values):
-        """
-        Select by direct comparison of some column.
-        For example:
-            wins.sel(cat='baseline')
-        """
-        criterias = [
-            self[col] == value
-            for col, value in col_values.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
-
-    def sel_between(self, *, but=False, how='all', **col_ranges):
-        """
-        Select by direct comparison of some column where values in a range are acceptable.
-        For example:
-            wins.sel_between(duration=(0, 60_000))
-        """
-        criterias = [
-            self[col].between(*value_range)
-            for col, value_range in col_ranges.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
-
-    def sel_isin(self, *, but=False, how='all', **col_values):
-        """
-        Select by direct comparison of some column where any of the values are acceptable.
-        For example:
-            wins.sel_isin(cat=['sws', 'rem'])
-        """
-        criterias = [
-            self[col].isin(values)
-            for col, values in col_values.items()
-        ]
-
-        return self.sel_masks(criterias, how=how, but=but)
 
     def sel_length_between(self, vmin=-np.inf, vmax=+np.inf):
         return self.sel_mask(self.lengths().between(vmin, vmax))
@@ -2045,9 +1951,9 @@ class Windows:
 
         all_fragments = []
 
-        for idx in self.wins.index:
+        for idx in self.reg.index:
 
-            rel_win = self.wins.loc[idx, ['start', 'stop']].values
+            rel_win = self.reg.loc[idx, ['start', 'stop']].values
 
             edges = np.arange(*rel_win, length_ms)
 
@@ -2056,7 +1962,7 @@ class Windows:
 
                 edges = edges + offset
 
-                all_fragments.append(Windows.build_between(edges).wins)
+                all_fragments.append(Windows.build_between(edges).reg)
                 all_fragments[-1]['main_win_idx'] = idx
 
         if len(all_fragments) > 0:
@@ -2071,11 +1977,11 @@ class Windows:
             shifts = np.ones(len(self)) * shifts
 
         if not isinstance(shifts, pd.Series):
-            shifts = pd.Series(np.asarray(shifts), index=self.wins.index)
+            shifts = pd.Series(np.asarray(shifts), index=self.reg.index)
 
-        shifts = shifts.reindex(self.wins.index)
+        shifts = shifts.reindex(self.reg.index)
 
-        new = self.wins.copy()
+        new = self.reg.copy()
 
         if dropmissing:
             shifts = shifts.dropna()
@@ -2100,14 +2006,14 @@ class Windows:
         cols = ['start', 'stop', 'ref']
         shifted_wins = {}
 
-        for win_idx in self.wins.index:
-            shifted_wins[win_idx] = self.wins.loc[win_idx].copy()
+        for win_idx in self.reg.index:
+            shifted_wins[win_idx] = self.reg.loc[win_idx].copy()
 
             shifted_wins[win_idx][cols] = shifted_wins[win_idx][cols] - shifted_wins[win_idx]['start'] + last
 
             last = shifted_wins[win_idx]['stop']
 
-        df = pd.DataFrame.from_dict(shifted_wins, orient='index').rename_axis(index=self.wins.index.name)
+        df = pd.DataFrame.from_dict(shifted_wins, orient='index').rename_axis(index=self.reg.index.name)
         shifted_wins = self.__class__(df)
 
         assert shifted_wins.are_tight()
@@ -2139,17 +2045,17 @@ class Windows:
 
         classified_events = self.classify_events(times)
 
-        offsets = shifted_wins.wins['start'].reindex(classified_events['win_idx']).values
+        offsets = shifted_wins.reg['start'].reindex(classified_events['win_idx']).values
 
         shifted_times = classified_events['delay'] + offsets
 
         if push_inbetween:
             inverted_wins = self.invert()
 
-            stop_to_win_idx = self.wins.reset_index().set_index('stop')['win_idx']
-            inverted_win_prev = stop_to_win_idx.reindex(inverted_wins.wins['start'].values).values
+            stop_to_win_idx = self.reg.reset_index().set_index('stop')['win_idx']
+            inverted_win_prev = stop_to_win_idx.reindex(inverted_wins.reg['start'].values).values
 
-            inverted_wins.wins['new_stop'] = shifted_wins.wins.loc[inverted_win_prev, 'stop'].values
+            inverted_wins.reg['new_stop'] = shifted_wins.reg.loc[inverted_win_prev, 'stop'].values
             missing = inverted_wins.classify_events(times, merge_wincols=('new_stop',))
 
             extra = missing['new_stop']
@@ -2178,11 +2084,11 @@ class Windows:
         sections = []
 
         cum_time = 0
-        for idx in self.wins.index:
-            section = traces.loc[self.wins.loc[idx, 'start']:self.wins.loc[idx, 'stop']]
+        for idx in self.reg.index:
+            section = traces.loc[self.reg.loc[idx, 'start']:self.reg.loc[idx, 'stop']]
             section = section.iloc[:-1].copy()
-            section.index = section.index - self.wins.loc[idx, 'start'] + cum_time
-            cum_time += self.wins.loc[idx, 'stop'] - self.wins.loc[idx, 'start']
+            section.index = section.index - self.reg.loc[idx, 'start'] + cum_time
+            cum_time += self.reg.loc[idx, 'stop'] - self.reg.loc[idx, 'start']
 
             sections.append(section)
 
@@ -2206,12 +2112,12 @@ class Windows:
         For example:
 
             wins = timeslice.Windows.build_between(np.arange(10))
-            wins.wins['cat'] = 'unknown'
+            wins.reg['cat'] = 'unknown'
 
-            wins.wins.loc[2, 'cat'] = 'special'
-            wins.wins.loc[6:7, 'cat'] = 'special'
+            wins.reg.loc[2, 'cat'] = 'special'
+            wins.reg.loc[6:7, 'cat'] = 'special'
 
-            same_cat = wins.wins['cat'].iloc[:-1] == wins.wins['cat'].values[1:]
+            same_cat = wins.reg['cat'].iloc[:-1] == wins.reg['cat'].values[1:]
 
             merged_wins = _merge_consecutive(wins, same_cat)
 
@@ -2267,7 +2173,7 @@ class Windows:
 
         :return:
         """
-        criteria = criteria.reindex(self.wins.index, fill_value=False)
+        criteria = criteria.reindex(self.reg.index, fill_value=False)
 
         assert take in ['first', 'last']
         i = 0
@@ -2279,7 +2185,7 @@ class Windows:
             merge_start = None
 
             if not criteria.iloc[i]:
-                rows[criteria.index[i]] = self.wins.iloc[i]
+                rows[criteria.index[i]] = self.reg.iloc[i]
                 i += 1
 
             else:
@@ -2289,11 +2195,11 @@ class Windows:
                         merge_start = i
                     i += 1
 
-                first_row = self.wins.iloc[merge_start]
-                last_row = self.wins.iloc[i]
+                first_row = self.reg.iloc[merge_start]
+                last_row = self.reg.iloc[i]
 
                 idx = criteria.index[merge_start if take == 'first' else i]
-                rows[idx] = self.wins.loc[idx].copy()
+                rows[idx] = self.reg.loc[idx].copy()
                 rows[idx]['start'] = np.nanmin([first_row['start'], last_row['start']])
                 rows[idx]['stop'] = np.nanmax([first_row['stop'], last_row['stop']])
 
@@ -2309,7 +2215,7 @@ class Windows:
         :param take: take metadata from first or last window on merge
         :return:
         """
-        sorted_wins = self.wins.sort_values(['start', 'stop'])
+        sorted_wins = self.reg.sort_values(['start', 'stop'])
 
         mergeable = (sorted_wins['start'].iloc[:-1] - sorted_wins['stop'].values[1:]) <= 0
 
@@ -2330,7 +2236,7 @@ class Windows:
         # TODO change to use _merge_consecutive
         cat_col = 'cat'
 
-        index = self.wins.sort_values('start').index
+        index = self.reg.sort_values('start').index
 
         pairs = []
 
@@ -2340,10 +2246,10 @@ class Windows:
         for next_win in index[1:]:
             share_cat = True
             if same_cat:
-                share_cat = self.wins.loc[next_win, cat_col] == self.wins.loc[w_stop, cat_col]
+                share_cat = self.reg.loc[next_win, cat_col] == self.reg.loc[w_stop, cat_col]
 
-            next_range = self.wins.loc[next_win, ['start', 'stop']]
-            current_stop = self.wins.loc[w_stop, 'stop']
+            next_range = self.reg.loc[next_win, ['start', 'stop']]
+            current_stop = self.reg.loc[w_stop, 'stop']
 
             overlap = next_range['start'] <= current_stop < next_range['stop']
 
@@ -2359,8 +2265,8 @@ class Windows:
 
         pairs = np.array(pairs).T
 
-        merged = self.wins.loc[pairs[0]].copy()
-        merged['stop'] = self.wins.loc[pairs[1], 'stop'].values
+        merged = self.reg.loc[pairs[0]].copy()
+        merged['stop'] = self.reg.loc[pairs[1], 'stop'].values
 
         merged = self.__class__(merged)
 
@@ -2395,8 +2301,8 @@ class Windows:
         if not quiet:
             print(
                 'dropping',
-                f'{np.count_nonzero(overlapping)}/{len(self.wins)} '
-                f'({100 * np.count_nonzero(overlapping) / len(self.wins)}%)',
+                f'{np.count_nonzero(overlapping)}/{len(self.reg)} '
+                f'({100 * np.count_nonzero(overlapping) / len(self.reg)}%)',
                 'of windows because of overlap'
             )
 
@@ -2404,7 +2310,7 @@ class Windows:
         # We are prioritising later windows by this overlap detection procedure
         # we could instead split evenly the overlapping region (un-even windows, but keeping all)
         # or select random sets
-        new = self.__class__(self.wins[~overlapping])
+        new = self.__class__(self.reg[~overlapping])
 
         assert new.are_exclusive()
         return new
@@ -2414,16 +2320,16 @@ class Windows:
 
     def drop_duplicates(self, subset=('start', 'stop')):
         return Windows(
-            self.wins.drop_duplicates(subset=list(subset))
+            self.reg.drop_duplicates(subset=list(subset))
         )
 
     def prev_cat(self, dim='cat') -> pd.Series:
         """return the category of the previous window"""
-        return self.wins[dim].shift(1)
+        return self.reg[dim].shift(1)
 
     def next_cat(self, dim='cat') -> pd.Series:
         """return the category of the next window"""
-        return self.wins[dim].shift(-1)
+        return self.reg[dim].shift(-1)
 
     def sandwiched(self, dim='cat', max_length=None, cat=None) -> pd.Series:
         """
@@ -2437,7 +2343,7 @@ class Windows:
         bad = (
                 (next_cats == self.prev_cat(dim))
                 &
-                (next_cats != self.wins[dim])
+                (next_cats != self.reg[dim])
         )
 
         if max_length is not None:
@@ -2447,7 +2353,7 @@ class Windows:
             if not isinstance(cat, (list, tuple, np.ndarray)):
                 cat = [cat]
 
-            bad = bad & self.wins[dim].isin(cat)
+            bad = bad & self.reg[dim].isin(cat)
 
         return bad
 
@@ -2473,7 +2379,7 @@ class Windows:
 
         while are_sandwiched.any():
             # print(np.count_nonzero(are_sandwiched))
-            wins.wins.loc[are_sandwiched, dim] = wins.next_cat(dim).loc[are_sandwiched].values
+            wins.reg.loc[are_sandwiched, dim] = wins.next_cat(dim).loc[are_sandwiched].values
             are_sandwiched = wins.sandwiched(dim=dim, max_length=max_length, cat=cat)
             wins = wins.merge_tight(same_cat=True)
 
@@ -2517,7 +2423,7 @@ class Windows:
             df.index.name = 'win_idx'
             return self.__class__(df)
 
-        windows = windows.wins.sort_values('start')
+        windows = windows.reg.sort_values('start')
 
         df = {
             'start': windows['stop'].values[:-1],
@@ -2602,14 +2508,14 @@ class Windows:
         while len(remaining) > 0:
             overlapping = remaining.overlap()
 
-            ewins = Windows(remaining.wins[~overlapping])
+            ewins = Windows(remaining.reg[~overlapping])
             assert ewins.are_exclusive()
 
             rounds.append(_classify_events_exclusive(
-                ewins.wins, times, ref_col,
+                ewins.reg, times, ref_col,
                 merge_wincols=merge_wincols, right=right))
 
-            remaining = Windows(remaining.wins[overlapping])
+            remaining = Windows(remaining.reg[overlapping])
 
         return pd.concat(rounds, axis=0)
 
@@ -2634,7 +2540,7 @@ class Windows:
         assert self.are_exclusive()
 
         if merge_wincols is None:
-            merge_wincols = list(self.wins.columns.difference(['start', 'stop', 'ref']))
+            merge_wincols = list(self.reg.columns.difference(['start', 'stop', 'ref']))
 
         classified = self.classify_events(
             events[col],
@@ -2782,7 +2688,7 @@ class Windows:
         :return:
         """
 
-        reg = self.wins.sort_values(sortby, ascending=ascending)
+        reg = self.reg.sort_values(sortby, ascending=ascending)
         reg = reg.loc[reg[by].isin([cat0, cat1])]
 
         consecutive = (
@@ -2801,7 +2707,7 @@ class Windows:
         td = pd.Series(td, first_idcs)
 
         if reindex:
-            td = td.reindex(self.wins.index)
+            td = td.reindex(self.reg.index)
 
         return td
 
@@ -2875,8 +2781,8 @@ class Windows:
         :return: a new tuple object
         """
         copy = self.copy()
-        copy.wins['start'] += to_ms(pre)
-        copy.wins['stop'] += to_ms(post)
+        copy.reg['start'] += to_ms(pre)
+        copy.reg['stop'] += to_ms(post)
 
         return copy
 
