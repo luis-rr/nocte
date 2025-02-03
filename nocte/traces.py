@@ -8,7 +8,6 @@ import scipy.interpolate
 import scipy.signal
 from tqdm.auto import tqdm
 
-from nocte import plot as splot
 from nocte import timeslice
 from nocte.analysis import sleep
 from nocte.df_wrapper import DataFrameWrapper
@@ -1523,9 +1522,6 @@ class Traces(DataFrameWrapper):
 
         return copy
 
-    def groupby(self, groupbys):
-        return TracesGrouped(self, groupbys)
-
     def _apply_mask(self, mask):
         return self.__class__(
             reg=self.reg.loc[mask],
@@ -2281,156 +2277,4 @@ class Traces(DataFrameWrapper):
         return self.from_df(
             reg=merged_reg,
             traces=results_df,
-        )
-
-
-class TracesGrouped:
-    def __init__(self, traces: Traces, groupbys):
-
-        if isinstance(groupbys, str):
-            groupbys = [groupbys]
-
-        if isinstance(groupbys, (list, tuple)):
-            uniques = [
-                np.sort(traces.reg[col].dropna().unique())
-                for col in groupbys
-            ]
-
-            groupbys = dict(zip(groupbys, uniques))
-
-        self.groupbys: dict = groupbys
-
-        valid = traces.reg[list(self.groupbys.keys())].notna().all(axis=1)
-
-        self.traces = traces.sel_mask(valid)
-
-    def squeeze(self):
-        return TracesGrouped(
-            self.traces,
-            groupbys={
-                col: [v for v in vals if v in self.traces.reg[col].dropna().values]
-                for col, vals in self.groupbys.items()
-            }
-        )
-
-    def get_by(self, idx: int):
-        return list(self.groupbys.keys())[idx]
-
-    def get_unique(self, col) -> list:
-        if isinstance(col, int):
-            col = self.get_by(col)
-
-        return self.groupbys[col]
-
-    def generate_grouping_colors_brightness(self, brightness_range=(1.5, 1), cmap=None):
-        assert len(self.groupbys) == 2
-
-        colors = {}
-
-        groups_0_unique = self.get_unique(0)
-        groups_1_unique = self.get_unique(1)
-
-        brightness_factors = np.linspace(*brightness_range, len(groups_1_unique))
-
-        for i, g0 in enumerate(groups_0_unique):
-
-            for j, g1 in enumerate(groups_1_unique):
-
-                if cmap is None:
-                    color = f'C{i}'
-                else:
-                    color = cmap(i / (len(groups_0_unique) - 1))
-
-                brightness_factor = brightness_factors[j]
-
-                colors[g0, g1] = splot.darken_color(color, brightness_factor)
-
-        colors = pd.Series(colors)
-
-        colors.index.names = self.groupbys
-
-        return colors
-
-    def generate_grouping_colors(self):
-        assert len(self.groupbys) == 1
-
-        colors = {}
-        for i, v0 in enumerate(self.get_unique(0)):
-            colors[v0] = f'C{i}'
-
-        colors = pd.Series(colors)
-        colors.index.names = list(self.groupbys.keys())
-
-        return colors
-
-    def generate_grouping_colors_vs_flat(self, flat='grey'):
-        assert len(self.groupbys) == 2
-
-        colors = {}
-        for i, v0 in enumerate(self.get_unique(0)):
-            for j, v1 in enumerate(self.get_unique(1)):
-                if j == 0:
-                    colors[v0, v1] = f'C{i}'
-                else:
-                    colors[v0, v1] = flat
-
-        colors = pd.Series(colors)
-        colors.index.names = list(self.groupbys.keys())
-
-        return colors
-
-    def iter_grouped(self):
-        for k, sel in self.traces.iter_grouped(self.groupbys):
-            if len(self.groupbys) == 1:
-                k, = k
-            yield k, sel
-
-    def plot_multi_ax(self, axs, colors, group_kwargs=None, how='overlaid', **kwargs):
-        if group_kwargs is None:
-            group_kwargs = {}
-
-        for k, sel in self.traces.iter_grouped(self.groupbys):
-
-            if len(self.groupbys) == 1:
-                k0, = k
-                plot_kwargs = dict(
-                    color=colors[k0],
-                    label=f'{k0} (n={len(sel.index)})',
-                )
-
-            else:
-                assert len(self.groupbys) == 2
-                k0, k1 = k
-
-                plot_kwargs = dict(
-                    color=colors.xs(key=(k0, k1), level=list(self.groupbys.keys())).item(),
-                    label=f'{k1} (n={len(sel.index)})',
-                )
-
-            plot_kwargs = {**plot_kwargs, **group_kwargs.get(k0, {}), **kwargs}
-
-            ax = axs[k0]
-
-            if how == 'overlaid':
-                sel.plot_overlaid_sum(ax=ax, **plot_kwargs)
-            else:
-                sel.plot_spread(ax=ax, **plot_kwargs)
-
-    def swapgroupbys(self):
-        return TracesGrouped(
-            self.traces,
-            groupbys={
-                k: self.groupbys[k]
-                for k in list(self.groupbys.keys())[::-1]
-            },
-        )
-
-    @property
-    def index(self):
-        return self.traces.index
-
-    def replace_traces(self, others):
-        return TracesGrouped(
-            self.traces.replace_traces(others),
-            self.groupbys,
         )
