@@ -11,7 +11,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from nocte import plot as splot
-from nocte.stacks import Stack, StackSet
+from nocte.stacks import Stack
+from nocte.datadict import DataDict
 from nocte.timeslice import ms
 
 
@@ -190,7 +191,7 @@ class XCorrBestLags:
 def extract_best_lags_multi_exp(exp_xcorr, time_range, lag_range):
     exp_best_lags = {}
 
-    for exp_desc, xcorr in exp_xcorr.items(show_pbar='best lags'):
+    for exp_desc, xcorr in exp_xcorr.items(pbar='best lags'):
         # allow for a lag a bit bigger as we will
         # we will drop the first and last bins because these are over-represented
         # due to a boundary effect
@@ -206,7 +207,7 @@ def extract_best_lags_multi_exp(exp_xcorr, time_range, lag_range):
 
         exp_best_lags[exp_desc.name] = best_lags.reg
 
-    return StackSet(
+    return DataDict(
         exp_xcorr.reg.loc[exp_best_lags.keys()],
         exp_best_lags
     )
@@ -275,7 +276,7 @@ def compute_lags_best_xcorr(
 
     if cache_path.exists() and use_cache:
         print('loading cached best lags')
-        exp_best_lags = StackSet.from_hdf(cache_path)
+        exp_best_lags = DataDict.from_hdf(cache_path)
 
     else:
         print('computing best lags')

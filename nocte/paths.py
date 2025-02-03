@@ -17,7 +17,8 @@ from tqdm.auto import tqdm
 
 import nocte.traces
 from nocte import timeslice
-from nocte.stacks import Stack, StackSet
+from nocte.stacks import Stack
+from nocte.datadict import DataDict
 from nocte.df_wrapper import DataFrameWrapper
 
 
@@ -825,7 +826,7 @@ class Registry(DataFrameWrapper):
 
         return exp_beta
 
-    def load_exp_xcorr_combs(self, exp_names, which=None, **xcorr_kwargs) -> StackSet:
+    def load_exp_xcorr_combs(self, exp_names, which=None, **xcorr_kwargs) -> DataDict:
 
         if isinstance(which, str):
             which = [which]
@@ -883,7 +884,7 @@ class Registry(DataFrameWrapper):
 
             xcorr_triplet[key, exp_name] = xcorr
 
-        return StackSet.from_dict(xcorr_triplet, names=['pair', 'exp'])
+        return DataDict.from_dict(xcorr_triplet, names=['pair', 'exp'])
 
     def collect_paths_video(self) -> pd.Series:
         raw_video_paths = {}

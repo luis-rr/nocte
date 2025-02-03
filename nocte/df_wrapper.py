@@ -41,6 +41,11 @@ class DataFrameWrapper:
     def __repr__(self):
         return self.reg.__repr__()
 
+    # noinspection PyProtectedMember
+    @functools.wraps(pd.DataFrame._repr_html_)
+    def _repr_html_(self):
+        return self.reg._repr_html_()
+
     @property
     def empty(self) -> bool:
         """pd.DataFrame accessor"""
