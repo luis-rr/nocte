@@ -626,9 +626,21 @@ class MultiNCSLoader(io_common.MultiDataLoader):
         super().__init__(loaders)
 
         assert (self.channels['RecordSize'] == 1044).all()
-        assert self.channels['sample_count'].nunique() == 1
-        assert self.channels['record_count'].nunique() == 1
         assert self.channels['sampling_period'].nunique() == 1
+
+        if self.channels['sample_count'].nunique() != 1:
+            logging.error(
+                f'Found {self.channels["sample_count"].nunique()} different sample counts across NCS: '
+                f'from {self.channels["sample_count"].min():,d} to  {self.channels["sample_count"].max():,d}',
+            )
+            self.channels['sample_count'] = self.channels['sample_count'].min()
+
+        if self.channels['record_count'].nunique() != 1:
+            logging.error(
+                f'Found {self.channels["record_count"].nunique()} different sample counts across NCS: '
+                f'from {self.channels["record_count"].min():,d} to  {self.channels["record_count"].max():,d}',
+            )
+            self.channels['record_count'] = self.channels['record_count'].min()
 
     def get_first_timestamp(self):
         first_timestamps = pd.Series({
