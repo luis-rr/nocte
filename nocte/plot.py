@@ -20,7 +20,6 @@ from tqdm.auto import tqdm
 from contextlib import contextmanager
 
 from nocte import timeslice
-from nocte.stacks import Stack
 from nocte.timeslice import ms
 
 COLORS_SIDE = dict(
@@ -444,20 +443,11 @@ def plot_wins_rectangle(
 
 
 def plot_spectrogram(ax, spec, yscale='log', ylim=None, scale='minutes', shading='nearest', cmap='jet', norm=None):
-    if isinstance(spec, Stack):
-        assert len(spec.coords) == 2
-        spec = spec.transpose('freq', 'time')
+    assert isinstance(spec, pd.DataFrame)
 
-        values = spec.values,
-        time = spec.coords['time']
-        freq = spec.coords['freq']
-
-    else:
-        assert isinstance(spec, pd.DataFrame)
-
-        values = spec.values
-        time = spec.index
-        freq = spec.columns
+    values = spec.values
+    time = spec.index
+    freq = spec.columns
 
     if ylim is None:
         valid_freqs = freq[freq > 0]
@@ -483,67 +473,6 @@ def plot_spectrogram(ax, spec, yscale='log', ylim=None, scale='minutes', shading
     )
 
     set_time_ticks(ax, scale=scale)
-
-    return im
-
-
-def get_symmetric_norm(
-        s: Stack,
-        norm_iqr=(0., 1.)
-):
-    """
-    Build a Normalize object with 0 in the center and
-    min/max defined as quantiles of a given stack object.
-    """
-    values = s.values.ravel()
-
-    vrange = (
-        np.nanquantile(values, norm_iqr[0]),
-        np.nanquantile(values, norm_iqr[1])
-    )
-    vmax = np.max(np.abs(vrange))
-    norm = matplotlib.colors.Normalize(-vmax, +vmax)
-
-    return norm
-
-
-def plot_stack_2d(
-        ax,
-        s: Stack,
-        cmap='RdGy_r',
-        norm=None,
-        xcol='time',
-        aspect='auto',
-        origin='lower',
-        **kwargs,
-):
-    """
-    Plot a stack as a 2d image: time vs channel (or some other dimension like depth)
-    """
-    assert s.ndim == 2
-    assert xcol in s.dims
-
-    if norm is None:
-        norm = get_symmetric_norm(s)
-
-    ycol = s.get_coords_names_except(xcol)[0]
-
-    s = s.transpose(..., xcol)
-
-    extent = _get_stack_extent(s, xcol, ycol)
-
-    im = ax.imshow(
-        s.values,
-        origin=origin,
-        extent=extent,
-        norm=norm,
-        cmap=cmap,
-        aspect=aspect,
-        **kwargs,
-    )
-
-    _set_axis_label(ax, xcol, 'x')
-    _set_axis_label(ax, ycol, 'y')
 
     return im
 
