@@ -1220,14 +1220,12 @@ class Traces(DataFrameWrapper):
     @staticmethod
     def _cut(
             traces,
-            zoom_wins,
+            zoom_wins: timeslice.Windows,
             upsampling_ms=100,
-            interp_kind='linear',
     ):
         traces = zoom_wins.interp_df(
             traces,
             step=upsampling_ms,
-            kind=interp_kind,
         )
 
         return pd.concat(traces, axis=1, names=['pulse_idx'])
@@ -1261,15 +1259,13 @@ class Traces(DataFrameWrapper):
 
     def cut(
             self,
-            zoom_wins,
+            zoom_wins: timeslice.Windows,
             upsampling_ms=100,
-            interp_kind='linear',
             show_pbar=None,
     ):
         interp_traces = zoom_wins.interp_df(
             self.traces,
             step=upsampling_ms,
-            kind=interp_kind,
             show_pbar=show_pbar,
         )
 
@@ -2142,10 +2138,12 @@ class Traces(DataFrameWrapper):
             f'Sliding window ({sliding_len_ms} ms) must be bigger than ' \
             f'Welch window ({welch_ms}ms; lowest freq: {bands.freq_min.replace(0, np.nan).min()} Hz)'
 
+        sampling_rate = self.sampling_rate
+
         def band_power_section(traces: pd.DataFrame):
             power, freqs = sleep.band_power(
                 traces.values,
-                sampling_rate=self.sampling_rate,
+                sampling_rate=sampling_rate,
                 bands=bands,
                 welch_ms=welch_ms,
                 add_total=add_total,
