@@ -101,12 +101,13 @@ class Stack:
 
         coords_shape = tuple(len(v) for v in coords.values())
 
-        if coords_shape[::-1] == values.shape:
-            logging.warning(f'Transposing data')
-            values = values.T
-
         if coords_shape != values.shape:
-            raise ValueError(f'Index shape "{coords_shape}" does not match values shape {values.shape}')
+            if coords_shape[::-1] == values.shape:
+                logging.warning(f'Transposing data')
+                values = values.T
+
+            else:
+                raise ValueError(f'Index shape "{coords_shape}" does not match values shape {values.shape}')
 
         return cls(xr.DataArray(values, coords=coords, dims=list(coords.keys())))
 
