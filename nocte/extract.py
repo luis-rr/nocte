@@ -6,89 +6,14 @@ import gc
 import logging
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
 from nocte import timeslice, stacks
 from nocte.analysis import sne, sleep, sne_matching
-from nocte.analysis import xcorr as xc
 from nocte.paths import Registry
 from nocte.timeslice import Win, Windows
-
-
-class ChunkedTraces:
-    def __init__(self, filename):
-        self.filename = filename
-
-    def store_chunk(self, idx: int, desc: str, trace: pd.Series):
-        """"""
-        trace.to_hdf(str(self.filename), key=f'{desc}_{idx:03d}')
-
-    def load_all_chunks(self, desc):
-        """Returns the list of chunk results of processing the data"""
-        with h5py.File(str(self.filename), mode='r') as f:
-            entries = sorted([k for k in f.keys() if k.startswith(desc)])
-
-        return [
-            pd.read_hdf(self.filename, entry)
-            for entry in entries
-        ]
-
-    def load_full(self, desc) -> pd.Series:
-        """Returns the stitched-together results of processing the data"""
-        chunks = self.load_all_chunks(desc)
-        assert len(chunks) > 0
-        return ChunkedTraces._stitch_results(chunks)
-
-    @staticmethod
-    def _stitch_results(chunks) -> pd.Series:
-        """
-        Take multiple chunk results and stitch them together,
-        assuming some potential overlap.
-        In case of overlap, the earlier chunk takes precedence.
-        """
-
-        if len(chunks) == 1:
-            return chunks[0]
-
-        assert len(chunks) > 1
-
-        parts = []
-
-        for i in range(len(chunks) - 1):
-            t0 = chunks[i].index.difference(chunks[i + 1].index)
-            if len(t0) > 0:
-                assert t0.max() < chunks[i + 1].index.min()
-
-            overlap = chunks[i].index.intersection(chunks[i + 1].index)
-            t1 = chunks[i + 1].index.difference(chunks[i].index)
-
-            if len(t1) > 0:
-                assert t1.min() > chunks[i].index.max()
-
-            if i + 2 < len(chunks):
-                t1 = t1.difference(chunks[i + 2].index)
-
-            if i == 0:
-                parts.append(chunks[i].loc[t0])
-
-            parts.append((chunks[i].loc[overlap] + chunks[i + 1].loc[overlap]) * .5)
-            parts.append(chunks[i + 1].loc[t1])
-
-        # noinspection PyTypeChecker
-        stitched: pd.Series = pd.concat(parts)
-
-        # noinspection PyTypeChecker
-        final_idx: pd.Index = stitched.index
-
-        assert final_idx.is_unique
-
-        steps = np.unique(np.diff(final_idx))
-        assert len(steps) == 1
-
-        return stitched
 
 
 class ChunkedExperiment:
@@ -218,109 +143,6 @@ class ChunkedExperiment:
         for idx, main_raw in self.iter_chunks(*args, **kwargs):
             main_zscored = (main_raw - ref_main_mean) / ref_main_std
             yield idx, main_zscored
-
-
-#################################################################################################################
-# x-corr extraction
-
-
-def extract_xcorr(
-        raw,
-        ch0, ch1,
-        sliding_win,
-        low_hz,
-        sliding_step=10.,
-        lag_range=(-81., +82.),
-        mode='speed',
-        load_win=None,
-        kern=None,
-) -> stacks.Stack:
-    # we're going heavy here, but I'm tired of trying to do this in chunks
-    # and then stitching together the results: because experimental sampling rates often have
-    # decimals, it's way too easy to accumulate it and then the stitching isn't *perfect*
-    # Instead just load the entire thing in memory
-
-    lags_ms = np.arange(*lag_range, 1.)
-
-    load_hz = 1000
-
-    if load_win is None:
-        load_win = raw.win_ms
-
-    main = stacks.Stack.load_single_ms(raw, load_win, load_hz=load_hz, channels=[ch0, ch1])
-
-    main_filtered = main.zscore().low_pass(low_hz)
-
-    if mode == 'speed':
-        signal = main_filtered.gradient('time')
-
-    elif mode == 'speed_clipped':
-        signal = main_filtered.gradient('time').clip(max=0)
-
-    elif mode == 'acc':
-        signal = main_filtered.gradient('time').gradient('time')
-
-    else:
-        assert mode == 'raw'
-        signal = main_filtered
-
-    xcorr = xc.valid_cross_corr(
-        signal, lags_ms,
-        win_length_ms=sliding_win,
-        sliding_step_ms=sliding_step,
-        show_pbar=True,
-        kern=kern,
-    )
-
-    return xcorr
-
-
-def process_experiment_xcorr(
-        results_path,
-        **kwargs,
-):
-    results_path = Path(results_path)
-    results_path.parent.mkdir(parents=True, exist_ok=True)
-
-    xcorr = extract_xcorr(**kwargs)
-
-    xcorr.store_hdf(str(results_path), 'xcorr')
-
-
-def extract_all_xcorr(reg, sliding_win, suffix='', low_hz=40, areas=('CLA', 'BST'), ignore_failures=True, **kwargs):
-    import gc
-
-    missing = reg.collect_paths_xcorr(sliding_win, suffix=suffix, missing=True, areas=areas, low_hz=low_hz)
-
-    to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
-
-    for _, exp_name, results_path, probe0, probe1, ch0, ch1 in to_extract:
-        try:
-            raw = reg.get_loader(exp_name)
-
-            global_ch = raw.channel_probes_to_global([(probe0, ch0), (probe1, ch1)])
-
-            print(f'Extract:\n{results_path}')
-            process_experiment_xcorr(
-                results_path,
-                raw=raw,
-                ch0=global_ch[0],
-                ch1=global_ch[1],
-                sliding_win=sliding_win,
-                low_hz=low_hz,
-                **kwargs,
-            )
-
-            gc.collect()
-
-        except KeyboardInterrupt:
-            raise
-
-        except Exception as e:
-            if ignore_failures:
-                logging.exception(f'Processing {exp_name} failed: {e}')
-            else:
-                raise
 
 
 #################################################################################################################
