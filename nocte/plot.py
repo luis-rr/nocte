@@ -1618,9 +1618,8 @@ def savefig(f, name, base_path=''):
     name = name.replace(' ', '_')
     name = name.replace('\n', '_')
 
-    base = pathlib.Path(base_path) if base_path else pathlib.Path()
-
-    full_path = base / name
+    full_path = pathlib.Path(base_path) / name
+    full_path = full_path.absolute()
 
     if full_path.suffix == '':
         full_path = full_path.with_suffix('.pdf')
