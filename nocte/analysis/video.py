@@ -6,6 +6,7 @@ import colorsys
 import logging
 from pathlib import Path
 
+import cv2
 import h5py
 import numpy as np
 import pandas as pd
@@ -17,9 +18,116 @@ from nocte import traces as tr
 MICROS_TO_MS = .001
 
 
-def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -> stacks.Stack:
-    import cv2
+class VideoWriter:
+    """
+    A context manager for writing video frames to a file using opencv2
 
+    Use like:
+            with vid.VideoWriter(
+                output_video_path,
+                frame_width,
+                frame_height,
+                fps) as video_writer:
+
+                video_writer.write(img)
+
+    """
+
+    def __init__(self, output_video_path, frame_width, frame_height, fps):
+        self.output_video_path = output_video_path
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.fps = fps
+        self.out = None
+
+    def __enter__(self):
+        # noinspection PyUnresolvedReferences
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        self.out = cv2.VideoWriter(self.output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
+        return self.out
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.out is not None:
+            self.out.release()
+
+import cv2
+from tqdm import tqdm
+
+def seek_fast(cap, start_idx):
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
+
+def seek_safe(cap, start_idx):
+    for _ in tqdm(range(start_idx), desc='Seeking frames'):
+        ret, _ = cap.read()
+        if not ret:
+            break
+
+import cv2
+from tqdm import tqdm
+
+def seek_fast(cap, start_idx):
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
+
+def seek_safe(cap, start_idx):
+    for _ in tqdm(range(start_idx), desc='Seeking frames'):
+        ret, _ = cap.read()
+        if not ret:
+            break
+
+class VideoReader:
+    """
+    A context manager for reading video frames with step control.
+
+    Usage:
+        with VideoReader(...) as video_reader:
+            for idx, frame in video_reader:
+                pass
+    """
+
+    def __init__(self, input_video_path, start, stop, step=1, safe_seek=False):
+        input_video_path = str(input_video_path)
+
+        self.cap = cv2.VideoCapture(input_video_path)
+        if not self.cap.isOpened():
+            raise ValueError(f"Could not open video file {input_video_path}")
+
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if start < 0 or stop >= total_frames or start > stop:
+            raise ValueError(f"Invalid frame indices: {start}, {stop}")
+
+        if step <= 0:
+            raise ValueError("Step must be a positive integer")
+
+        self.start = start
+        self.stop = stop
+        self.step = step
+        self.safe_seek = safe_seek
+
+    def __enter__(self):
+        if not self.safe_seek:
+            seek_fast(self.cap, self.start)
+        else:
+            seek_safe(self.cap, self.start)
+        return self
+
+    def __iter__(self):
+        for idx in tqdm(range(self.start, self.stop, self.step), desc='Processing frames'):
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            yield idx, frame
+
+            # Skip extra frames if step > 1
+            for _ in range(self.step - 1):
+                ret, _ = self.cap.read()
+                if not ret:
+                    break
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cap.release()  # Ensures proper cleanup exactly once
+
+
+def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -> stacks.Stack:
     cap = cv2.VideoCapture(str(avi_path))
 
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -78,7 +186,6 @@ def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -
 
 
 def get_movie_frame_count(avi_path) -> int:
-    import cv2
 
     cap = cv2.VideoCapture(str(avi_path))
 
@@ -93,8 +200,6 @@ def get_frame_idx_by_fps(avi_path, time_ms) -> int:
     Note that this may need adjustment if we want the time relative
     to the ephys recording. For that, take a look at load_movie_frames_ms
     """
-    import cv2
-
     cap = cv2.VideoCapture(str(avi_path))
 
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -112,7 +217,6 @@ def get_frame_idx_by_fps(avi_path, time_ms) -> int:
 
 
 def load_movie_frame_idx(avi_path, idx) -> stacks.Stack:
-    import cv2
 
     cap = cv2.VideoCapture(str(avi_path))
 
@@ -137,7 +241,7 @@ def load_movie_frame_idx(avi_path, idx) -> stacks.Stack:
 def load_movie_frames_ms(exp_info, show_times):
     video_path = exp_info.get_path_video()
 
-    frame_times = get_cam_frame_timestamps_rel_to_ephys(exp_info)
+    frame_times = get_cam_frame_timestamps_rec(exp_info)
 
     frames = {}
 
@@ -151,8 +255,6 @@ def load_movie_frames_ms(exp_info, show_times):
 
 
 def get_video_length_ms(avi_path):
-    import cv2
-
     cap = cv2.VideoCapture(str(avi_path))
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     # skip the last. dummy, frame
@@ -163,8 +265,6 @@ def get_video_length_ms(avi_path):
 
 
 def get_fps(avi_path):
-    import cv2
-
     cap = cv2.VideoCapture(str(avi_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     return fps
@@ -285,7 +385,7 @@ def get_cam_frame_timestamps(events_path, cam=b'cam0') -> np.ndarray:
 
 
 def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
-    new_time = get_cam_frame_timestamps_rel_to_ephys(exp_info, cam)
+    new_time = get_cam_frame_timestamps_rec(exp_info, cam)
 
     if len(new_time) == len(lum) - 1:
         # in some versions of the data, we stored info about a dummy last frame that doesn't really exist
@@ -303,7 +403,10 @@ def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
     return pd.Series(lum.values, index=new_time)
 
 
-def get_cam_frame_timestamps_rel_to_ephys(exp_info, cam=b'cam0'):
+def get_cam_frame_timestamps_rec(exp_info, cam=b'cam0'):
+    """
+    Get frame timestamps in recording time
+    """
     loader = exp_info.get_loader(accept_non_interp=True)
 
     start = get_first_timestamp(loader)
@@ -383,7 +486,7 @@ def adjust_deeplabcut_time_multi(reg, exp_tracking):
             logging.warning(f'{exp_name} missing from reg. Skipping adjustment.')
 
         else:
-            new_times = get_cam_frame_timestamps_rel_to_ephys(reg.get_entry(exp_name))
+            new_times = get_cam_frame_timestamps_rec(reg.get_entry(exp_name))
 
             if len(new_times) == len(tracking):
 
