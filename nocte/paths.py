@@ -288,48 +288,18 @@ class Registry(DataFrameWrapper):
     def __init__(self, df: pd.DataFrame):
         assert df.index.is_unique, df.index[df.index.duplicated()]
 
+        df = Registry._paths_cleanup(df)
+
+        Registry._fill_optional_cols(df)
+
+        df = Registry._drop_invalid_probe_info(df)
+
         if df.index.name is None:
             df.index.name = 'name'
 
-        valid_path = df['raw_path'].notna()
-        for name in df.index[~valid_path]:
-            logging.error(f'Dropping {name}: missing path.')
-
-        df: pd.DataFrame = df.loc[df['raw_path'].notna()].copy()
-
-        for col in df.columns[df.columns.str.endswith('_path')]:
-            df[col] = Registry._patch_paths(df[col])
-
-        # noinspection PyUnresolvedReferences
-        assert (df.groupby('animal')['lesion'].nunique() <= 1).all()
-
-        df = df.replace('?', np.nan)
-
         super().__init__(df.copy())
 
-        paths = pd.Series({
-            name: self.get_path(name) for name in self.experiment_names
-        }, dtype=object)
-
-        valid_path = paths.map(lambda p: p.exists())
-        for name in self.reg.index[~valid_path]:
-            logging.error(f'Dropping {name}: path does not exist ({paths[name]})')
-
         self.reg = self.reg.loc[df['raw_path'].notna()].copy()
-
-        optional_cols = [
-            'probe0', 'probe1', 'probe2', 'probe3',
-            'side0', 'side1', 'side2', 'side3',
-            'ch0', 'ch1', 'ch2', 'ch3',
-        ]
-        for col in optional_cols:
-            if col not in self.reg.columns:
-                self.reg[col] = np.nan
-
-        invalid = self._detect_invalid_probe_info()
-        if invalid.any():
-            logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
-            self.reg = self.reg[~invalid]
 
         probe_counts = pd.Series({
             exp_name: len(self.get_probe_channels(exp_name))
@@ -349,8 +319,9 @@ class Registry(DataFrameWrapper):
     def copy(self):
         return self.__class__(self.reg.copy())
 
-    def _detect_invalid_probe_info(self) -> pd.Series:
-        probe_info = self.reg[[
+    @staticmethod
+    def _drop_invalid_probe_info(df):
+        probe_info = df[[
             'probe0', 'probe1', 'probe2', 'probe3',
             'side0', 'side1', 'side2', 'side3',
             'ch0', 'ch1', 'ch2', 'ch3',
@@ -360,10 +331,47 @@ class Registry(DataFrameWrapper):
 
         invalid = probe_info.isna().T.groupby('idx').any().T
 
-        return invalid.all(axis=1)
+        invalid = invalid.all(axis=1)
+
+        if invalid.any():
+            logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
+
+        df = df.loc[~invalid]
+
+        return df
 
     @staticmethod
-    def _patch_paths(paths):
+    def _paths_cleanup(df):
+
+        df = df.copy()
+
+        path_cols = df.columns[df.columns.str.endswith('path')]
+
+        for col in path_cols:
+
+            paths = df[col]
+
+            paths = Registry._paths_patch(paths)
+            paths = Registry._paths_abs(paths)
+            paths = Registry._paths_ensure(paths)
+
+            df[col] = paths.copy()
+
+        essential_cols = ['raw_path']
+
+        for col in essential_cols:
+            valid_path = df[col].notna()
+
+            for k in df.index[~valid_path]:
+                print(df.loc[k])
+                logging.error(f'Dropping {k}: missing {col}.')
+
+            df = df.loc[valid_path]
+
+        return df.copy()
+
+    @staticmethod
+    def _paths_patch(paths):
 
         patched = paths.dropna().astype(str)
 
@@ -383,6 +391,59 @@ class Registry(DataFrameWrapper):
         patched = patched.reindex(paths.index)
 
         return patched
+
+    @staticmethod
+    def _paths_ensure(paths: pd.Series()):
+        safe = paths.copy()
+
+        for k, file_name in paths.dropna().items():
+
+            file_name = Path(file_name)
+
+            if not file_name.exists():
+                logging.warning(f'{k}: {file_name} does not exist')
+                safe.loc[k] = np.nan
+
+        return safe
+
+    @staticmethod
+    def _paths_abs(paths: pd.Series()):
+
+        def _abs(p):
+            candidate_folders = [
+                '/gpfs/laur/experiments/FenkLorenz',
+                '/gpfs/laur/data/fenkl',
+                '.',
+            ]
+
+            p = Path(p)
+
+            if not p.is_absolute():
+                for folder in candidate_folders:
+                    candidate = folder / p
+                    candidate = candidate.absolute()
+
+                    if candidate.exists():
+                        return str(candidate)
+
+            return str(p)
+
+        paths_abs = paths.dropna().map(_abs)
+
+        return paths_abs.reindex(paths.index)
+
+    @staticmethod
+    def _fill_optional_cols(df):
+        optional_cols = [
+            'probe0', 'probe1', 'probe2', 'probe3',
+            'side0', 'side1', 'side2', 'side3',
+            'ch0', 'ch1', 'ch2', 'ch3',
+        ]
+        for col in optional_cols:
+            if col not in df.columns:
+                df[col] = np.nan
+
+
 
     @classmethod
     def read_excel(cls, reg_path=None, sheet_name='swr'):
