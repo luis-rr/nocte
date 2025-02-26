@@ -78,6 +78,21 @@ def ms(**kwargs) -> float:
     """short-hand to write a millisecond time-stamp using hours=, minutes=, etc.."""
     return to_ms(timedelta(**kwargs))
 
+def ms_scale(scale) -> float:
+    """
+    Determine a scale in milliseconds to work with.
+    Accepts exact numbers or strings such as "hours", "minutes", etc..
+    If given a string, we assume the scale is 1 of those (1 hour, 1 minute, etc)
+    """
+
+    if isinstance(scale, str):
+        scale_to = ms(**{scale: 1})
+
+    else:
+        scale_to = scale
+
+    return scale_to
+
 
 class Win(tuple):
     """
@@ -208,6 +223,35 @@ class Win(tuple):
         """check if a time stamp is contained in [start, stop]"""
         return (self.start <= t) & (t <= self.stop)
 
+    def contained_in(self, win, fully=True) -> bool:
+        """
+        check if this window is contained in the given one
+
+        :param win:
+
+        :param fully: if True, window must be fully inside the given one to be considered contained.
+            If False, a partial overlap is enough.
+
+        :returns: a boolean series
+        """
+        win = Win(*win)
+
+        if fully:
+            start_within = win.contains(self.start)
+            stop_within = win.contains(self.stop)
+
+            return start_within & stop_within
+
+        else:
+            return self.overlaps(win)
+
+    def overlaps(self, win) -> bool:
+        """Check if this window and another one overlap"""
+        start_late = win.stop <= self.start
+        stop_early = self.stop <= win.start
+
+        return (~start_late) & (~stop_early)
+
     def quantile_time(self, q: float) -> pd.Series:
         """
         Select a reference time as a quantile of the duration.
@@ -254,12 +298,16 @@ class Win(tuple):
         """check stop comes after start"""
         assert self.length >= 0
 
-    def __str__(self):
+    def to_str(self, plus_sign=False, strip=True, show_days=True):
         """pretty str format"""
         return (
-            f'({strfdelta(self.start_td, plus_sign=True)},'
-            f' {strfdelta(self.stop_td, plus_sign=True)})'
+            f'({strfdelta(self.start_td, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
+            f' {strfdelta(self.stop_td, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
         )
+
+    def __str__(self):
+        """pretty str format"""
+        return self.to_str()
 
     def _repr_html_(self):
         """pretty str format"""
@@ -350,7 +398,7 @@ class Win(tuple):
 
     def round(self, decimals=0, start=True, stop=True, scale='milliseconds'):
         """round this window """
-        scale_to = ms(**{scale: 1})
+        scale_to = ms_scale(scale)
 
         return self.__class__(
             np.round(self.start / scale_to, decimals=decimals) * scale_to if start else self.start,
@@ -359,11 +407,22 @@ class Win(tuple):
 
     def floor(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
-        scale_to = ms(**{scale: 1})
+        scale_to = ms_scale(scale)
+
 
         return self.__class__(
             np.floor(self.start / scale_to) * scale_to if start else self.start,
             np.floor(self.stop / scale_to) * scale_to if stop else self.stop,
+        )
+
+    def ceil(self, start=True, stop=True, scale='milliseconds'):
+        """round down to the closest integer for the given scale"""
+        scale_to = ms_scale(scale)
+
+
+        return self.__class__(
+            np.ceil(self.start / scale_to) * scale_to if start else self.start,
+            np.ceil(self.stop / scale_to) * scale_to if stop else self.stop,
         )
 
     def floor_ceil(self, scale='milliseconds'):
@@ -386,14 +445,14 @@ class Win(tuple):
         w = w.floor(scale=scale, start=False, stop=True)
         return w
 
-    def ceil(self, start=True, stop=True, scale='milliseconds'):
-        """round down to the closest integer for the given scale"""
-        scale_to = ms(**{scale: 1})
+    def round_loose(self, scale='milliseconds'):
+        """Round start down and stop up, making the window looser"""
+        return self.floor_ceil(scale)
 
-        return self.__class__(
-            np.ceil(self.start / scale_to) * scale_to if start else self.start,
-            np.ceil(self.stop / scale_to) * scale_to if stop else self.stop,
-        )
+    def round_tight(self, scale='milliseconds'):
+        """Round start up and stop down, making the window tighter"""
+        return self.ceil_floor(scale)
+
 
     def clip(self, other):
         """
@@ -650,7 +709,7 @@ class Windows(DataFrameWrapper):
         return cls(df)
 
     @classmethod
-    def build_around_df(cls, df, win, col='time'):
+    def build_around_df(cls, df, win=(0., 0.), col='time'):
 
         new = cls.build_around(df[col], win)
         new = new.add_cols(df.drop([col], axis=1))
@@ -658,13 +717,13 @@ class Windows(DataFrameWrapper):
         return new
 
     @classmethod
-    def build_around(cls, marks, win):
+    def build_around(cls, marks, win=(0., 0.)):
         """
         build a dataframe containing several time windows around a series of time points
         for each row entry there are the start/stop points and the reference
         (sometimes used to compute the relative time).
 
-        :param marks: a series of time points round which the windows are built
+        :param marks: a series of time points around which the windows are built
         :param win: a bi-tuple of time deltas, example: (-50, 150.)
         :return: a df that looks like:
                 start    stop     ref
@@ -1835,6 +1894,15 @@ class Windows(DataFrameWrapper):
         else:
             return self.quantile_time(q)
 
+    def reset_ref(self, q):
+        """
+        Reset the ref for all windows.
+        :param q: see relative_time.
+        """
+        new = self.copy()
+        new['ref'] = new.relative_time(q)
+        return new
+
     def total(self) -> float:
         """total time covered by these windows"""
         return self.lengths().sum()
@@ -1877,6 +1945,10 @@ class Windows(DataFrameWrapper):
         """add extra columns describing properties of these windows"""
         assert len(extra) == len(self)
         return self.__class__(pd.concat([self.reg, extra], axis=1))
+
+    def merge_cols(self, extra: pd.DataFrame, **kwargs):
+        """merge in extra columns describing properties of these windows"""
+        return self.__class__(pd.merge(self.reg, extra, **kwargs))
 
     def set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None):
         """add extra columns describing properties of these windows"""
