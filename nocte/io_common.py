@@ -10,6 +10,8 @@ import pandas as pd
 from nocte import timeslice
 from nocte.timeslice import MS_TO_S, S_TO_MS
 
+logger = logging.getLogger(__name__)
+
 
 class DataLoader(abc.ABC):
 
@@ -129,7 +131,7 @@ class MultiDataLoader(DataLoader):
 
         sampling_rate = all_sampling_rates.mean()
         if not all_sampling_rates.nunique() == 1:
-            logging.warning(f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}')
+            logger.warning(f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}')
 
         self._sampling_period = S_TO_MS / sampling_rate
         self._sampling_period = timeslice.adjust_sampling_period(self._sampling_period)
@@ -141,7 +143,7 @@ class MultiDataLoader(DataLoader):
         self._sample_count = all_sample_counts.min()
         if not all_sample_counts.nunique() == 1:
             max_sample_count = all_sample_counts.max()
-            logging.warning(
+            logger.error(
                 f'Different sample counts across loaders. '
                 f'Taking min: {self._sample_count:,g} (loosing {max_sample_count - self._sample_count:,g} samples)'
             )
@@ -210,7 +212,7 @@ class MultiDataLoader(DataLoader):
                 if len(local_ids) == 0:
                     raise KeyError(f'Failed to locate probe-{probe} channel-{ch}')
                 else:
-                    logging.warning(f'Channel error by 1')
+                    logger.warning(f'Channel error by 1')
 
             assert len(local_ids) == 1
             collect.append(local_ids)

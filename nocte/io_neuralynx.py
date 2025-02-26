@@ -32,6 +32,8 @@ from nocte import io_common
 from nocte import timeslice
 from nocte.timeslice import S_TO_MS
 
+logger = logging.getLogger(__name__)
+
 VOLT_SCALING = (1, u'V')
 MILLIVOLT_SCALING = (1000, u'mV')
 MICROVOLT_SCALING = (1000000, u'µV')
@@ -83,7 +85,7 @@ class NeuralynxBaseLoader:
         hdr_lines = [line.strip() for line in raw_hdr.split('\r\n') if line != '']
 
         if hdr_lines[0] != '######## Neuralynx Data File Header':
-            logging.warning('Unexpected start to header: ' + hdr_lines[0])
+            logger.warning('Unexpected start to header: ' + hdr_lines[0])
         else:
             hdr_lines = hdr_lines[1:]
 
@@ -93,7 +95,7 @@ class NeuralynxBaseLoader:
             kv = line.lstrip('-').split(' ', maxsplit=1)
 
             if len(kv) != 2:
-                logging.debug(f'Missing value for: "{line}"')
+                logger.debug(f'Missing value for: "{line}"')
             else:
                 hdr[kv[0]] = kv[1]
 
@@ -143,7 +145,7 @@ class NeuralynxBaseLoader:
                     hdr[new_key] = datetime.datetime.strptime(hdr[old_key], '%Y/%m/%d %H:%M:%S')
 
                 except ValueError as e:
-                    logging.warning(f'Failed to parse time {old_key}: "{hdr[old_key]}" ({e})')
+                    logger.warning(f'Failed to parse time {old_key}: "{hdr[old_key]}" ({e})')
 
         return hdr
 
@@ -228,7 +230,7 @@ class NeuralynxBaseLoader:
         chan_number_candidates = chan_number_candidates[chan_number_candidates != -1]
 
         if len(chan_number_candidates) == 0:
-            logging.error(f'No channel number')
+            logger.error(f'No channel number')
             return None
 
         chan_number_candidates = np.unique(chan_number_candidates)
@@ -237,7 +239,7 @@ class NeuralynxBaseLoader:
             return chan_number_candidates[0]
 
         else:
-            logging.error(f'Multiple possible channel numbers: {list(chan_number_candidates)}')
+            logger.error(f'Multiple possible channel numbers: {list(chan_number_candidates)}')
             return None
 
 
@@ -278,7 +280,7 @@ class NCSLoader(io_common.DataLoader):
         header = NeuralynxBaseLoader.load_header(file_path, NCSLoader.RECORD)
         header['channel_id'] = NeuralynxBaseLoader.get_channel_id(header)
         if header['channel_id'] is None:
-            logging.error(f'Cannot identify channel number for: {file_path}')
+            logger.error(f'Cannot identify channel number for: {file_path}')
 
         return cls(header)
 
@@ -373,7 +375,7 @@ class NCSLoader(io_common.DataLoader):
             all_num_samples = records['NumValidSamples'][:-1]
             num_samples_unique, num_samples_counts = np.unique(all_num_samples, return_counts=True)
             if not np.allclose(num_samples_unique, NCSLoader._SAMPLES_PER_RECORD):
-                logging.error(
+                logger.error(
                     f'Around {time}ms. Expected all records with {NCSLoader._SAMPLES_PER_RECORD} samples. '
                     f'Got ' + ', '.join([
                         f'{c}x{le}'
@@ -390,7 +392,7 @@ class NCSLoader(io_common.DataLoader):
                 expected_dt = (1_000_000 / self.header['SamplingFrequency'])
 
                 if not np.allclose(dts_unique, expected_dt):
-                    logging.error(
+                    logger.error(
                         f'Around {time}ms. Expected all samples at {expected_dt} microseconds. '
                         f'Got ' + ', '.join([
                             f'{c}x{dt}' for dt, c in zip(dts_unique, dts_counts)
@@ -628,14 +630,14 @@ class MultiNCSLoader(io_common.MultiDataLoader):
         assert self.channels['sampling_period'].nunique() == 1
 
         if self.channels['sample_count'].nunique() != 1:
-            logging.error(
+            logger.error(
                 f'Found {self.channels["sample_count"].nunique()} different sample counts across NCS: '
                 f'from {self.channels["sample_count"].min():,d} to  {self.channels["sample_count"].max():,d}',
             )
             self.channels['sample_count'] = self.channels['sample_count'].min()
 
         if self.channels['record_count'].nunique() != 1:
-            logging.error(
+            logger.error(
                 f'Found {self.channels["record_count"].nunique()} different sample counts across NCS: '
                 f'from {self.channels["record_count"].min():,d} to  {self.channels["record_count"].max():,d}',
             )
@@ -647,7 +649,7 @@ class MultiNCSLoader(io_common.MultiDataLoader):
             for ch, loader in self.loaders.items()
         })
         if first_timestamps.nunique() > 1:
-            logging.warning(
+            logger.warning(
                 f'Found {first_timestamps.nunique()} first timestamps: {first_timestamps.unique()}'
             )
 
@@ -683,7 +685,7 @@ class MultiNCSLoader(io_common.MultiDataLoader):
                 new_time_created = center - half
                 new_time_closed = center + half
 
-                logging.warning(
+                logger.warning(
                     f'Timestamp and raw data differ by {timeslice.strf_ms(timestamp_duration_ms - self.duration_ms)}.'
                     f' Centering timestamps from <{time_created} - {time_closed}> to  '
                     f'<{new_time_created} - {new_time_closed}>'
@@ -705,7 +707,7 @@ class MultiNCSLoader(io_common.MultiDataLoader):
             if loader.header['channel_id'] is not None:
                 channel_id = loader.header['channel_id']
             else:
-                logging.error('Unknown id for channel file: %s', loader.header['full_path'])
+                logger.error('Unknown id for channel file: %s', loader.header['full_path'])
                 channel_id = -i
 
             loaders[channel_id] = loader
@@ -728,7 +730,7 @@ class MultiNCSLoader(io_common.MultiDataLoader):
             channels = list(channels)
 
             if 0 in channels:
-                logging.warning('Expecting channel idcs starting from 1')
+                logger.warning('Expecting channel idcs starting from 1')
 
             channel_paths = [
                 Path(os.path.join(folder, name.format(channel=channel)))

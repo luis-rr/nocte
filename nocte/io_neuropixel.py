@@ -33,6 +33,8 @@ import pandas as pd
 from nocte import timeslice, io_common
 from nocte.timeslice import MS_TO_S, S_TO_MS
 
+logger = logging.getLogger(__name__)
+
 PICO_TO_MICRO = 1e6
 
 
@@ -46,7 +48,7 @@ def read_meta(meta_path: Path):
         raw['fileSizeBytes'] = int(raw['fileSizeBytes'])
 
     else:
-        logging.warning(f'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.')
+        logger.warning(f'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.')
         assert str(meta_path).endswith('.meta')
         bin_path = str(meta_path)[:-len('meta')] + 'bin'
         raw['fileSizeBytes'] = os.stat(bin_path).st_size
@@ -76,7 +78,7 @@ def read_meta(meta_path: Path):
             columns=['shank', 'column', 'row', 'u']).astype(int)
 
     else:
-        logging.warning(f'Missing "snsShankMap" in meta file.')
+        logger.warning(f'Missing "snsShankMap" in meta file.')
 
     return processed
 
@@ -206,7 +208,7 @@ def _process_meta_imec(meta, prefix='im'):
             gain = processed['chan_gains']['LF'][chan_id - ap_count]
             if gain == 0:
                 gain = 1
-                logging.warning(f'Why is gain 0 ?')
+                logger.warning(f'Why is gain 0 ?')
             conv = i2v / gain
         else:
             conv = 1
@@ -364,7 +366,7 @@ class DataLoader(io_common.DataLoader):
                                                                  expected_sampling_rate, rtol=1e-12):
             original_duration = (meta['sample_count'] / meta['sampling_rate']) / MS_TO_S
             adjusted_duration = (meta['sample_count'] / expected_sampling_rate) / MS_TO_S
-            logging.warning(
+            logger.warning(
                 f"Adjusting sampling rate from {meta['sampling_rate']} to {expected_sampling_rate} "
                 f'which changes duration by {original_duration - adjusted_duration} ms'
             )
@@ -375,7 +377,7 @@ class DataLoader(io_common.DataLoader):
 
         bin_file_size = os.path.getsize(bin_path)
         if bin_file_size != meta.raw['fileSizeBytes']:
-            logging.warning(f'Expected {meta.raw["fileSizeBytes"]} but found {bin_file_size} in file')
+            logger.warning(f'Expected {meta.raw["fileSizeBytes"]} but found {bin_file_size} in file')
 
         data = cls(meta, memmap)
 
@@ -429,7 +431,7 @@ class DataLoader(io_common.DataLoader):
 
             # TODO store a "unit"!
             if not len(unique_cf):
-                logging.warning(f'Gain adjustment not homogeneous accross channels: {unique_cf}')
+                logger.warning(f'Gain adjustment not homogeneous accross channels: {unique_cf}')
 
             return section_raw
 
@@ -440,7 +442,7 @@ class DataLoader(io_common.DataLoader):
         meta_path = list(probe_path.glob('*.ap.meta'))
         if len(meta_path) == 0:
             if accept_lf:
-                logging.warning(f'Failed to find ap, trying lf')
+                logger.warning(f'Failed to find ap, trying lf')
                 meta_path = list(probe_path.glob('*.lf.meta'))
             else:
                 raise FileNotFoundError(f'Expected to find 1 *.ap.meta file. Found {len(meta_path)}.')
@@ -453,7 +455,7 @@ class DataLoader(io_common.DataLoader):
         bin_path = list(probe_path.glob('*.ap.bin'))
         if len(bin_path) == 0:
             if accept_lf:
-                logging.warning(f'Failed to find ap, trying lf')
+                logger.warning(f'Failed to find ap, trying lf')
                 bin_path = list(probe_path.glob('*.lf.bin'))
             else:
                 raise FileNotFoundError(f'Expected to find 1 *.ap.bin file. Found {len(bin_path)}.')
@@ -487,7 +489,7 @@ class MultiProbeLoader(io_common.MultiDataLoader):
                 probe_paths[probe_number] = (meta_path, bin_path)
 
             except FileNotFoundError as e:
-                logging.error(f'Incomplete folder ({base_path}): {e}')
+                logger.error(f'Incomplete folder ({base_path}): {e}')
 
         return {
             i: probe_paths[i]
@@ -571,7 +573,7 @@ class DataLoaderBaseline(DataLoader):
 
         self.ref_channels = ref_channels
         if 768 in self.ref_channels:
-            logging.warning(f'Sys channel in ref channels for baseline extraction')
+            logger.warning(f'Sys channel in ref channels for baseline extraction')
 
         self.channel_offsets = self._calibrate_channels(
             ref_time_ms,
