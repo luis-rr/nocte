@@ -125,6 +125,7 @@ def set_time_ticks(
         label=None,
         tight=True,
         lim=None,
+        offset=0,
 ):
     """set major xticks to mark every hour and minor every 10 minutes"""
     assert which in ('x', 'y')
@@ -153,8 +154,8 @@ def set_time_ticks(
     if major is None:
         major = auto_major
 
-    axis.set_major_locator(matplotlib.ticker.MultipleLocator(timeslice.to_ms(major)))
-    axis.set_minor_locator(matplotlib.ticker.MultipleLocator(timeslice.to_ms(minor))),
+    axis.set_major_locator(matplotlib.ticker.MultipleLocator(base=timeslice.to_ms(major), offset=offset))
+    axis.set_minor_locator(matplotlib.ticker.MultipleLocator(base=timeslice.to_ms(minor), offset=offset))
 
     scale_factor = scale
     if scale_factor is not None:
@@ -216,7 +217,7 @@ def _auto_select_tick_steps(ax, which='x') -> tuple[float, float]:
     return sections[np.inf]
 
 
-def set_ticks_solar_time(ax, which='x'):
+def set_ticks_solar_time(ax, which='x', skip_zero=False):
     assert which in ('x', 'y')
     axis = ax.yaxis if which == 'y' else ax.xaxis
 
@@ -224,7 +225,7 @@ def set_ticks_solar_time(ax, which='x'):
         days = np.floor(x / ms(hours=1) / 24)
         hours = (x / ms(hours=1)) % 24
 
-        return f'{hours:g}' + (f'\n+{days:g}d' if days > 0 else '')
+        return f'{hours:g}' + (f'\n{days:g}d' if (days > 0 or not skip_zero) else '')
 
     axis.set_major_formatter(
         matplotlib.ticker.FuncFormatter(solar_ticks)
@@ -1630,3 +1631,17 @@ def savefig(f, name, base_path=''):
 
     print(f'Saving: {full_path}')
     f.savefig(full_path, dpi=600)
+
+
+def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwargs):
+    """Plots a line in segments to allow alpha stacking on overlap.
+    """
+    idcs = np.sort(np.unique(np.linspace(0, len(x)-1, num_segments).astype(int)))
+
+    for i0, i1 in zip(idcs[:-1], idcs[1:]):
+        ax.plot(
+            x[i0:i1+1],
+            y[i0:i1+1],
+            solid_capstyle=solid_capstyle,  # Ensures clean segment stacking
+            **kwargs
+        )
