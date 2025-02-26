@@ -44,7 +44,7 @@ def classify_by_gm_log10(beta, max_detours=ms(seconds=10)):
     return classify_by_gm(beta_log, max_detours=max_detours)
 
 
-def extract_rem_wins_multi(exp_beta: tr.Traces, key='exp_name', **kwargs):
+def extract_rem_wins_multi(exp_beta: tr.Traces, key=None, **kwargs):
     return {
         (k if key is None else exp_beta.loc[k, key]): extract_rem_wins(beta, **kwargs)
         for k, beta in tqdm(exp_beta.traces.items(), total=len(exp_beta.index), desc='rem wins')
@@ -120,14 +120,14 @@ def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
     std = stats['std']
     count = stats['count']
 
-    n_animals = beta_acorrs['animal'].nunique()
-
     desc = (
         f'mean std:\n{mean / ms(seconds=1):.1f}, {std / ms(seconds=1):.1f}\n\n'
         f'median [.25,.75]:\n{median / ms(seconds=1):.1f} [{q0 / ms(seconds=1):.1f}, {q1 / ms(seconds=1):.1f}]\n\n'
         f'{count:,g} rec\n'
-        f'{n_animals:,g} animals\n'
     )
+    if 'animal' in beta_acorrs.columns:
+        n_animals = beta_acorrs['animal'].nunique()
+        desc += f'{n_animals:,g} animals\n'
 
     splot.add_desc(ax, desc, loc='upper left', fontsize=6, bkg_color='none')
 
