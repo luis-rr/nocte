@@ -3,6 +3,7 @@ Data container for generic LFP events that have a start/stop/reference time.
 Internally stored as a simple pd.DataFrame.
 """
 import logging
+import functools
 
 import numpy as np
 import pandas as pd
@@ -51,6 +52,20 @@ class Events(DataFrameWrapper):
         assert reg.index.is_unique
         super().__init__(reg)
 
+    @property
+    def loc(self):
+        """pd.DataFrame accessor"""
+        return self.reg.loc
+
+    @property
+    def iloc(self):
+        """pd.DataFrame accessor"""
+        return self.reg.iloc
+
+    @functools.wraps(pd.DataFrame.drop)
+    def drop(self, *args, **kwargs):
+        return self.__class__(self.reg.drop(*args, **kwargs))
+
     @classmethod
     def from_hdf(cls, path, desc=None):
         # noinspection PyTypeChecker
@@ -89,8 +104,16 @@ class Events(DataFrameWrapper):
         return len(self.reg)
 
     def to_wins(self):
-        wins = self.reg[['start_time', 'ref_time', 'stop_time']].copy()
-        wins.columns = ['start', 'ref', 'stop']
+        wins = self.reg.copy()
+
+        if 'start_time' not in wins.columns:
+            wins['start_time'] = wins['ref_time']
+
+        if 'stop_time' not in wins.columns:
+            wins['stop_time'] = wins['ref_time']
+
+        wins.rename(columns=dict(start_time='start', stop_time='stop', ref_time='ref'), inplace=True)
+
         return timeslice.Windows(wins)
 
     def _repr_html_(self):
