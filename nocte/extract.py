@@ -242,7 +242,7 @@ def process_experiment_power(
 
     power_trace: pd.Series = power.sel(freq_band=band, channel=channel).to_series()
 
-    power_trace.to_hdf(str(results_path), 'power', mode='a')
+    power_trace.to_hdf(str(results_path), key='power', mode='a')
 
 
 def extract_all_power(reg, band, sliding_win, sliding_step, areas=('CLA',), ignore_failures=True):
@@ -325,7 +325,7 @@ def process_experiment_sne(
 
         all_events_list.append(chunk_events.reg)
         all_events = pd.concat(all_events_list, axis=0, ignore_index=True).rename_axis(index='event_id')
-        all_events.to_hdf(results_path, 'sne')
+        all_events.to_hdf(results_path, key='sne')
 
 
 def extract_all_sne(reg, areas=('CLA',), suffix='', ignore_failures=True, load_win=None, missing=True):
@@ -389,7 +389,7 @@ def process_experiment_matching(
         show_pbar=show_pbar,
     )
 
-    matching.to_hdf(str(results_path), 'path')
+    matching.to_hdf(str(results_path), key='path')
 
 
 def extract_all_matchings(

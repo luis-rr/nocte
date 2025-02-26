@@ -312,7 +312,7 @@ def extract_exp_luminance(vid_path, res_path, key):
     lum = extract_lights_on(frames)
 
     res_path.parent.mkdir(parents=True, exist_ok=True)
-    lum.to_hdf(str(res_path), key)
+    lum.to_hdf(str(res_path), key=key)
 
 
 def fix_exp_luminance(exp_info, lum_raw, smooth_ms=None):
