@@ -101,7 +101,7 @@ def load_light_wins_multi(reg, only_pulse=False, max_pulse_length=ms(minutes=2))
                 light_wins.wins.index = light_wins['pulse_idx'].astype(int)
 
             if len(light_wins) > 0:
-                exp_light_wins[exp_name] = light_wins
+                exp_light_wins[exp_name] = light_wins.copy()
 
     return exp_light_wins
 
@@ -137,7 +137,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
                 reg.get_entry(exp_name), lum_raw,
             )
 
-            fixed.to_hdf(str(lum_path), fix_key)
+            fixed.to_hdf(str(lum_path), key=fix_key)
 
         except (FileNotFoundError, AssertionError) as e:
             logging.error(f'{exp_name}: {e}')
@@ -336,7 +336,7 @@ def collect_all_pulses(
     all_pulses = {}
 
     for exp_name, wins in exp_light_wins.items():
-        lights = wins.sel(cat=cat)
+        lights = wins.sel(cat=cat).copy()
 
         lights['to_prev'] = lights.interval_to_prev()
         lights['to_next'] = lights.interval_to_next()
@@ -365,7 +365,7 @@ def collect_all_pulses(
         # else:
         #     logging.warning(f'Not selecting by pulse length')
 
-        pulses = lights.sel_mask(mask)
+        pulses = lights.sel_mask(mask).copy()
         pulses['pulse_len'] = lengths[mask]
         pulses['pulse_len_precise'] = lengths_precise[mask]
 
