@@ -187,7 +187,7 @@ def extract_power_sliding(
         bands = FREQ_BANDS.loc[bands]
 
     welch_ms = default_welch_ms(welch_ms, bands['freq_min'].min())
-    assert sliding_win_len_ms > welch_ms, \
+    assert sliding_win_len_ms >= welch_ms, \
         f'Sliding window ({sliding_win_len_ms} ms) must be bigger than ' \
         f'Welch window ({welch_ms}ms; lowest freq: {bands.freq_min.replace(0, np.nan).min()} Hz)'
 
