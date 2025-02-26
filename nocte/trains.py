@@ -84,15 +84,15 @@ class SpikeTrains:
     def load(cls, fullpath, win_ms):
         """load HDF5"""
         return cls(
-            cells=pd.read_hdf(fullpath, 'cells'),
-            spikes=pd.read_hdf(fullpath, 'spikes'),
+            cells=pd.read_hdf(fullpath, key='cells'),
+            spikes=pd.read_hdf(fullpath, key='spikes'),
             win_ms=win_ms,
         )
 
     def store(self, fullpath):
         """save as HDF5"""
-        self.cells.to_hdf(fullpath, 'cells')
-        self.spikes.to_hdf(fullpath, 'spikes')
+        self.cells.to_hdf(fullpath, key='cells')
+        self.spikes.to_hdf(fullpath, key='spikes')
 
     def copy(self):
         """make a copy"""
