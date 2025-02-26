@@ -56,8 +56,12 @@ class DataFrameWrapper:
         return self.reg.value_counts(*args, **kwargs)
 
     @functools.wraps(pd.DataFrame.sort_values)
-    def sort_values(self, sortby, **kwargs):
-        return self.__class__(self.reg.sort_values(sortby, **kwargs))
+    def sort_values(self, *args, **kwargs):
+        return self.__class__(self.reg.sort_values(*args, **kwargs))
+
+    @functools.wraps(pd.DataFrame.sort_index)
+    def sort_index(self, *args, **kwargs):
+        return self.__class__(self.reg.sort_index(*args, **kwargs))
 
     def sel(self, rows=None, /, **kwargs):
         """
