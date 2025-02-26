@@ -338,6 +338,9 @@ def collect_all_pulses(
     for exp_name, wins in exp_light_wins.items():
         lights = wins.sel(cat=cat).copy()
 
+        if len(lights) == 0:
+            continue
+
         lights['to_prev'] = lights.interval_to_prev()
         lights['to_next'] = lights.interval_to_next()
 
@@ -371,7 +374,9 @@ def collect_all_pulses(
 
         all_pulses[exp_name] = pulses
 
-    return timeslice.Windows.concat(all_pulses, cycle_name='exp_name')
+    all_pulses = timeslice.Windows.concat(all_pulses, cycle_name='exp_name')
+
+    return all_pulses
 
 
 def collect_analysis_windows(
@@ -384,7 +389,14 @@ def collect_analysis_windows(
     exp_light_wins = load_light_wins_multi(reg_sel)
 
     all_pulses = collect_all_pulses(exp_light_wins, **pulse_sel_kwargs)
-    analysis_windows = all_pulses.centered(win_len, align_to, old='pulse')
+
+    if isinstance(win_len, (float, int)):
+        win = Win.build_centered(0, win_len)
+    else:
+        assert isinstance(win_len, (tuple, Win))
+        win = win_len
+
+    analysis_windows = all_pulses.around(win, align_to, old='pulse')
 
     analysis_windows['aligned_to'] = align_to
 
