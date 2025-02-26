@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import functools
 
+from tqdm.auto import tqdm
+
 
 class DataFrameWrapper:
     """
@@ -40,6 +42,14 @@ class DataFrameWrapper:
     @functools.wraps(pd.DataFrame.__repr__)
     def __repr__(self):
         return self.reg.__repr__()
+
+    @property
+    def loc(self):
+        return self.reg.loc
+
+    @property
+    def iloc(self):
+        return self.reg.iloc
 
     # noinspection PyProtectedMember
     @functools.wraps(pd.DataFrame._repr_html_)
@@ -114,11 +124,14 @@ class DataFrameWrapper:
     def sel_match(self, *, how='all', invert=False, **col_values):
         """
         Select by direct comparison of some column.
+
+        We allow to select for missing values by using np.nan.
+
         For example:
             wins.sel(cat='baseline')
         """
         criterias = [
-            (self.reg[col] == value)
+            (self.reg[col] == value) if not pd.isna(value) else self.reg[col].isna()
             for col, value in col_values.items()
         ]
 
@@ -158,3 +171,19 @@ class DataFrameWrapper:
     def shuffle(self):
         """Return a shuffled version of reg."""
         return self.sample(frac=1, replace=False)
+
+
+def _optional_pbar(iterator, total, pbar, desc=None, many=100):
+    """sensible defaults for iterating with an optional progress bar"""
+
+    if pbar is None:
+        pbar = total > many
+
+    if pbar is True:
+        pbar = tqdm
+
+    if pbar is not False:
+        return pbar(iterator, total=total, desc=desc)
+
+    else:
+        return iterator

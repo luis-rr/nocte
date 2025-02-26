@@ -852,7 +852,7 @@ class Stack:
     @classmethod
     def load_idcs(
             cls, raw, windows,
-            channels='all', load_hz=None, adjust_gain=True, show_pbar=True,
+            channels='all', load_hz=None, adjust_gain=True, pbar=True,
             early_exit=False,
     ):
         """
@@ -866,7 +866,7 @@ class Stack:
         :param channels: single channel or list of channel idcs. Default: all valid channels.
         :param load_hz:
         :param adjust_gain:
-        :param show_pbar:
+        :param pbar:
         :param early_exit:
         :return: a Stack of shape (channel, window, sample)
         """
@@ -905,7 +905,7 @@ class Stack:
             enumerate(windows[['start', 'stop']].itertuples())
         ))
 
-        if show_pbar:
+        if pbar:
             combs = tqdm(combs, desc='load trace')
 
         if (windows['start'] < 0).any() or (windows['stop'] < 0).any():
@@ -946,7 +946,7 @@ class Stack:
     @classmethod
     def load_ms(
             cls, raw, times, win_ms,
-            channels='all', load_hz=None, adjust_gain=True, show_pbar=True,
+            channels='all', load_hz=None, adjust_gain=True, pbar=True,
             early_exit=False,
     ):
         """
@@ -966,7 +966,7 @@ class Stack:
 
         :param load_hz:
         :param adjust_gain:
-        :param show_pbar:
+        :param pbar:
         :param early_exit:
 
         :return: a Stack of shape (channel, window, ms)
@@ -977,7 +977,7 @@ class Stack:
 
         stack = cls.load_idcs(
             raw, windows=wins_idcs, channels=channels,
-            load_hz=load_hz, adjust_gain=adjust_gain, show_pbar=show_pbar,
+            load_hz=load_hz, adjust_gain=adjust_gain, pbar=pbar,
             early_exit=early_exit,
         )
 

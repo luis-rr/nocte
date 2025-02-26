@@ -1222,7 +1222,7 @@ def plot_trace_highlighted(ax, trace: pd.Series, wins: timeslice.Windows, styles
         styles = {}
 
     # noinspection PyTypeChecker
-    cropped = wins.crop_df(trace, show_pbar=len(wins) > 1000, reset=None).items()
+    cropped = wins.crop_df(trace, pbar=len(wins) > 1000, reset=None).items()
 
     if len(cropped) > 1000:
         cropped = tqdm(cropped, desc='plot')
@@ -1645,3 +1645,38 @@ def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwa
             solid_capstyle=solid_capstyle,  # Ensures clean segment stacking
             **kwargs
         )
+
+
+def _get_index_extent(index) -> tuple:
+    if isinstance(index, pd.IntervalIndex):
+        extent = (
+            index.min().left,
+            index.max().right,
+        )
+
+    else:
+        assert len(index) >= 1
+
+        if len(index) > 1:
+            sampling = index[1] - index[0]
+        else:
+            sampling = 1
+
+        extent = (
+            index.min() - sampling * 0.5,
+            index.max() + sampling * 0.5,
+        )
+
+    return extent
+
+
+def plot_df2d(ax, df, origin='lower', interpolation='none', **kwargs):
+    extent = _get_index_extent(df.index) + _get_index_extent(df.columns)
+
+    return ax.imshow(
+        df.values.T,
+        extent=extent,
+        origin=origin,
+        interpolation=interpolation,
+        **kwargs,
+    )

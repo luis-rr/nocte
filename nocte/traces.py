@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from nocte import timeslice
 from nocte import datadict as dd
 from nocte.analysis import sleep
-from nocte.df_wrapper import DataFrameWrapper
+from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 
 # @nb.njit(parallel=True)
@@ -206,23 +206,6 @@ def _estimate_sampling_period(times, atol=1.e-6) -> float:
 
     # noinspection PyTypeChecker
     return dts[0]
-
-
-
-def _optional_pbar(iterator, total, pbar, desc=None, many=100):
-    """sensible defaults for iterating with an optional progress bar"""
-
-    if pbar is None:
-        pbar = total > many
-
-    if pbar is True:
-        pbar = tqdm
-
-    if pbar is not False:
-        return pbar(iterator, total=total, desc=desc)
-
-    else:
-        return iterator
 
 
 class Traces(DataFrameWrapper):
@@ -774,15 +757,15 @@ class Traces(DataFrameWrapper):
         # noinspection PyProtectedMember
         return self.reg._repr_html_()
 
-    def groupby_mix(self, by, how, drop=None):
+    def groupby_mix(self, by, how):
 
         if not isinstance(by, list):
             by = [by]
 
-        if drop is None:
-            # noinspection PyUnresolvedReferences
-            different = (self.reg.groupby(by).nunique() > 1).any()
-            drop = different.index[different]
+        # if drop is None:
+        #     # noinspection PyUnresolvedReferences
+        #     different = (self.reg.groupby(by).nunique() > 1).any()
+        #     drop = different.index[different]
 
         by = [self.reg[col] for col in by]
 
@@ -792,8 +775,11 @@ class Traces(DataFrameWrapper):
         for k, straces in self.traces.T.groupby(by):
             straces = straces.T
             sreg = self.reg.loc[straces.columns]
-            sreg = sreg.drop(drop, axis=1).drop_duplicates()
-            assert len(sreg) == 1, f'Expected single trace for {k}. Got: {sreg.nunique()}'
+
+            same_values = sreg.nunique(dropna=True) == 1
+            none_missing = sreg.isna().sum() == 0
+            sreg = sreg.loc[:, same_values & none_missing].drop_duplicates()
+            assert len(sreg) == 1, f'Expected single trace for {k}. Got {len(sreg)}: {sreg.nunique()}'
             idx = sreg.index[0]
 
             agg_reg[idx] = sreg.iloc[0]
@@ -1344,7 +1330,7 @@ class Traces(DataFrameWrapper):
             series: pd.Series,
             zoom_wins: timeslice.Windows,
             upsampling_ms=None,
-            show_pbar=None,
+            pbar=None,
     ):
         if upsampling_ms is None:
             period = np.diff(series.index)[0]
@@ -1353,7 +1339,7 @@ class Traces(DataFrameWrapper):
         traces = zoom_wins.interp_series(
             series,
             step=upsampling_ms,
-            show_pbar=show_pbar,
+            pbar=pbar,
         )
 
         traces_df = pd.concat(traces, axis=1, names=[zoom_wins.index.name])
@@ -1369,12 +1355,12 @@ class Traces(DataFrameWrapper):
             self,
             zoom_wins: timeslice.Windows,
             upsampling_ms=100,
-            show_pbar=None,
+            pbar=None,
     ):
         interp_traces = zoom_wins.interp_df(
             self.traces,
             step=upsampling_ms,
-            show_pbar=show_pbar,
+            pbar=pbar,
         )
 
         traces = pd.concat(interp_traces, axis=1, names=[zoom_wins.index.name])
@@ -1632,14 +1618,6 @@ class Traces(DataFrameWrapper):
     @property
     def shape(self):
         return self.reg.shape
-
-    @property
-    def loc(self):
-        return self.reg.loc
-
-    @property
-    def iloc(self):
-        return self.reg.iloc
 
     @property
     def values(self):

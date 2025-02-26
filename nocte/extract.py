@@ -360,7 +360,7 @@ def process_experiment_matching(
         reg: Registry, exp_name,
         null_thresh,
         xcorr_sliding_win,
-        show_pbar,
+        pbar,
 ):
     results_path = Path(results_path)
     results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -386,7 +386,7 @@ def process_experiment_matching(
         sns.round(),
         xcorr,
         null_thresh=null_thresh,
-        show_pbar=show_pbar,
+        pbar=pbar,
     )
 
     matching.to_hdf(str(results_path), key='path')
@@ -395,7 +395,7 @@ def process_experiment_matching(
 def extract_all_matchings(
         reg, suffix='', area='',
         null_thresh=.05, xcorr_sliding_win=100,
-        show_pbar=False,
+        pbar=False,
         ignore_failures=True,
 ):
     missing = reg.collect_paths_matching(missing=True, area=area, suffix=suffix)
@@ -407,7 +407,7 @@ def extract_all_matchings(
                 results_path, reg, exp_name,
                 null_thresh=null_thresh,
                 xcorr_sliding_win=xcorr_sliding_win,
-                show_pbar=show_pbar,
+                pbar=pbar,
             )
         except KeyboardInterrupt:
             raise

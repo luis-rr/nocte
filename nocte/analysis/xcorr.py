@@ -127,7 +127,7 @@ def valid_cross_corr(
         win_length_ms=1_000,
         dim='time',
         sliding_step_ms=None,
-        show_pbar=True,
+        pbar=True,
         kern=None,
 ):
     """
@@ -182,7 +182,7 @@ def valid_cross_corr(
 
     norm = 1  # (np.std(s0) * np.std(s1))
 
-    if show_pbar:
+    if pbar:
         lags_idx = tqdm(lags_idx, desc='lag')
 
     idcs = sliding_wins[['start', 'stop']].values.astype(int).copy()

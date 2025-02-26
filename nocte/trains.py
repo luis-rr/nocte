@@ -406,12 +406,12 @@ class SpikeTrains:
             fr=False,
             rolling_wins=None,
             rolling_win_type='hamming',
-            show_pbar=True
+            pbar=True
     ):
         """return a pd.DataFrame containing the histogram of spikes for each cluster"""
 
         grouped = self.spikes.groupby(gid_col)[time_col]
-        if show_pbar:
+        if pbar:
             grouped = tqdm(grouped, desc='spks.cells')
 
         df = pd.DataFrame.from_dict({
@@ -432,13 +432,13 @@ class SpikeTrains:
 
         return df
 
-    def compute_isi(self, tbins, time_col='time', pmf=False, show_pbar=True):
+    def compute_isi(self, tbins, time_col='time', pmf=False, pbar=True):
         """Compute Inter-Spike-Intervals"""
         tdiffs = self.spikes.sort_values(['gid', time_col]).groupby(['gid'])[time_col].diff()
         bin_widths = tbins[1:] - tbins[:-1]
 
         grouped = tdiffs.groupby(self.spikes['gid'])
-        if show_pbar:
+        if pbar:
             grouped = tqdm(grouped, desc='spks.cells')
 
         # noinspection PyUnresolvedReferences

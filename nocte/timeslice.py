@@ -10,7 +10,8 @@ import numba
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
-from nocte.df_wrapper import DataFrameWrapper
+
+from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 S_TO_MS = 1e3
 MS_TO_S = 1. / S_TO_MS
@@ -569,10 +570,12 @@ class Win(tuple):
         assert np.all(series.index[:-1] < series.index[1:]), f'Index should be monotonic. Got: {series.index}'
 
         # for very long series, we can just cut it before doing any checks
-        idx_start = np.searchsorted(series.index, self.start) - 1
+        # noinspection PyTypeChecker
+        idx_start: int = np.searchsorted(series.index, self.start) - 1
         idx_start = max(idx_start, 0)
 
-        idx_stop = np.searchsorted(series.index, self.stop) + 1
+        # noinspection PyTypeChecker
+        idx_stop: int = np.searchsorted(series.index, self.stop) + 1
         idx_stop = min(idx_stop, len(series))
 
         series = series.iloc[idx_start:idx_stop]
@@ -604,7 +607,7 @@ class Win(tuple):
 
         return pd.Series(new_series, index=new_time)
 
-    def interp_df(self, df: pd.DataFrame, step, show_pbar=None, **kwargs) -> pd.DataFrame:
+    def interp_df(self, df: pd.DataFrame, step, pbar=None, **kwargs) -> pd.DataFrame:
         """
         Resample the data within the given window using linear interpolation.
 
@@ -619,13 +622,7 @@ class Win(tuple):
                 **kwargs,
             )
 
-        df_iter = df.items()
-
-        if show_pbar is None:
-            show_pbar = len(df.columns) > 10
-
-        if show_pbar:
-            df_iter = tqdm(df_iter, total=len(df.columns), desc='interp')
+        df_iter = _optional_pbar(df.items(), total=len(df.columns), desc='interp', pbar=pbar)
 
         new_df = {
             k: self.interp_series(series, step, **kwargs)
@@ -756,29 +753,47 @@ class Windows(DataFrameWrapper):
 
         return cls(df)
 
-    def around(self, win, q='mid'):
+    def around(self, win, q='mid', old=None):
         """build a new set of windows around a reference time of the current ones"""
         new_wins = self.__class__.build_around(
             self.relative_time(q),
             win,
         )
 
-        new_wins = new_wins.add_cols(self.reg.loc[:, self.columns_extra])
+        cols = self.reg.loc[:, self.columns_extra]
+
+        if old is not None:
+            cols = pd.concat([
+                cols,
+                self[['start', 'stop']].add_prefix(f'{old}_'),
+            ], axis=1)
+
+        new_wins = new_wins.add_cols(cols)
 
         return new_wins
 
-    def before(self, duration, offset=0, q='start'):
+    def centered(self, duration, q='mid', old=None):
+        """build a new set of windows centered in the middle of these ones"""
+        return self.around(
+            Win.build_centered(0, duration),
+            q=q,
+            old=old,
+        )
+
+    def before(self, duration, offset=0, q='start', old=None):
         """build a new set of windows before the current ones"""
         return self.around(
             (-duration + offset, offset),
             q=q,
+            old=old,
         )
 
-    def after(self, duration, offset=0, q='stop'):
+    def after(self, duration, offset=0, q='stop', old=None):
         """build a new set of windows after the current ones"""
         return self.around(
             (offset, duration + offset),
             q=q,
+            old=old,
         )
 
     def before_after(
@@ -813,25 +828,6 @@ class Windows(DataFrameWrapper):
             marks,
             win=Win.build_centered(0, duration=duration),
         )
-
-    def centered(self, duration, q='mid', old=None):
-        """build a new set of windows centered in the middle of these ones"""
-        new_wins = self.__class__.build_centered(
-            self.relative_time(q),
-            duration,
-        )
-
-        cols = self.reg.loc[:, self.columns_extra]
-
-        if old is not None:
-            cols = pd.concat([
-                cols,
-                self[['start', 'stop']].add_prefix(f'{old}_'),
-            ], axis=1)
-
-        new_wins = new_wins.add_cols(cols)
-
-        return new_wins
 
     @classmethod
     def build_around_multiple(cls, marks, **wins):
@@ -1256,7 +1252,7 @@ class Windows(DataFrameWrapper):
 
     def generate_cat_contiguous(
             self, sampling_period, start=None, stop=None,
-            dim='cat', show_pbar=None,
+            dim='cat', pbar=None,
             fillna=False,
     ) -> pd.Series:
         """
@@ -1265,7 +1261,7 @@ class Windows(DataFrameWrapper):
         Reverse to build_from_contiguous_values
 
         :param sampling_period:
-        :param show_pbar:
+        :param pbar:
         :param fillna:
         :param dim:
         :param start: by default, start of earliest window
@@ -1285,8 +1281,8 @@ class Windows(DataFrameWrapper):
         mode = pd.Series(fillna, index=index)
 
         slicing = self.reg[['start', 'stop', dim]].itertuples()
-        if show_pbar:
-            slicing = tqdm(slicing, total=len(self), desc='gen values')
+
+        slicing = _optional_pbar(slicing, total=len(self), desc='gen values', pbar=pbar)
 
         for _, start, stop, cat in slicing:
             mode.loc[start:stop] = cat
@@ -1407,15 +1403,15 @@ class Windows(DataFrameWrapper):
 
         return wins_ms
 
-    def iter_wins(self, show_pbar=False):
-        for idx, ref, win in self.iter_wins_ref(show_pbar=show_pbar):
+    def iter_wins(self, pbar=None):
+        for idx, ref, win in self.iter_wins_ref(pbar=pbar):
             yield idx, win
 
-    def iter_wins_ref(self, show_pbar=False):
-        for idx, win, props in self.iter_wins_items(show_pbar=show_pbar):
+    def iter_wins_ref(self, pbar=None):
+        for idx, win, props in self.iter_wins_items(pbar=pbar):
             yield idx, props['ref'], win
 
-    def iter_wins_items(self, show_pbar=False):
+    def iter_wins_items(self, pbar=None):
         """
         Iterate over the windows with all of their properties.
         :returns: Iterable where the returned items are tuples:
@@ -1430,18 +1426,16 @@ class Windows(DataFrameWrapper):
 
         it = self.reg.T.items()
 
-        if show_pbar:
-            it = tqdm(it, total=len(self.reg))
+        it = _optional_pbar(it, total=len(self.reg), pbar=pbar)
 
         for idx, props in it:
             yield idx, Win(props['start'], props['stop']), props[other_cols]
 
-    def iter_groupby(self, *args, show_pbar=False, **kwargs):
+    def iter_groupby(self, *args, pbar=None, **kwargs):
         """Iterate these windows after pd.groupby. Objects returned will be of Windows type."""
         grouped = self.groupby(*args, **kwargs)
 
-        if show_pbar:
-            grouped = tqdm(grouped, total=len(grouped))
+        grouped = _optional_pbar(grouped, total=len(grouped), pbar=pbar)
 
         for key, group in grouped:
             yield key, Windows(group)
@@ -1477,11 +1471,11 @@ class Windows(DataFrameWrapper):
 
         return self.reg.loc[win_idx]
 
-    def crop_df(self, df: pd.DataFrame, reset='ref', by=None, show_pbar=False) -> dict:
+    def crop_df(self, df: pd.DataFrame, reset='ref', by=None, pbar=None) -> dict:
 
         sections = {}
 
-        for idx, win in self.iter_wins(show_pbar=show_pbar):
+        for idx, win in self.iter_wins(pbar=pbar):
             win: Win
 
             # look up reset time specific for this window
@@ -1493,11 +1487,11 @@ class Windows(DataFrameWrapper):
 
         return sections
 
-    def interp_series(self, s: pd.Series, step: float, reset='ref', show_pbar=False):
+    def interp_series(self, s: pd.Series, step: float, reset='ref', pbar=None):
 
         sections = {}
 
-        for idx, win in self.iter_wins(show_pbar=show_pbar):
+        for idx, win in self.iter_wins(pbar=pbar):
             win: Win
 
             # look up reset time specific for this window
@@ -1509,11 +1503,11 @@ class Windows(DataFrameWrapper):
 
         return sections
 
-    def interp_df(self, df: pd.DataFrame, step: float, reset='ref', show_pbar=False):
+    def interp_df(self, df: pd.DataFrame, step: float, reset='ref', pbar=None):
 
         sections = {}
 
-        for idx, win in self.iter_wins(show_pbar=show_pbar):
+        for idx, win in self.iter_wins(pbar=pbar):
             win: Win
 
             # look up reset time specific for this window
@@ -1521,7 +1515,7 @@ class Windows(DataFrameWrapper):
             if isinstance(reset, str):
                 win_reset = win.to_relative_time(self.reg.loc[idx, reset])
 
-            sections[idx] = win.interp_df(df, step=step, reset=win_reset, show_pbar=False)
+            sections[idx] = win.interp_df(df, step=step, reset=win_reset, pbar=False)
 
         return sections
 
@@ -1747,7 +1741,7 @@ class Windows(DataFrameWrapper):
 
         return new
 
-    def crop_to_multiple(self, others, show_pbar=True, drop=False):
+    def crop_to_multiple(self, others, pbar=None, drop=False):
         """
         Crop all of these windows so they only cover periods covered in 'others'.
         Note that this may drop original windows, reduce their size or even
@@ -1755,15 +1749,15 @@ class Windows(DataFrameWrapper):
         Original index is kept as a column "original_win_idx".
 
         :param others: another Windows instance
-        :param show_pbar:
+        :param pbar:
         :param drop: whether to keep the old win_idx as a column "original_win_idx"
         :return:
         """
         assert self.are_exclusive() and others.are_exclusive()
 
         others_bounds = others.reg[['start', 'stop']].itertuples()
-        if show_pbar:
-            others_bounds = tqdm(others_bounds, total=len(others))
+
+        others_bounds = _optional_pbar(others_bounds, total=len(others), pbar=pbar)
 
         all_cropped = []
         for _, start, stop in others_bounds:

@@ -19,7 +19,7 @@ import nocte.traces
 from nocte import timeslice
 from nocte.stacks import Stack
 from nocte.datadict import DataDict
-from nocte.df_wrapper import DataFrameWrapper
+from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 
 def get_root_laur():
@@ -744,8 +744,7 @@ class Registry(DataFrameWrapper):
 
         grouped = self.reg.groupby(*args, **kwargs)
 
-        if pbar is not None:
-            grouped = pbar(list(grouped))
+        grouped = _optional_pbar(list(grouped), total=len(grouped), pbar=pbar)
 
         for k, sreg in grouped:
             yield k, self.__class__(sreg)
@@ -814,15 +813,13 @@ class Registry(DataFrameWrapper):
     def load_all_beta(self, exp_name, *args, **kwargs) -> pd.DataFrame:
         return self.get_entry(exp_name).load_all_beta(*args, **kwargs)
 
-    def load_all_beta_traces_multi(self, *args, show_pbar=True, **kwargs):
+    def load_all_beta_traces_multi(self, *args, pbar=True, **kwargs):
 
         all_traces = []
 
         to_load = self.experiment_names
 
-        if show_pbar is not False:
-            show_pbar = tqdm if show_pbar is True else show_pbar
-            to_load = show_pbar(to_load, desc='load beta')
+        to_load = _optional_pbar(to_load, desc='load beta', pbar=pbar, total=len(to_load))
 
         for exp_name in to_load:
             traces = self.get_entry(exp_name).load_all_beta_traces(*args, **kwargs)

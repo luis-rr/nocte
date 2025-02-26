@@ -24,7 +24,7 @@ def _extract_event_pairs_dag(
         lag_win,
         min_xcorr: float,
         null_thresh: float,
-        show_pbar=True,
+        pbar=True,
 ) -> np.ndarray:
     """
     Build a matrix representing which events can be matched together,
@@ -64,7 +64,7 @@ def _extract_event_pairs_dag(
     nodes = nodes[:, valid]
 
     iter_nodes = nodes.T
-    if show_pbar:
+    if pbar:
         iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
     xcorr_values = np.array([
@@ -81,7 +81,7 @@ def _extract_event_pairs_dag(
     return value_mat
 
 
-def _find_gradient_dagmat(dagmat, max_ahead, show_pbar=True):
+def _find_gradient_dagmat(dagmat, max_ahead, pbar=True):
     """
     :param dagmat: this is NOT a connectivity matrix (see extract_event_pairs_dag)
 
@@ -114,7 +114,7 @@ def _find_gradient_dagmat(dagmat, max_ahead, show_pbar=True):
     next_node = {}
 
     iter_nodes = nodes.T
-    if show_pbar:
+    if pbar:
         iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
     for i, j in iter_nodes:
@@ -149,7 +149,7 @@ def find_highest_path_dag(
         lag_win=None,
         min_xcorr=0,
         max_ahead=None,
-        show_pbar=True,
+        pbar=True,
 ) -> np.array:
     """
 
@@ -167,7 +167,7 @@ def find_highest_path_dag(
     :param null_thresh:
     :param lag_win:
     :param min_xcorr:
-    :param show_pbar:
+    :param pbar:
 
     :return: a list of nodes (i, j) indicating the path of maximum value
 
@@ -175,12 +175,12 @@ def find_highest_path_dag(
     """
     dagmat = _extract_event_pairs_dag(
         xcorr, t0s, s0s, t1s, s1s, lag_win, min_xcorr,
-        null_thresh=null_thresh, show_pbar=show_pbar)
+        null_thresh=null_thresh, pbar=pbar)
 
     if max_ahead is None:
         max_ahead = max(*dagmat.shape)
 
-    root, next_node = _find_gradient_dagmat(dagmat, max_ahead, show_pbar=show_pbar)
+    root, next_node = _find_gradient_dagmat(dagmat, max_ahead, pbar=pbar)
 
     path = [root]
     while next_node[path[-1]] is not None:
@@ -209,7 +209,7 @@ def _calculate_matching(
         ch0=0,
         ch1=1,
         max_ahead=1000,
-        show_pbar=True,
+        pbar=True,
 ) -> np.ndarray:
     e0s = events.sel(channel=ch0).sort_values('ref_time')
     t0s = e0s.reg['ref_time'].values
@@ -225,7 +225,7 @@ def _calculate_matching(
         xcorr, t0s, s0s, t1s, s1s,
         null_thresh=null_thresh,
         max_ahead=max_ahead,
-        show_pbar=show_pbar,
+        pbar=pbar,
     )
 
     matching = np.stack([
@@ -241,7 +241,7 @@ def calculate_matching(
         full_xcorr: Stack,
         null_thresh=.05,
         chunk_size=ms(minutes=30),
-        show_pbar=False,
+        pbar=False,
 ) -> pd.DataFrame:
     sns = _trim_events_outside(full_xcorr, sns)
 
@@ -269,7 +269,7 @@ def calculate_matching(
 
         if len(sns_sel.reg) > 0:
             full_matching.append(
-                _calculate_matching(sns_sel, xcorr_sel, null_thresh=null_thresh, show_pbar=show_pbar)
+                _calculate_matching(sns_sel, xcorr_sel, null_thresh=null_thresh, pbar=pbar)
             )
 
     full_matching = np.concatenate(full_matching, axis=1)

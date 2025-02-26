@@ -148,7 +148,7 @@ def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
 def extract_rem_traces(analysis_windows, exp_rem_wins):
     rem_traces = {}
 
-    for k, win, props in analysis_windows.iter_wins_items(show_pbar=True):
+    for k, win, props in analysis_windows.iter_wins_items(pbar=True):
         rem_wins = exp_rem_wins[props['exp_name']].crop_to_main(win).shift(-props['ref'])
 
         rem_traces[k] = rem_wins.generate_cat_contiguous(100)

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from tqdm.asyncio import tqdm
 
-from nocte.df_wrapper import DataFrameWrapper
+from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 
 class DataDict(DataFrameWrapper):
@@ -39,14 +39,14 @@ class DataDict(DataFrameWrapper):
         data_mapped = {uid: data[tuple(k)] for uid, *k in reg.itertuples()}
         return cls(reg, data_mapped)
 
-    def to_hdf(self, filename, desc='data'):
+    def to_hdf(self, filename, desc='data', pbar=None):
         """
         Store data and registry to HDF5.
         Data must implement "to_hdf" (e.g. pd.DataFrame)
         """
         self.reg.to_hdf(filename, key='reg')
 
-        for k, v in self.data.items():
+        for k, v in self.items(pbar=pbar):
             if hasattr(v, 'to_hdf'):
                 key = f'{desc}_{k:06d}'
                 v.to_hdf(filename, key=key)
@@ -59,7 +59,7 @@ class DataDict(DataFrameWrapper):
                 raise NotImplementedError()
 
     @classmethod
-    def from_hdf(cls, filename, desc='data', show_pbar=True):
+    def from_hdf(cls, filename, desc='data', pbar=True):
         """
         Load data and registry from HDF5.
         """
@@ -70,9 +70,7 @@ class DataDict(DataFrameWrapper):
             file_keys = list(f.keys())
 
         data = {}
-        index = reg.index
-        if show_pbar:
-            index = tqdm(reg.index, desc='loading')
+        index = _optional_pbar(reg.index, total=len(reg.index), desc='loading', pbar=pbar)
 
         for k in index:
 
@@ -104,32 +102,43 @@ class DataDict(DataFrameWrapper):
             self.data,
         )
 
-    def get(self, **kwargs):
-        """Select a SINGLE stack and return it"""
-        if len(kwargs) == 0:
-            selected = self
-        else:
-            selected = self.sel(**kwargs)
+    def get(self, idx=None) -> pd.Series:
+        """return a single item. If no index it's given, we assume there is only one"""
+        if idx is None:
+            assert len(self.index) == 1, f'Found too many traces:\n{self.reg}'
+            idx = self.index[0]
 
-        assert len(selected) > 0, f'No items selected'
-        assert len(selected) == 1, f'Multiple items selected ({len(selected):,g})'
-        return list(selected.data.values())[0]
+        return self.data[idx]
 
-    def items(self, pbar=True):
-        index = self.reg.index
+    def items(self, pbar=None):
+        """
+        returns an iterator to go over each data object:
 
-        pbar_desc = ''
-        if isinstance(pbar, str):
-            pbar_desc = pbar
-            pbar = True
+            for k, data in dd.items(pbar=True):
+                pass
 
-        if pbar:
-            index = tqdm(index, total=len(self.reg), desc=pbar_desc)
+        """
+        # Note we want to respect the order of the registry, not of the dict
+        for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
+            yield k, self.data[k]
 
-        for uid in index:
-            yield self.reg.loc[uid], self.data[uid]
+    def sort_values(self, *args, **kwargs):
+        reg = self.reg.sort_values(*args, **kwargs)
 
-    def extract_df(self, func, pbar=True, **kwargs) -> pd.DataFrame:
+        return self.__class__(
+            reg=reg,
+            data={k: self.data[k] for k in reg.index},
+        )
+
+    def sort_index(self, *args, **kwargs):
+        reg = self.reg.sort_index(*args, **kwargs)
+
+        return self.__class__(
+            reg=reg,
+            data={k: self.data[k] for k in reg.index},
+        )
+
+    def extract_df(self, func, pbar=None, **kwargs) -> pd.DataFrame:
         """
         Extract one pd.Series or pd.DataFrame for each item and
         concatenate them all along axis=1
@@ -149,13 +158,10 @@ class DataDict(DataFrameWrapper):
 
         return df
 
-    def iterby(self, by, show_pbar=True):
+    def iterby(self, by, pbar=None):
         groups = self.reg.groupby(by).groups.items()
 
-        if show_pbar:
-            groups = tqdm(groups, total=len(groups), desc=by)
-
-        for k, uids in groups:
+        for k, uids in _optional_pbar(groups, total=len(groups), desc=by, pbar=pbar):
             subset = self.sel_mask(uids)
             subset.reg.drop(by, axis=1, inplace=True)
             yield k, subset
