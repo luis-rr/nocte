@@ -3061,7 +3061,7 @@ def timestamp_to_milliseconds(timestamp) -> float:
     import re
     # Define regex pattern with optional days, hours, minutes, optional seconds, and milliseconds
     pattern = r'(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
-    match = re.match(pattern, timestamp)
+    match = re.match(pattern, timestamp.strip())
 
     if not match:
         raise ValueError("Invalid timestamp format")

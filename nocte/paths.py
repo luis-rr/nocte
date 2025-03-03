@@ -767,7 +767,7 @@ class Registry(DataFrameWrapper):
         def parse_entry(string):
             try:
                 split = string.find(':')
-                entry_desc, time_str = string[:split], string[split:]
+                entry_desc, time_str = string[:split], string[split + 1:]
 
                 time_ms = timeslice.timestamp_to_milliseconds(time_str)
 
