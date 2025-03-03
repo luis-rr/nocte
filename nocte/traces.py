@@ -296,19 +296,37 @@ class Traces(DataFrameWrapper):
 
         traces = {}
 
-        for idx, ref, win in _optional_pbar(zoom_wins.iter_wins_ref(), total=len(zoom_wins), pbar=pbar):
+        for idx, ref, win_ms in _optional_pbar(zoom_wins.iter_wins_ref(), total=len(zoom_wins), pbar=pbar):
 
-            win = win.clip(loader.win_ms)
+            win_ms = win_ms.clip(loader.win_ms)
 
-            win_rel = win.shift(-ref)
+            win_ms_rel = win_ms.shift(-ref)
+            slice_idcs_rel : slice = win_ms_rel.to_slice_idx(loader.sampling_rate, load_hz)
 
-            slice_rel = win_rel.to_slice_idx(loader.sampling_rate, load_hz)
+            # Rounding for closest sample together with imperfect sampling rates may cause
+            # an off by one difference between:
+            #   win_rel.to_slice_idx(loader.sampling_rate, load_hz)
+            #   win.to_slice_idx(loader.sampling_rate, load_hz)
+            # To prevent this, let's calculate the final idcs as a shift of the relative idcs
+            # which we take as final truth.
 
-            rel_idcs = np.arange(slice_rel.start / slice_rel.step, slice_rel.stop / slice_rel.step, 1)
+            ref_idx = timeslice.ms_to_idcs(loader.sampling_rate, ref)
+            slice_idcs = slice(
+                slice_idcs_rel.start + ref_idx,
+                slice_idcs_rel.stop + ref_idx,
+                slice_idcs_rel.step,
+            )
 
-            win_idcs = win.to_slice_idx(loader.sampling_rate, load_hz)
+            assert (slice_idcs.stop - slice_idcs.start) == (slice_idcs_rel.stop - slice_idcs_rel.start)
 
-            data = loader.load(win_idcs, channels)
+            # This is equivalent of converting to idcs in the ideal load_hz
+            rel_idcs = np.arange(
+                slice_idcs_rel.start / slice_idcs_rel.step,
+                slice_idcs_rel.stop / slice_idcs_rel.step,
+                1,
+            )
+
+            data = loader.load(slice_idcs, channels)
 
             data = pd.DataFrame(data.T, index=rel_idcs, columns=channels)
             data.rename_axis('channel', axis=1, inplace=True)
@@ -974,6 +992,10 @@ class Traces(DataFrameWrapper):
             log.traces.replace(+np.inf, np.nan, inplace=True)
 
         return log
+
+    def power10(self):
+        """opposite of log10"""
+        return self.apply(lambda x: np.power(10, x))
 
     def square(self):
         return self.apply(np.square)
@@ -1997,11 +2019,14 @@ class Traces(DataFrameWrapper):
         sampling_hz = self.sampling_rate
 
         nyquist_freq = sampling_hz / 2
-        low_hz = low_hz / nyquist_freq
-        high_hz = high_hz / nyquist_freq
+        assert high_hz <= nyquist_freq, \
+            f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+
+        low = low_hz / nyquist_freq
+        high = high_hz / nyquist_freq
 
         # noinspection PyUnresolvedReferences
-        params = scipy.signal.butter(order, [low_hz, high_hz], btype='band')
+        params = scipy.signal.butter(order, [low, high], btype='band')
 
         return self.filtfilt(*params)
 
@@ -2011,6 +2036,9 @@ class Traces(DataFrameWrapper):
         sampling_hz = self.sampling_rate
 
         nyquist_freq = sampling_hz / 2
+        assert high_hz <= nyquist_freq, \
+            f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+
         high = high_hz / nyquist_freq
 
         # noinspection PyUnresolvedReferences
