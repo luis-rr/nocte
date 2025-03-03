@@ -33,6 +33,16 @@ class DataDict(DataFrameWrapper):
             data={k: self.data[k] for k in reg.index},
         )
 
+    def apply(self, function, pbar=None, **kwargs):
+        """Apply the given callable independently to each entry"""
+
+        processed = {
+            k: function(v, **kwargs)
+            for k, v in self.items(pbar=pbar)
+        }
+
+        return self.__class__(self.reg, processed)
+
     @classmethod
     def from_dict(cls, data: dict, names=None):
         reg = pd.DataFrame.from_records(list(data.keys()), columns=names)
