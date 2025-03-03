@@ -288,18 +288,51 @@ class Registry(DataFrameWrapper):
     def __init__(self, df: pd.DataFrame):
         assert df.index.is_unique, df.index[df.index.duplicated()]
 
-        df = Registry._paths_cleanup(df)
-
-        Registry._fill_optional_cols(df)
-
-        df = Registry._drop_invalid_probe_info(df)
-
-        if df.index.name is None:
-            df.index.name = 'name'
-
         super().__init__(df.copy())
 
-        self.reg = self.reg.loc[df['raw_path'].notna()].copy()
+        if self.reg.index.name is None:
+            self.reg.index.name = 'name'
+
+        self._paths_cleanup()
+        self._fill_optional_cols()
+        self._drop_invalid_probe_info()
+        self._warn_missing_entries()
+
+        self.reg = self.reg.copy()
+
+    def copy(self):
+        return self.__class__(self.reg.copy())
+
+    def _warn_missing_entries(self):
+
+        expected_cols = ['raw_path']
+
+        for col in expected_cols:
+            valid_path = self.reg[col].notna()
+
+            for k in self.reg.index[~valid_path]:
+                logging.warning(f'{k} is missing entry "{col}".')
+
+    def _drop_invalid_probe_info(self):
+        probe_info = self.reg[[
+            'probe0', 'probe1', 'probe2', 'probe3',
+            'side0', 'side1', 'side2', 'side3',
+            'ch0', 'ch1', 'ch2', 'ch3',
+        ]].copy()
+
+        probe_info.columns = pd.MultiIndex.from_product(
+            [['probe', 'side', 'ch'], [0, 1, 2, 3]],
+            names=['which', 'idx'],
+        )
+
+        invalid = probe_info.isna().T.groupby('idx').any().T
+
+        invalid = invalid.all(axis=1)
+
+        if invalid.any():
+            logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
+
+        self.reg = self.reg.loc[~invalid]
 
         probe_counts = pd.Series({
             exp_name: len(self.get_probe_channels(exp_name))
@@ -314,61 +347,29 @@ class Registry(DataFrameWrapper):
                 f'Dropping: {list(probe_counts.index[probe_counts == 0])}'
             )
             # noinspection PyUnresolvedReferences
-            self.reg = self.sel_mask(probe_counts != 0).reg
+            self.reg = self.reg[probe_counts != 0]
 
-    def copy(self):
-        return self.__class__(self.reg.copy())
-
-    @staticmethod
-    def _drop_invalid_probe_info(df):
-        probe_info = df[[
-            'probe0', 'probe1', 'probe2', 'probe3',
-            'side0', 'side1', 'side2', 'side3',
-            'ch0', 'ch1', 'ch2', 'ch3',
-        ]].copy()
-
-        probe_info.columns = pd.MultiIndex.from_product([['probe', 'side', 'ch'], [0, 1, 2, 3]], names=['which', 'idx'])
-
-        invalid = probe_info.isna().T.groupby('idx').any().T
-
-        invalid = invalid.all(axis=1)
-
-        if invalid.any():
-            logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
-
-        df = df.loc[~invalid]
-
-        return df
-
-    @staticmethod
-    def _paths_cleanup(df):
-
-        df = df.copy()
-
-        path_cols = df.columns[df.columns.str.endswith('path')]
+    def _paths_cleanup(self):
+        path_cols = self.reg.columns[self.reg.columns.str.endswith('path')]
 
         for col in path_cols:
 
-            paths = df[col]
+            paths = self.reg[col]
 
             paths = Registry._paths_patch(paths)
             paths = Registry._paths_abs(paths)
             paths = Registry._paths_ensure(paths)
 
-            df[col] = paths.copy()
+            self.reg[col] = paths.copy()
 
-        essential_cols = ['raw_path']
-
+        essential_cols = []
         for col in essential_cols:
-            valid_path = df[col].notna()
+            valid_path = self.reg[col].notna()
 
-            for k in df.index[~valid_path]:
-                print(df.loc[k])
-                logging.error(f'Dropping {k}: missing {col}.')
+            for k in self.reg.index[~valid_path]:
+                logging.error(f'Dropping {k}: missing {col}:\n{self.reg.loc[k]}')
 
-            df = df.loc[valid_path]
-
-        return df.copy()
+            self.reg = self.reg.loc[valid_path]
 
     @staticmethod
     def _paths_patch(paths):
@@ -432,16 +433,15 @@ class Registry(DataFrameWrapper):
 
         return paths_abs.reindex(paths.index)
 
-    @staticmethod
-    def _fill_optional_cols(df):
+    def _fill_optional_cols(self):
         optional_cols = [
             'probe0', 'probe1', 'probe2', 'probe3',
             'side0', 'side1', 'side2', 'side3',
             'ch0', 'ch1', 'ch2', 'ch3',
         ]
         for col in optional_cols:
-            if col not in df.columns:
-                df[col] = np.nan
+            if col not in self.reg.columns:
+                self.reg[col] = np.nan
 
 
 
@@ -765,11 +765,16 @@ class Registry(DataFrameWrapper):
     def load_timestamps(self, col):
 
         def parse_entry(string):
-            entry_desc, time_str = string.split(' - ')
+            try:
+                split = string.find(':')
+                entry_desc, time_str = string[:split], string[split:]
 
-            time_ms = timeslice.timestamp_to_milliseconds(time_str)
+                time_ms = timeslice.timestamp_to_milliseconds(time_str)
 
-            return entry_desc, time_ms
+                return entry_desc, time_ms
+
+            except ValueError:
+                raise ValueError(f'Expected string format "description - Xd HH:MM:SS.MS" got "{string}"')
 
         events_desc = self[col].dropna()
 
@@ -965,3 +970,15 @@ class Registry(DataFrameWrapper):
             name: Path(f'{path.parent}/{path.name[:5]}reduced.avi')
             for name, path in raw_vid_paths.items()
         })
+
+    def load_solar_offsets(self, pbar=True) -> pd.Series:
+        """Attempt to extract solar offsets from the loaders of each recording"""
+        offsets = {}
+
+        for exp_name in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
+            loader = self.get_loader(exp_name)
+            first_timestamp = loader.get_first_timestamp()
+
+            offsets[exp_name] = timeslice.get_solar_offset(first_timestamp)
+
+        return pd.Series(offsets)

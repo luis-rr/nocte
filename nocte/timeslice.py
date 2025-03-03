@@ -690,20 +690,24 @@ class Windows(DataFrameWrapper):
         Serialize from human-readable text format.
         For proper saving look at store_hdf / load_hdf.
         """
-        wins = []
+        try:
+            wins = []
 
-        for win_str in string.strip().replace(';', '\n').split('\n'):
-            cat = win_str[:win_str.find(':')]
-            start, stop = win_str[win_str.find(':') + 1:].split('-')
-            start = timestamp_to_milliseconds(start.strip())
-            stop = timestamp_to_milliseconds(stop.strip())
-            ref = start
+            for win_str in string.strip().replace(';', '\n').split('\n'):
+                cat = win_str[:win_str.find(':')]
+                start, stop = win_str[win_str.find(':') + 1:].split('-')
+                start = timestamp_to_milliseconds(start.strip())
+                stop = timestamp_to_milliseconds(stop.strip())
+                ref = start
 
-            wins.append((cat, start, stop, ref))
+                wins.append((cat, start, stop, ref))
 
-        df = pd.DataFrame(wins, columns=['cat', 'start', 'stop', 'ref'])
+            df = pd.DataFrame(wins, columns=['cat', 'start', 'stop', 'ref'])
 
-        return cls(df)
+            return cls(df)
+
+        except ValueError:
+            raise ValueError(f'Expected format "description: Xd HH:MM:SS.MS - Xd HH:MM:SS.MS". Got: "{string}"')
 
     @classmethod
     def build_around_df(cls, df, win=(0., 0.), col='time'):
@@ -3078,18 +3082,28 @@ def timestamp_to_milliseconds(timestamp) -> float:
     )
 
 
-
-def time_to_circadian(t_ms, first_timestamp):
-    """adjust a ms timepoint to a ms timepont where t=0 is 7am (this is a circadian convention)"""
-    return time_to_solar(t_ms, first_timestamp, hours=7)
-
-
-def time_to_solar(t_ms, first_timestamp, hours=0, minutes=0):
-    """convert a ms timepoint to solar datetime object"""
+def get_solar_offset(first_timestamp, hours=0, minutes=0) -> float:
+    """
+    Given a timestamp of when a recording started, calculate the offset in milliseconds
+    from midnight (or from the given hours:minutes).
+    This can be used to transport data from a recording timeframe to a solar timeframe.
+    """
     zeitgeber = first_timestamp.replace(hour=hours, minute=minutes, second=0, microsecond=0)
 
     time_offset = (first_timestamp - zeitgeber).total_seconds() * 1000
 
+    return time_offset
+
+
+def time_to_circadian(t_ms, first_timestamp):
+    """adjust a ms timepoint to a ms timepont where t=0 is 7am (this is a circadian convention)"""
+    time_offset = get_solar_offset(first_timestamp, hours=7, minutes=0)
+    return t_ms + time_offset
+
+
+def time_to_solar(t_ms, first_timestamp):
+    """convert a ms timepoint to solar datetime object"""
+    time_offset = get_solar_offset(first_timestamp, hours=0, minutes=0)
     return t_ms + time_offset
 
 
@@ -3097,6 +3111,39 @@ def solar_to_time(t_ms, first_timestamp):
     when = first_timestamp.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(milliseconds=t_ms)
 
     return to_ms(when - first_timestamp)
+
+
+def build_light_dark_cycle(within, lights_on=ms(hours=7), lights_off=ms(hours=19)) -> Windows:
+    """
+    Build light/dark windows within the given time period, assuming lights are always
+    turned off/on at the same solar times
+    """
+    cycles = []
+
+    one_day = ms(days=1)
+
+    start_in_the_day = within.start % one_day
+    current_state = "on" if lights_on <= start_in_the_day < lights_off else "off"
+
+    current_time = within.start
+
+    while current_time < within.stop:
+        if current_state == "on":
+            next_time = (current_time // one_day) * one_day + lights_off
+        else:
+            next_time = (current_time // one_day + 1) * one_day + lights_on
+
+        if next_time > within.stop:
+            next_time = within.stop
+
+        cycles.append((current_state, current_time, next_time))
+
+        current_time = next_time
+        current_state = "off" if current_state == "on" else "on"
+
+    cycles = pd.DataFrame(cycles, columns=['cat', 'start', 'stop'])
+
+    return Windows(cycles)
 
 
 def strf_circ(t_ms, first_timestamp, drop_ms=True) -> str:
