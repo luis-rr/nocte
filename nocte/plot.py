@@ -1615,7 +1615,7 @@ def hide_plots():
 
 
 def savefig(f, name, base_path=''):
-
+    name = str(name)
     name = name.replace(' ', '_')
     name = name.replace('\n', '_')
 
