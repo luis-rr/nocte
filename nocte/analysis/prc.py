@@ -75,6 +75,7 @@ def collect_beta_phases(exp_beta: nocte.traces.Traces, unwrap=True, **kwargs):
     )
 
     if unwrap:
+        exp_phase = exp_phase.drop_missing()  # unwrap doesn't support nans
         exp_phase = exp_phase.unwrap()
 
     return exp_phase
