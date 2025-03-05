@@ -148,7 +148,7 @@ def _rolling_cross_corr_discreete(
 
     xcorr = np.empty((len(offsets), len(sliding_wins)))
 
-    for i, offset in _optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag'):
+    for i, offset in enumerate(_optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')):
 
         if pearson:
             value = _cross_corr_shifted_pearsons_nb(s0, s1, sliding_wins, offset=offset)
@@ -1001,6 +1001,9 @@ class Traces(DataFrameWrapper):
         return self.apply(np.square)
 
     def unwrap(self, period=1, axis=0):
+        if np.any(np.isnan(self.traces)):
+            logging.warning(f'Unwrapping does not support nans')
+
         return self.replace_traces(
             np.unwrap(self.traces.values, period=period, axis=axis)
         )
