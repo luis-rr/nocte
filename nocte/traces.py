@@ -843,17 +843,17 @@ class Traces(DataFrameWrapper):
             traces=agg_traces,
         )
 
-    def groupby_mean(self, by, **kwargs):
-        return self.groupby_mix(by, how=pd.DataFrame.mean, **kwargs)
+    def groupby_mean(self, by):
+        return self.groupby_mix(by, how=pd.DataFrame.mean)
 
-    def groupby_median(self, by, **kwargs):
-        return self.groupby_mix(by, how=pd.DataFrame.median, **kwargs)
+    def groupby_median(self, by):
+        return self.groupby_mix(by, how=pd.DataFrame.median)
 
-    def groupby_std(self, by, **kwargs):
-        return self.groupby_mix(by, how=pd.DataFrame.std, **kwargs)
+    def groupby_std(self, by):
+        return self.groupby_mix(by, how=pd.DataFrame.std)
 
-    def groupby_max(self, by, **kwargs):
-        return self.groupby_mix(by, how=pd.DataFrame.max, **kwargs)
+    def groupby_max(self, by):
+        return self.groupby_mix(by, how=pd.DataFrame.max)
 
     def histograms(self, bins=None, density=None, weights=None) -> pd.DataFrame:
         if bins is None:
