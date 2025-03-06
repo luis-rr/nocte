@@ -68,7 +68,11 @@ def extract_rem_wins(beta, **kwargs):
 
 
 def estimate_interval(acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3))):
-    return acorrs_baselines.crop(between).idxmax(axis=0)
+    cropped = acorrs_baselines.crop(between)
+
+    valid = cropped.traces.notna().any()
+
+    return cropped.sel_mask(valid).idxmax(axis=0)
 
 
 def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
