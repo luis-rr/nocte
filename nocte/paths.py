@@ -295,7 +295,7 @@ class Registry(DataFrameWrapper):
 
         self._paths_cleanup()
         self._fill_optional_cols()
-        self._drop_invalid_probe_info()
+        self._warn_invalid_probe_info()
         self._warn_missing_entries()
 
         self.reg = self.reg.copy()
@@ -313,7 +313,7 @@ class Registry(DataFrameWrapper):
             for k in self.reg.index[~valid_path]:
                 logging.warning(f'{k} is missing entry "{col}".')
 
-    def _drop_invalid_probe_info(self):
+    def _warn_invalid_probe_info(self):
         probe_info = self.reg[[
             'probe0', 'probe1', 'probe2', 'probe3',
             'side0', 'side1', 'side2', 'side3',
@@ -332,8 +332,6 @@ class Registry(DataFrameWrapper):
         if invalid.any():
             logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
 
-        self.reg = self.reg.loc[~invalid]
-
         probe_counts = pd.Series({
             exp_name: len(self.get_probe_channels(exp_name))
             for exp_name in self.experiment_names
@@ -344,10 +342,8 @@ class Registry(DataFrameWrapper):
         if probe_counts_totals.get(0, default=0) > 0:
             logging.warning(
                 f'{probe_counts_totals[0]} experiments without probes! '
-                f'Dropping: {list(probe_counts.index[probe_counts == 0])}'
+                f'{list(probe_counts.index[probe_counts == 0])}'
             )
-            # noinspection PyUnresolvedReferences
-            self.reg = self.reg[probe_counts != 0]
 
     def _paths_cleanup(self):
         path_cols = self.reg.columns[self.reg.columns.str.endswith('path')]
