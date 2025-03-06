@@ -397,8 +397,17 @@ class Traces(DataFrameWrapper):
         )
 
     @classmethod
-    def from_series(cls, s: pd.Series):
-        return cls.from_df(s.to_frame())
+    def from_series(cls, s: pd.Series, col_name=None, entry_name=None):
+
+        if entry_name is not None:
+            s = s.rename(entry_name)
+
+        df = s.to_frame()
+
+        if col_name is not None:
+            df.rename_axis(columns=col_name, inplace=True)
+
+        return cls.from_df(df)
 
     @classmethod
     def from_dict(cls, d: dict, names: list):
@@ -464,6 +473,24 @@ class Traces(DataFrameWrapper):
         resampled.index = time
 
         return cls.from_df(resampled, reg=reg)
+
+    @classmethod
+    def from_data_dict(cls, datadict: dd.DataDict, key_name: str=None, pre_aligned=False):
+        """Assuming each entry is a traces object"""
+
+        if key_name is None:
+            assert datadict.index.name is not None
+            key_name = datadict.index.name
+
+        if pre_aligned:
+            traces = cls.concat_dict_aligned(datadict.data, names=[key_name])
+
+        else:
+            traces = cls.concat_dict(datadict.data, key_name=[key_name])
+
+        traces = traces.merge_reg(datadict.reg, left_on=[key_name], right_index=True)
+
+        return traces
 
     def to_hdf(self, path):
         path = str(path)
@@ -543,6 +570,7 @@ class Traces(DataFrameWrapper):
 
         traces = pd.concat([traces.traces for traces in traces_list], axis=1)
         traces = traces.T.reset_index(drop=True).T
+        traces.sort_index(inplace=True)
 
         return cls(
             reg=reg,
@@ -562,7 +590,7 @@ class Traces(DataFrameWrapper):
         This is much faster than concatenating DataFrames with pd.concat, which involves slow reindexing.
         """
 
-        sampling_periods = np.array([traces.sampling_period == 1. for traces in traces_dict.values()])
+        sampling_periods = np.array([traces.sampling_period for traces in traces_dict.values()])
         step = sampling_periods[0]
         assert np.all(sampling_periods == step), \
             f'Traces with different sampling periods'
@@ -1379,9 +1407,13 @@ class Traces(DataFrameWrapper):
     def cut(
             self,
             zoom_wins: timeslice.Windows,
-            upsampling_ms=100,
+            upsampling_ms=None,
             pbar=None,
     ):
+
+        if upsampling_ms is None:
+            upsampling_ms = self.sampling_period
+
         interp_traces = zoom_wins.interp_df(
             self.traces,
             step=upsampling_ms,
