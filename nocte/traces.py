@@ -1367,7 +1367,7 @@ class Traces(DataFrameWrapper):
         return merged, reg_index_name
 
     @staticmethod
-    def _cut(
+    def _extract(
             traces,
             zoom_wins: timeslice.Windows,
             upsampling_ms=100,
@@ -1513,7 +1513,7 @@ class Traces(DataFrameWrapper):
             traces_idcs = sel_wins[reg_index_name].unique()
             sel_traces = self.traces.loc[:, traces_idcs]
 
-            cut_traces = Traces._cut(
+            cut_traces = Traces._extract(
                 sel_traces,
                 sel_wins,
             )
