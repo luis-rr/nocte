@@ -887,9 +887,11 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=.1)
-        timeslice.SamplingRate(stored_hz).assert_stride(stored_hz, load_hz, 'stored_hz', 'load_hz')
-        load_stride = timeslice.SamplingRate(stored_hz).get_stride(load_hz)
+        stored_hz = timeslice.SamplingRate(stored_hz)
+
+        load_hz = stored_hz.match_load_hz(load_hz, thresh=.1)
+        stored_hz.assert_stride(load_hz, 'stored_hz', 'load_hz')
+        load_stride = stored_hz.get_stride(load_hz)
 
         length = int(np.ceil(length / load_stride))
 
