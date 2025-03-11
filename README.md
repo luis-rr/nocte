@@ -27,7 +27,8 @@ All methods that start with `is_*` return boolean masks (one entry per row). All
 that start with `are_*` return a bool performing a check on the entire object.
 
 Constructors `__init__` implement minimal logic. Classes provide class methods that start with
-`build_*` to create objects in different ways.
+`build_*` or `from_*` to create objects in different ways. To load and store data from different containers
+there are `load_*` and `store_*` methods. 
 
 All time values, unless otherwise specified, are assumed to be in milliseconds.
 
