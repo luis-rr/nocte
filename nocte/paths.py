@@ -303,6 +303,30 @@ class Registry(DataFrameWrapper):
     def copy(self):
         return self.__class__(self.reg.copy())
 
+    def sel_expected(self, required_cols, quiet=False):
+        """
+        Select all entries with a non-missing value for the given column.
+        Entries with data missing will be warned about
+        """
+
+        if isinstance(required_cols, str):
+            required_cols = [required_cols]
+
+        valid = np.ones(len(self.index), dtype=bool)
+
+        for col in required_cols:
+            invalid = self[col].isna()
+
+            if invalid.any() and not quiet:
+                logging.warning(
+                    f'Ignoring {np.count_nonzero(invalid)} experiments without "{col}":' + ', '.join(self.index[invalid]))
+
+            valid = valid & ~invalid
+
+        sel = self.sel_mask(valid)
+
+        return sel
+
     def _warn_missing_entries(self):
 
         expected_cols = ['raw_path']
