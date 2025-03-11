@@ -1584,7 +1584,8 @@ def plot_df2d(ax, df, origin='lower', interpolation='none', **kwargs):
 def plot_violin_scatter(
         ax, y, x, y_range=None, scale=0.2, bw_method=None, shade_facecolor='xkcd:magenta',
         shade_edgecolor='w', shade_linewidth=0.25, shade_alpha=0.25, facecolor='xkcd:magenta', alpha=0.75,
-        edgecolor='w', linewidth=0.25, s=50, **scatter_kwargs):
+        edgecolor='w', linewidth=0.25, s=50
+):
     """
     Plots a violin-like distribution with overlaid jittered scatter points.
 
