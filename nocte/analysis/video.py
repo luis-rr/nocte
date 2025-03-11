@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 import cv2
+from tqdm import tqdm
 import h5py
 import numpy as np
 import pandas as pd
@@ -50,20 +51,6 @@ class VideoWriter:
         if self.out is not None:
             self.out.release()
 
-import cv2
-from tqdm import tqdm
-
-def seek_fast(cap, start_idx):
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
-
-def seek_safe(cap, start_idx):
-    for _ in tqdm(range(start_idx), desc='Seeking frames'):
-        ret, _ = cap.read()
-        if not ret:
-            break
-
-import cv2
-from tqdm import tqdm
 
 def seek_fast(cap, start_idx):
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
