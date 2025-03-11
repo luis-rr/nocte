@@ -362,7 +362,7 @@ class SpikeTrains:
         Iterate by groups of cells defined by some property.
         """
         for (key, scells) in self.cells.groupby(by):
-            yield key, self.sel_isin(gid=scells.index)
+            yield key, self.sel_in(gid=scells.index)
 
     def shift_time(self, ms):
         """Add a time offset to all spikes. Returns a copy"""

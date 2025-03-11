@@ -192,7 +192,7 @@ class DataFrameWrapper:
         """
         Select by direct comparison of some column where any of the values are acceptable.
         For example:
-            wins.sel_isin(cat=['sws', 'rem'])
+            wins.sel_in(cat=['sws', 'rem'])
         """
         mask = self.is_in(invert=invert, how=how, **col_values)
         return self.sel_mask(mask)
