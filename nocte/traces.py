@@ -7,8 +7,8 @@ import pandas as pd
 import scipy.signal
 from tqdm.auto import tqdm
 
-from nocte import timeslice
 from nocte import datadict as dd
+from nocte import timeslice
 from nocte.analysis import sleep
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 

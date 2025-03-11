@@ -2,9 +2,9 @@
 Manage conversion between timescales & sampling rates, as well as defining windows of time
 that can be used to cut data.
 """
-import re
 import functools
 import logging
+import re
 from datetime import timedelta, datetime
 
 import numpy as np

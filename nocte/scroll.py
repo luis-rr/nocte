@@ -1,8 +1,8 @@
-from nocte.timeslice import Win, ms
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+
 from nocte import plot as splot
+from nocte.timeslice import Win, ms
 
 
 class ScrollablePlot:

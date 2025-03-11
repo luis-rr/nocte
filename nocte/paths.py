@@ -17,9 +17,9 @@ from tqdm.auto import tqdm
 
 import nocte.traces
 from nocte import timeslice
-from nocte.stacks import Stack
 from nocte.datadict import DataDict
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
+from nocte.stacks import Stack
 
 
 def get_root_laur():

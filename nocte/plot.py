@@ -3,6 +3,7 @@ General utility code to plot traces and spike trains
 """
 import colorsys
 import pathlib
+from contextlib import contextmanager
 
 import matplotlib.cm
 import matplotlib.colors
@@ -14,10 +15,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from tqdm.auto import tqdm
-
-from contextlib import contextmanager
 
 from nocte import timeslice
 from nocte.timeslice import ms

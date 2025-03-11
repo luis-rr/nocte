@@ -11,8 +11,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from nocte import plot as splot
-from nocte.stacks import Stack
 from nocte.datadict import DataDict
+from nocte.stacks import Stack
 from nocte.timeslice import ms
 
 

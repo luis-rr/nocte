@@ -2,8 +2,8 @@
 Data container for generic LFP events that have a start/stop/reference time.
 Internally stored as a simple pd.DataFrame.
 """
-import logging
 import functools
+import logging
 
 import numba as nb
 import numpy as np
@@ -11,8 +11,8 @@ import pandas as pd
 
 from nocte import plot as splot
 from nocte import timeslice, stacks
-from nocte.timeslice import S_TO_MS
 from nocte.df_wrapper import DataFrameWrapper
+from nocte.timeslice import S_TO_MS
 
 
 @nb.njit(parallel=True)

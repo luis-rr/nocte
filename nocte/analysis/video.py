@@ -7,15 +7,14 @@ import logging
 from pathlib import Path
 
 import cv2
-from tqdm import tqdm
 import h5py
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
 from nocte import stacks, timeslice
-from nocte.io import neuralynx
 from nocte import traces as tr
+from nocte.io import neuralynx
 
 MICROS_TO_MS = .001
 

@@ -1,7 +1,6 @@
 import h5py
 import numpy as np
 import pandas as pd
-from tqdm.asyncio import tqdm
 
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 

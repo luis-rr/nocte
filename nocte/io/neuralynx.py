@@ -28,8 +28,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte.io import common
 from nocte import timeslice
+from nocte.io import common
 
 logger = logging.getLogger(__name__)
 
