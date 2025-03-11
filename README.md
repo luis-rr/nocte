@@ -59,9 +59,10 @@ The general layout of the project is:
     ├── nocte                    <- Package encapsulating all code in this project.
     │    │
     │    ├── extract.py          <- Main code to process raw data.
-    │    ├── io_*.py             <- Code to load data recorded from Neuronexus and Neuropixel probes.
     │    ├── traces.py           <- Data container for collections of time-series data.
     │    ├── timeslice.py        <- Data container for sets of time windows.
+    │    │
+    │    ├── io                  <- Submodule with code to load data recorded from Neuronexus and Neuropixel probes.
     │    │
     │    └── analysis            <- Contains less general code for specific analysis 
     │        ├── prc.py          <- Code for beta phase analysis.

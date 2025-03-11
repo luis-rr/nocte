@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import stacks, timeslice, io_neuralynx
+from nocte import stacks, timeslice
+from nocte.io import neuralynx
 from nocte import traces as tr
 
 MICROS_TO_MS = .001
@@ -346,7 +347,7 @@ def get_first_timestamp(loader) -> float:
 
     for idx, lo in loader.loaders.items():
         with open(lo.header['full_path'], 'rb') as fid:
-            recs = io_neuralynx.NeuralynxBaseLoader.read_records(fid, io_neuralynx.NCSLoader.RECORD, 0, 1)
+            recs = neuralynx.NeuralynxBaseLoader.read_records(fid, neuralynx.NCSLoader.RECORD, 0, 1)
 
             timestamps.append(recs['TimeStamp'][0])
 
@@ -358,7 +359,7 @@ def get_first_timestamp(loader) -> float:
 
 
 def get_cam_frame_timestamps(events_path, cam=b'cam0') -> np.ndarray:
-    nev = io_neuralynx.NEVLoader.load_nev(events_path)
+    nev = neuralynx.NEVLoader.load_nev(events_path)
 
     timestamps = nev.records['TimeStamp']
     mask = nev.records['EventString'] == cam

@@ -155,20 +155,20 @@ class Entry:
         probe = self['probe']
 
         if probe == 'neuropixel':
-            from nocte import io_neuropixel
+            from nocte.io import neuropixel
             try:
-                raw = io_neuropixel.MultiProbeLoader.multiprobe_interp(self.get_path('raw'))
+                raw = neuropixel.MultiProbeLoader.multiprobe_interp(self.get_path('raw'))
             except FileNotFoundError:
                 if not accept_non_interp:
                     raise
                 else:
-                    raw = io_neuropixel.MultiProbeLoader.multiprobe_spikeglx(self.get_path('raw'))
+                    raw = neuropixel.MultiProbeLoader.multiprobe_spikeglx(self.get_path('raw'))
 
         else:
             assert probe in ['neuronexus', 'CamNeurotech'], f'Unknown probe {probe}'
 
-            from nocte import io_neuralynx
-            raw = io_neuralynx.MultiNCSLoader.from_folder(self.get_path('raw'))
+            from nocte.io import neuralynx
+            raw = neuralynx.MultiNCSLoader.from_folder(self.get_path('raw'))
 
         return raw
 

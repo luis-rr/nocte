@@ -12,7 +12,7 @@ Build a new stack by loading a stored one:
 
 or by extracting it from saved data:
 
-    import nocte.neuropixels as npix
+    import nocte.io.neuropixels as npix
     from nocte import stacks as st
 
     data = npix.DataLoader.load_spikegl(meta_path, bin_path)

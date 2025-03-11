@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import timeslice, io_neuropixel
+from nocte import timeslice
+from nocte.io import neuropixel
 
 # TODO: we should look up channel index by type. We are after SY0, which can be looked up in channel map.
 # For now just pick up the last channel in the saved file (id 768, index 384)
@@ -21,7 +22,7 @@ SYS_CHANNEL = 768
 
 
 def extract_onsets(
-        raw: io_neuropixel.DataLoader,
+        raw: neuropixel.DataLoader,
         load_win_ms=None, chunk_length_ms=timeslice.ms(minutes=15)
 ) -> pd.Series:
 
@@ -114,7 +115,7 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
     fake_meta = _make_simple_meta(raw.meta, channels, target_hz)
     fake_meta.to_json(meta_path_out)
 
-    memmap = io_neuropixel.make_memmap_raw(
+    memmap = neuropixel.make_memmap_raw(
         bin_path_out, fake_meta['channel_count'], fake_meta['sample_count'], mode='w+')
 
     chunks = zip(ref_times.index[:-1], ref_times.index[1:])
@@ -148,16 +149,16 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
 
 
 def multi_npix_from_folder(folder_path, clean=True, quiet=False):
-    probe_paths = io_neuropixel.MultiProbeLoader.locate_probes_spikeglx(folder_path)
+    probe_paths = neuropixel.MultiProbeLoader.locate_probes_spikeglx(folder_path)
 
     all_raw = {}
     for probe_idx, (meta_path, bin_path) in probe_paths.items():
 
         if clean:
-            raw = io_neuropixel.DataLoaderBaseline.from_spikegl(meta_path, bin_path)
+            raw = neuropixel.DataLoaderBaseline.from_spikegl(meta_path, bin_path)
 
         else:
-            raw = io_neuropixel.DataLoader.from_spikegl(meta_path, bin_path)
+            raw = neuropixel.DataLoader.from_spikegl(meta_path, bin_path)
 
         if not quiet:
             raw.describe()

@@ -28,9 +28,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import io_common
+from nocte.io import common
 from nocte import timeslice
-from nocte.timeslice import S_TO_MS
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +242,7 @@ class NeuralynxBaseLoader:
             return None
 
 
-class NCSLoader(io_common.DataLoader):
+class NCSLoader(common.DataLoader):
     _SAMPLES_PER_RECORD = 512
 
     RECORD = np.dtype([
@@ -620,7 +619,7 @@ class NEVLoader:
         return pd.DataFrame(data)
 
 
-class MultiNCSLoader(io_common.MultiDataLoader):
+class MultiNCSLoader(common.MultiDataLoader):
 
     # noinspection PyUnresolvedReferences
     def __init__(self, loaders: dict):

@@ -30,7 +30,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from nocte import timeslice, io_common
+from nocte import timeslice
+from nocte.io import common
 from nocte.timeslice import MS_TO_S, S_TO_MS
 
 logger = logging.getLogger(__name__)
@@ -308,7 +309,7 @@ def get_probe() -> pd.DataFrame:
     return probe
 
 
-class DataLoader(io_common.DataLoader):
+class DataLoader(common.DataLoader):
     """
     Use like:
 
@@ -466,7 +467,7 @@ class DataLoader(io_common.DataLoader):
         return meta_path, bin_path
 
 
-class MultiProbeLoader(io_common.MultiDataLoader):
+class MultiProbeLoader(common.MultiDataLoader):
 
     def __init__(self, loaders):
         for probe, loader in loaders.items():
