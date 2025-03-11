@@ -97,6 +97,225 @@ def ms_scale(scale) -> float:
     return scale_to
 
 
+
+def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
+    """
+    Pretty-format a float value representing milliseconds into
+        `[+][DDd ]HH:MM:SS.sss`
+
+    - Accepts negative values.
+    - Uses a plus sign (`+`) if `plus_sign=True`.
+    - Drops seconds and milliseconds if they are zero and `strip=True`.
+
+    :param value: Time value in milliseconds.
+    :param plus_sign: Whether a '+' should be prefixed for positive values.
+    :param strip: Whether to omit seconds and milliseconds when they are zero.
+    :param show_days: Whether to include days in the formatted output.
+    :return: Formatted time string.
+    """
+
+    tdelta = timedelta(milliseconds=to_ms(value))
+
+    total = tdelta.total_seconds()
+
+    sign = '' if not plus_sign else '+'
+    if total < 0:
+        sign = '-'
+        total = total * -1
+
+    if show_days:
+        days, hours = divmod(total, 60 * 60 * 24)
+    else:
+        days = None
+        hours = total
+
+    hours, minutes = divmod(hours, 60 * 60)
+    minutes, seconds = divmod(minutes, 60)
+    seconds, decimals = divmod(seconds, 1)
+
+    desc = ''
+    if show_days:
+        desc = f'{days:g}d '
+
+    desc = desc + f'{sign}{int(hours):02d}:{int(minutes):02d}'
+
+    if seconds > 0 or decimals > 0 or not strip:
+        desc += f':{seconds:02.0f}'
+
+        if decimals or not strip:
+            desc += f'.{int(decimals * 1000.):03g}'
+
+    return desc
+
+
+def str_to_ms(timestamp) -> float:
+    """
+    convert a timestamp string DDd HH:MM:SS.sss to total milliseconds
+    Days, seconds and milliseconds are optional
+    examples: ["3d 19:00:15.143", "19:00", "3d 19:00", "19:00:15"]
+
+    This is meant for human-readable serialization.
+    For pretty-printing with more options see strf_ms
+    """
+    # Define regex pattern with optional days, hours, minutes, optional seconds, and milliseconds
+    pattern = r'(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
+    match = re.match(pattern, timestamp.strip())
+
+    if not match:
+        raise ValueError("Invalid timestamp format")
+
+    # Extract matched groups
+    days = int(match.group(1)) if match.group(1) else 0
+    hours = int(match.group(2)) if match.group(2) else 0
+    minutes = int(match.group(3)) if match.group(3) else 0
+    seconds = int(match.group(4)) if match.group(4) else 0
+    milliseconds = int(match.group(5).ljust(3, '0')) if match.group(5) else 0
+
+    return ms(
+        days=days,
+        hours=hours,
+        minutes=minutes,
+        seconds=seconds,
+        milliseconds=milliseconds,
+    )
+
+
+class TimeRef:
+    """
+    Represents a temporal reference to interpret time delays.
+    Enables converting between:
+
+    - Absolute time: following datetime convention.
+    - Recording time: starts at the beginning of the  recording.
+    - Solar time: starts at 00:00 of the first day of the experiment.
+    - Circadian time: starts at 07:00 (or CT0) of the first day of the experiment.
+
+    This class keeps the absolute time reference, that is, the full timestamp of
+    when the recording started.
+
+
+
+    All methods operate and return on timestamps given in milliseconds.
+    The interpretation of these depends on the method used.
+    """
+    def __init__(self, ref: datetime):
+        self.ref = ref
+
+    def _relative_time_offset(self, hour=0, minute=0, second=0, microsecond=0):
+        time_reference = self.ref.replace(hour=hour, minute=minute, second=second, microsecond=microsecond)
+        dt = (self.ref - time_reference)
+        return to_ms(dt)
+
+    @property
+    def solar_offset(self):
+        """when the recording started, in milliseconds from 00:00 of the first day of the recording"""
+        return self._relative_time_offset(hour=0, minute=0)
+
+    @property
+    def circ_offset(self):
+        """when the recording started, in milliseconds from 07:00 of the first day of the recording"""
+        return self._relative_time_offset(hour=7, minute=0)
+
+    def solar_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in solar time to recording time"""
+        return t_ms - self.solar_offset
+
+    def rec_to_solar(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in recoding time to solar time"""
+        return t_ms + self.solar_offset
+
+    def circ_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in circadian time to recording time"""
+        return t_ms - self.circ_offset
+
+    def rec_to_circ(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in recording time to circadian time"""
+        return t_ms + self.circ_offset
+
+class SamplingRate:
+    """Encapsulates sampling rate conversions and precision handling."""
+
+    def __init__(self, rate: float):
+        """Initialize with a sampling rate in Hz."""
+
+        if isinstance(rate, SamplingRate):
+            # noinspection PyUnresolvedReferences
+            rate = rate.rate
+
+        assert rate > 0, 'Sampling rate must be positive.'
+
+        self.rate = rate
+
+    @classmethod
+    def from_period(cls, period_ms):
+        return cls(period_ms / S_TO_MS)
+
+    @property
+    def period(self) -> float:
+        return S_TO_MS / self.rate
+
+    def get_stride(self, load_hz) -> float:
+        """
+        Compute the best stride to load data (length of each jump) when the data was stored at
+        this sampling rate but we want to load at a different one.
+
+        Note this will not respect exactly the load_hz, but return the stride corresponding to the closest one.
+        """
+        return int(np.round(self.rate / load_hz))
+
+    def match_load_hz(self, load_hz, thresh=None) -> float:
+        """Adjust the load_hz to produce a perfect integer stride"""
+
+        new_load_hz = (self.rate / self.get_stride(load_hz))
+
+        valid = (
+            abs(new_load_hz - load_hz) < thresh
+            if thresh is not None else
+            np.isclose(new_load_hz - load_hz, 0)
+        )
+
+        if not valid:
+            logging.warning(
+                f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
+                f'a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})')
+
+        return new_load_hz
+
+    def check_stride(self, downsample_hz: float) -> bool:
+        """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
+        return np.isclose(self.get_stride(downsample_hz), (self.rate / downsample_hz))
+
+
+    def assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
+        """assert if the downsample_hz is not a divisor of the sampling  rate"""
+        assert self.check_stride(downsample_hz), \
+            f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({self.rate})'
+
+    def ms_to_idcs(self, time_ms: np.array) -> np.array:
+        return np.round(self.rate * time_ms * MS_TO_S).astype(int)
+
+    def idcs_to_ms(self, idcs: np.array) -> np.array:
+        return (idcs / self.rate) / MS_TO_S
+
+    def adjust_sampling_period(self, quiet=False) -> float:
+        # time unit is milliseconds, so we are going
+        # to round up to 1 pico second
+        new = np.round(self.period, decimals=9)
+
+        if not quiet and not np.isclose(new, self.period):
+            logging.warning(f'Adjusting sampling period from {self.period} to {new}')
+
+        return new
+
+    def adjust_to_sampling_period(self, length, desc=None) -> float:
+        new = np.round(length / self.period) * self.period
+
+        if desc is not None and not np.isclose(new, length):
+            logging.warning(f'Adjusting {desc} from {length} to {new}')
+
+        return new
+
+
 class Win(tuple):
     """
     A fancy tuple object to define a single start-stop period with extra methods
@@ -2950,220 +3169,3 @@ def _classify_events_exclusive(
         right_index=True)
 
     return df
-
-
-class TimeRef:
-    """
-    Represents a temporal reference to interpret time delays.
-    Enables converting between:
-
-    - Absolute time: following datetime convention.
-    - Recording time: starts at the beginning of the  recording.
-    - Solar time: starts at 00:00 of the first day of the experiment.
-    - Circadian time: starts at 07:00 (or CT0) of the first day of the experiment.
-
-    This class keeps the absolute time reference, that is, the full timestamp of
-    when the recording started.
-
-
-
-    All methods operate and return on timestamps given in milliseconds.
-    The interpretation of these depends on the method used.
-    """
-    def __init__(self, ref: datetime):
-        self.ref = ref
-
-    def _relative_time_offset(self, hour=0, minute=0, second=0, microsecond=0):
-        time_reference = self.ref.replace(hour=hour, minute=minute, second=second, microsecond=microsecond)
-        dt = (self.ref - time_reference)
-        return to_ms(dt)
-
-    @property
-    def solar_offset(self):
-        """when the recording started, in milliseconds from 00:00 of the first day of the recording"""
-        return self._relative_time_offset(hour=0, minute=0)
-
-    @property
-    def circ_offset(self):
-        """when the recording started, in milliseconds from 07:00 of the first day of the recording"""
-        return self._relative_time_offset(hour=7, minute=0)
-
-    def solar_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
-        """convert a time in solar time to recording time"""
-        return t_ms - self.solar_offset
-
-    def rec_to_solar(self, t_ms: float | np.ndarray) -> float | np.ndarray:
-        """convert a time in recoding time to solar time"""
-        return t_ms + self.solar_offset
-
-    def circ_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
-        """convert a time in circadian time to recording time"""
-        return t_ms - self.circ_offset
-
-    def rec_to_circ(self, t_ms: float | np.ndarray) -> float | np.ndarray:
-        """convert a time in recording time to circadian time"""
-        return t_ms + self.circ_offset
-
-class SamplingRate:
-    """Encapsulates sampling rate conversions and precision handling."""
-
-    def __init__(self, rate: float):
-        """Initialize with a sampling rate in Hz."""
-
-        if isinstance(rate, SamplingRate):
-            # noinspection PyUnresolvedReferences
-            rate = rate.rate
-
-        assert rate > 0, 'Sampling rate must be positive.'
-
-        self.rate = rate
-
-    @classmethod
-    def from_period(cls, period_ms):
-        return cls(period_ms / S_TO_MS)
-
-    @property
-    def period(self) -> float:
-        return S_TO_MS / self.rate
-
-    def get_stride(self, load_hz) -> float:
-        """
-        Compute the best stride to load data (length of each jump) when the data was stored at
-        this sampling rate but we want to load at a different one.
-
-        Note this will not respect exactly the load_hz, but return the stride corresponding to the closest one.
-        """
-        return int(np.round(self.rate / load_hz))
-
-    def match_load_hz(self, load_hz, thresh=None) -> float:
-        """Adjust the load_hz to produce a perfect integer stride"""
-
-        new_load_hz = (self.rate / self.get_stride(load_hz))
-
-        valid = (
-            abs(new_load_hz - load_hz) < thresh
-            if thresh is not None else
-            np.isclose(new_load_hz - load_hz, 0)
-        )
-
-        if not valid:
-            logging.warning(
-                f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
-                f'a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})')
-
-        return new_load_hz
-
-    def check_stride(self, downsample_hz: float) -> bool:
-        """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
-        return np.isclose(self.get_stride(downsample_hz), (self.rate / downsample_hz))
-
-
-    def assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
-        """assert if the downsample_hz is not a divisor of the sampling  rate"""
-        assert self.check_stride(downsample_hz), \
-            f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({self.rate})'
-
-    def ms_to_idcs(self, time_ms: np.array) -> np.array:
-        return np.round(self.rate * time_ms * MS_TO_S).astype(int)
-
-    def idcs_to_ms(self, idcs: np.array) -> np.array:
-        return (idcs / self.rate) / MS_TO_S
-
-    def adjust_sampling_period(self, quiet=False) -> float:
-        # time unit is milliseconds, so we are going
-        # to round up to 1 pico second
-        new = np.round(self.period, decimals=9)
-
-        if not quiet and not np.isclose(new, self.period):
-            logging.warning(f'Adjusting sampling period from {self.period} to {new}')
-
-        return new
-
-    def adjust_to_sampling_period(self, length, desc=None) -> float:
-        new = np.round(length / self.period) * self.period
-
-        if desc is not None and not np.isclose(new, length):
-            logging.warning(f'Adjusting {desc} from {length} to {new}')
-
-        return new
-
-def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
-    """
-    Pretty-format a float value representing milliseconds into
-        `[+][DDd ]HH:MM:SS.sss`
-
-    - Accepts negative values.
-    - Uses a plus sign (`+`) if `plus_sign=True`.
-    - Drops seconds and milliseconds if they are zero and `strip=True`.
-
-    :param value: Time value in milliseconds.
-    :param plus_sign: Whether a '+' should be prefixed for positive values.
-    :param strip: Whether to omit seconds and milliseconds when they are zero.
-    :param show_days: Whether to include days in the formatted output.
-    :return: Formatted time string.
-    """
-
-    tdelta = timedelta(milliseconds=to_ms(value))
-
-    total = tdelta.total_seconds()
-
-    sign = '' if not plus_sign else '+'
-    if total < 0:
-        sign = '-'
-        total = total * -1
-
-    if show_days:
-        days, hours = divmod(total, 60 * 60 * 24)
-    else:
-        days = None
-        hours = total
-
-    hours, minutes = divmod(hours, 60 * 60)
-    minutes, seconds = divmod(minutes, 60)
-    seconds, decimals = divmod(seconds, 1)
-
-    desc = ''
-    if show_days:
-        desc = f'{days:g}d '
-
-    desc = desc + f'{sign}{int(hours):02d}:{int(minutes):02d}'
-
-    if seconds > 0 or decimals > 0 or not strip:
-        desc += f':{seconds:02.0f}'
-
-        if decimals or not strip:
-            desc += f'.{int(decimals * 1000.):03g}'
-
-    return desc
-
-
-def str_to_ms(timestamp) -> float:
-    """
-    convert a timestamp string DDd HH:MM:SS.sss to total milliseconds
-    Days, seconds and milliseconds are optional
-    examples: ["3d 19:00:15.143", "19:00", "3d 19:00", "19:00:15"]
-
-    This is meant for human-readable serialization.
-    For pretty-printing with more options see strf_ms
-    """
-    # Define regex pattern with optional days, hours, minutes, optional seconds, and milliseconds
-    pattern = r'(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
-    match = re.match(pattern, timestamp.strip())
-
-    if not match:
-        raise ValueError("Invalid timestamp format")
-
-    # Extract matched groups
-    days = int(match.group(1)) if match.group(1) else 0
-    hours = int(match.group(2)) if match.group(2) else 0
-    minutes = int(match.group(3)) if match.group(3) else 0
-    seconds = int(match.group(4)) if match.group(4) else 0
-    milliseconds = int(match.group(5).ljust(3, '0')) if match.group(5) else 0
-
-    return ms(
-        days=days,
-        hours=hours,
-        minutes=minutes,
-        seconds=seconds,
-        milliseconds=milliseconds,
-    )
