@@ -55,11 +55,13 @@ class VideoWriter:
 def seek_fast(cap, start_idx):
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
 
+
 def seek_safe(cap, start_idx):
     for _ in tqdm(range(start_idx), desc='Seeking frames'):
         ret, _ = cap.read()
         if not ret:
             break
+
 
 class VideoReader:
     """
@@ -173,7 +175,6 @@ def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -
 
 
 def get_movie_frame_count(avi_path) -> int:
-
     cap = cv2.VideoCapture(str(avi_path))
 
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -204,7 +205,6 @@ def get_frame_idx_by_fps(avi_path, time_ms) -> int:
 
 
 def load_movie_frame_idx(avi_path, idx) -> stacks.Stack:
-
     cap = cv2.VideoCapture(str(avi_path))
 
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))

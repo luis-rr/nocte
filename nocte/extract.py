@@ -43,8 +43,10 @@ class ChunkedExperiment:
         self.stride = timeslice.SamplingRate(raw.sampling_rate).get_stride(load_hz)
         load_sampling_period = (self.stride * raw.sampling_period)
 
-        chunk_step_ms = timeslice.SamplingRate.from_period(load_sampling_period).adjust_to_sampling_period(chunk_step_ms)
-        chunk_length = timeslice.SamplingRate.from_period(load_sampling_period).adjust_to_sampling_period(chunk_length)
+        load_sampling_hz = timeslice.SamplingRate.from_period(load_sampling_period)
+
+        chunk_step_ms = load_sampling_hz.adjust_to_sampling_period(chunk_step_ms)
+        chunk_length = load_sampling_hz.adjust_to_sampling_period(chunk_length)
 
         self.wins: Windows = Windows.build_sliding_samples(
             start_ms=load_win.start,

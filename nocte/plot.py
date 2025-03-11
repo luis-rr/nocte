@@ -735,7 +735,6 @@ def plot_wrapped_events_vline(
 
     for i, (tbin, ax) in enumerate(axs.items()):
         if events is not None:
-
             time = events[time_col]
 
             sel_events = events[time.between(*tbin)].copy()
@@ -818,7 +817,11 @@ def _get_stack_extent(s, xcol, ycol):
     )
 
 
-def add_desc(ax, desc, loc='upper right', bkg_color='w', bkg_edgecolor='none', fontsize=6, loc_pad=0.05, bkg_alpha=0.75, **kwargs):
+def add_desc(
+        ax, desc, loc='upper right',
+        bkg_color='w', bkg_edgecolor='none', fontsize=6, loc_pad=0.05, bkg_alpha=0.75,
+        **kwargs
+):
     """add a small text description on the axes, usually for n=X """
 
     coords_options = {
@@ -1500,6 +1503,7 @@ def mannwhitneyu_test(
 
     )
 
+
 @contextmanager
 def hide_plots():
     was_interactive = plt.isinteractive()
@@ -1533,12 +1537,12 @@ def savefig(f, name, base_path=''):
 def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwargs):
     """Plots a line in segments to allow alpha stacking on overlap.
     """
-    idcs = np.sort(np.unique(np.linspace(0, len(x)-1, num_segments).astype(int)))
+    idcs = np.sort(np.unique(np.linspace(0, len(x) - 1, num_segments).astype(int)))
 
     for i0, i1 in zip(idcs[:-1], idcs[1:]):
         ax.plot(
-            x[i0:i1+1],
-            y[i0:i1+1],
+            x[i0:i1 + 1],
+            y[i0:i1 + 1],
             solid_capstyle=solid_capstyle,  # Ensures clean segment stacking
             **kwargs
         )

@@ -319,7 +319,9 @@ class Registry(DataFrameWrapper):
 
             if invalid.any() and not quiet:
                 logging.warning(
-                    f'Ignoring {np.count_nonzero(invalid)} experiments without "{col}":' + ', '.join(self.index[invalid]))
+                    f'Ignoring {np.count_nonzero(invalid)} experiments without "{col}":' +
+                    ', '.join(self.index[invalid])
+                )
 
             valid = valid & ~invalid
 
@@ -373,7 +375,6 @@ class Registry(DataFrameWrapper):
         path_cols = self.reg.columns[self.reg.columns.str.endswith('path')]
 
         for col in path_cols:
-
             paths = self.reg[col]
 
             paths = Registry._paths_patch(paths)
@@ -463,8 +464,6 @@ class Registry(DataFrameWrapper):
             if col not in self.reg.columns:
                 self.reg[col] = np.nan
 
-
-
     @classmethod
     def read_excel(cls, reg_path=None, sheet_name='swr'):
         """load a stored registry of all of the experiments and important paths"""
@@ -481,7 +480,6 @@ class Registry(DataFrameWrapper):
         df = df[~to_ignore]
 
         return cls(df)
-
 
     def is_bilat(self, area: str) -> pd.Series:
         count = np.zeros(len(self.reg))

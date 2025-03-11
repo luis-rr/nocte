@@ -25,7 +25,6 @@ def extract_onsets(
         raw: neuropixel.DataLoader,
         load_win_ms=None, chunk_length_ms=timeslice.ms(minutes=15)
 ) -> pd.Series:
-
     stored_hz = timeslice.SamplingRate(raw.sampling_rate)
 
     if load_win_ms is None:
@@ -70,7 +69,6 @@ def extract_onsets_multiprobe(all_raw, load_win_ms):
 
 
 def _make_simple_meta(original, channels, target_hz):
-
     target_period_ms = timeslice.SamplingRate(target_hz).period
 
     id_to_idx = pd.Series(

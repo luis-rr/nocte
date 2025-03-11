@@ -52,7 +52,6 @@ def _ms_scale(scale) -> float:
     return scale_to
 
 
-
 def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
     """
     Pretty-format a float value representing milliseconds into
@@ -153,6 +152,7 @@ class TimeRef:
     All methods operate and return on timestamps given in milliseconds.
     The interpretation of these depends on the method used.
     """
+
     def __init__(self, ref: datetime):
         self.ref = ref
 
@@ -186,6 +186,7 @@ class TimeRef:
     def rec_to_circ(self, t_ms: float | np.ndarray) -> float | np.ndarray:
         """convert a time in recording time to circadian time"""
         return t_ms + self.circ_offset
+
 
 class SamplingRate:
     """Encapsulates sampling rate conversions and precision handling."""
@@ -239,7 +240,6 @@ class SamplingRate:
     def check_stride(self, downsample_hz: float) -> bool:
         """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
         return np.isclose(self.get_stride(downsample_hz), (self.rate / downsample_hz))
-
 
     def assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
         """assert if the downsample_hz is not a divisor of the sampling  rate"""
@@ -638,7 +638,6 @@ class Win(tuple):
     def round_tight(self, scale='milliseconds'):
         """Round start up and stop down, making the window tighter"""
         return self.ceil_floor(scale)
-
 
     def clip(self, other):
         """

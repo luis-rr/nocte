@@ -205,7 +205,7 @@ class MultiDataLoader(DataLoader):
             which = (self.channels['probe'] == probe) & (self.channels['local_channel_id'] == ch)
             local_ids = self.channels.index[which]
             if len(local_ids) == 0:
-                which = (self.channels['probe'] == probe) & (self.channels['local_channel_id'] == (ch+1))
+                which = (self.channels['probe'] == probe) & (self.channels['local_channel_id'] == (ch + 1))
                 local_ids = self.channels.index[which]
 
                 if len(local_ids) == 0:

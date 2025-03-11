@@ -215,10 +215,10 @@ class Traces(DataFrameWrapper):
     """
 
     def __init__(
-        self,
-        reg: pd.DataFrame,
-        traces: pd.DataFrame,
-        copy=True,
+            self,
+            reg: pd.DataFrame,
+            traces: pd.DataFrame,
+            copy=True,
     ):
         if copy:
             traces = traces.copy()
@@ -293,11 +293,10 @@ class Traces(DataFrameWrapper):
         traces = {}
 
         for idx, ref, win_ms in _optional_pbar(load_wins.iter_wins_ref(), total=len(load_wins), pbar=pbar):
-
             win_ms = win_ms.clip(loader.win_ms)
 
             win_ms_rel = win_ms.shift(-ref)
-            slice_idcs_rel : slice = win_ms_rel.to_slice_idx(loader.sampling_rate, load_hz)
+            slice_idcs_rel: slice = win_ms_rel.to_slice_idx(loader.sampling_rate, load_hz)
 
             # Rounding for closest sample together with imperfect sampling rates may cause
             # an off by one difference between:
@@ -471,7 +470,7 @@ class Traces(DataFrameWrapper):
         return cls.from_df(resampled, reg=reg)
 
     @classmethod
-    def from_data_dict(cls, datadict: dd.DataDict, key_name: str=None, pre_aligned=False):
+    def from_data_dict(cls, datadict: dd.DataDict, key_name: str = None, pre_aligned=False):
         """Assuming each entry is a traces object"""
 
         if key_name is None:
@@ -1439,7 +1438,6 @@ class Traces(DataFrameWrapper):
         - If windows overlap, extracted traces may have duplicated time segments.
         """
 
-
         if upsampling_ms is None:
             upsampling_ms = self.sampling_period
 
@@ -2113,7 +2111,7 @@ class Traces(DataFrameWrapper):
         sampling_rate = self.sampling_rate
 
         if freqs is None:
-            freqs = np.geomspace(1, 100, 101) # np.arange(1, 128)
+            freqs = np.geomspace(1, 100, 101)  # np.arange(1, 128)
 
         center_frequency = 0.84  # Morlet wavelet typical center frequency
         scales = center_frequency / (freqs / sampling_rate)

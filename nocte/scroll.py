@@ -55,7 +55,14 @@ class ScrollablePlot:
         if self.highlight:
             self.highlight.remove()  # Remove the previous fill
 
-        self.highlight = self.overview_ax.axvspan(*win, facecolor='xkcd:magenta', alpha=0.3, linewidth=0.25, edgecolor='k', zorder=100)
+        self.highlight = self.overview_ax.axvspan(
+            *win,
+            facecolor='xkcd:magenta',
+            alpha=0.3,
+            linewidth=0.25,
+            edgecolor='k',
+            zorder=100,
+        )
 
     def update_zoom(self, win):
         """Call the user-defined function to plot the zoomed-in region."""
@@ -68,7 +75,6 @@ class ScrollablePlot:
         """Handles clicking on the overview to update the zoomed-in view."""
         if event.inaxes == self.overview_ax:
             self.set_view(event.xdata)
-
 
     @classmethod
     def build_for_timeseries(

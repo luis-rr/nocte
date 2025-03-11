@@ -76,7 +76,6 @@ def estimate_interval(acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms
 
 
 def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
-
     if axs is None:
         f, axs = plt.subplots(nrows=2, sharex='all', figsize=(2.5, 2.5))
 
