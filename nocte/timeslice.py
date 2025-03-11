@@ -124,7 +124,7 @@ class Win(tuple):
         build a relative window in ms
         """
         # noinspection PyArgumentList
-        return cls(ref, ref).extend(pre=pre, post=post)
+        return cls(ref, ref).change(pre=pre, post=post)
 
     @classmethod
     def build_centered(cls, ref, duration):
@@ -185,6 +185,9 @@ class Win(tuple):
     def mid(self):
         """get the mid point of the window"""
         return self.quantile_time(.5)
+
+    def is_empty(self) -> bool:
+        return self.stop <= self.start
 
     def before(self, duration, offset=0):
         """
@@ -314,7 +317,7 @@ class Win(tuple):
         """pretty str format"""
         return self.__str__()
 
-    def extend(self, pre=0., post=0.):
+    def change(self, pre=0., post=0.):
         """
         Add (or remove) time at the start (pre) or the end (post) of the window
         :param pre: time in milliseconds relative to start
@@ -322,6 +325,14 @@ class Win(tuple):
         :return: a new tuple object
         """
         return Win(self.start + to_ms(pre), self.stop + to_ms(post))
+
+    def shrink(self, duration=0.):
+        """shrink this window by the same ammount at start and stop"""
+        return self.change(+duration, -duration)
+
+    def expand(self, duration=0.):
+        """expand this window by the same ammount at start and stop"""
+        return self.change(-duration, +duration)
 
     def subtract(self, exclusion_win):
         """
@@ -354,7 +365,7 @@ class Win(tuple):
         Shift the window without changing the duration
         :return: a new tuple object
         """
-        return self.extend(pre=by, post=by)
+        return self.change(pre=by, post=by)
 
     def shift_to_fit(self, other):
         """
@@ -1719,7 +1730,7 @@ class Windows(DataFrameWrapper):
 
         return valid
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return self['stop'] <= self['start']
 
     def crop_to_main(self, win_ms, reset=False):
@@ -2816,7 +2827,7 @@ class Windows(DataFrameWrapper):
         to_next.fillna(np.inf, inplace=True)
         return to_next
 
-    def extend(self, pre=0., post=0.):
+    def change(self, pre=0., post=0.):
         """
         Add (or remove) time at the start (pre) or the end (post) of the window
         :param pre: time in milliseconds relative to start
@@ -2828,6 +2839,14 @@ class Windows(DataFrameWrapper):
         copy.reg['stop'] += to_ms(post)
 
         return copy
+
+    def shrink(self, duration=0.):
+        """shrink this window by the same ammount at start and stop"""
+        return self.change(+duration, -duration)
+
+    def expand(self, duration=0.):
+        """expand this window by the same ammount at start and stop"""
+        return self.change(-duration, +duration)
 
 
 def _classify_events_exclusive(
