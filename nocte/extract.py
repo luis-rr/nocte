@@ -36,15 +36,15 @@ class ChunkedExperiment:
         if load_hz is None:
             load_hz = raw.sampling_rate
 
-        load_hz = timeslice.match_load_hz(raw.sampling_rate, load_hz)
+        load_hz = timeslice.SamplingRate(raw.sampling_rate).match_load_hz(load_hz)
 
         chunk_step_ms = max(chunk_length - chunk_overlap, timeslice.S_TO_MS / load_hz)
 
-        self.stride = timeslice.get_stride(raw.sampling_rate, load_hz)
+        self.stride = timeslice.SamplingRate(raw.sampling_rate).get_stride(load_hz)
         load_sampling_period = (self.stride * raw.sampling_period)
 
-        chunk_step_ms = timeslice.adjust_to_sampling_period(chunk_step_ms, load_sampling_period)
-        chunk_length = timeslice.adjust_to_sampling_period(chunk_length, load_sampling_period)
+        chunk_step_ms = timeslice.SamplingRate.from_period(load_sampling_period).adjust_to_sampling_period(chunk_step_ms)
+        chunk_length = timeslice.SamplingRate.from_period(load_sampling_period).adjust_to_sampling_period(chunk_length)
 
         self.wins: Windows = Windows.build_sliding_samples(
             start_ms=load_win.start,
@@ -172,7 +172,7 @@ def extract_sliding(
 
     wins_ms = wins_samples.sample_to_ms(raw.sampling_rate)
 
-    load_hz = timeslice.match_load_hz(raw.sampling_rate, load_hz)
+    load_hz = timeslice.SamplingRate(raw.sampling_rate).match_load_hz(load_hz)
 
     chunk_win = Win(0, 0)
     current_chunk = None

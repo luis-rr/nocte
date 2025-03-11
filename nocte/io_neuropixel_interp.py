@@ -24,16 +24,17 @@ def extract_onsets(
         raw: io_neuropixel.DataLoader,
         load_win_ms=None, chunk_length_ms=timeslice.ms(minutes=15)
 ) -> pd.Series:
-    stored_hz = raw.sampling_rate
+
+    stored_hz = timeslice.SamplingRate(raw.sampling_rate)
 
     if load_win_ms is None:
         load_win_ms = (0, raw.duration_ms)
 
-    chunk_length = timeslice.ms_to_idcs(stored_hz, chunk_length_ms)
+    chunk_length = stored_hz.ms_to_idcs(chunk_length_ms)
 
     load_win_idcs = (
-        timeslice.ms_to_idcs(stored_hz, load_win_ms[0]),
-        timeslice.ms_to_idcs(stored_hz, load_win_ms[1]),
+        stored_hz.ms_to_idcs(load_win_ms[0]),
+        stored_hz.ms_to_idcs(load_win_ms[1]),
     )
 
     breaks = np.sort(np.unique(np.append(np.arange(*load_win_idcs, chunk_length), load_win_idcs[-1])))
@@ -68,7 +69,8 @@ def extract_onsets_multiprobe(all_raw, load_win_ms):
 
 
 def _make_simple_meta(original, channels, target_hz):
-    target_period_ms = timeslice.S_TO_MS / target_hz
+
+    target_period_ms = timeslice.SamplingRate(target_hz).period
 
     id_to_idx = pd.Series(
         index=original['all_channel_ids'],
@@ -106,7 +108,8 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
     :param target_hz:
     :return:
     """
-    target_period_ms = timeslice.S_TO_MS / target_hz
+    target_hz = timeslice.SamplingRate(target_hz)
+    target_period_ms = target_hz.period
 
     fake_meta = _make_simple_meta(raw.meta, channels, target_hz)
     fake_meta.to_json(meta_path_out)
@@ -138,7 +141,7 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
         resampled_data = np.interp(resample_time, true_time, true_samples)
         resampled_data = resampled_data.astype(true_samples.dtype)
 
-        idcs = timeslice.ms_to_idcs(target_hz, np.array([t0, t1]))
+        idcs = target_hz.ms_to_idcs(np.array([t0, t1]))
         memmap[:, idcs[0]:idcs[1]] = resampled_data
 
         memmap.flush()
@@ -185,7 +188,7 @@ def get_all_onsets(onsets_filename, all_raw, load_win_ms):
 
 def onset_idcs_to_ms(all_raw, all_onset_idcs):
     all_onset_ms = pd.DataFrame.from_dict({
-        probe: timeslice.idcs_to_ms(raw.sampling_rate, all_onset_idcs[probe])
+        probe: timeslice.SamplingRate(raw.sampling_rate).idcs_to_ms(all_onset_idcs[probe])
         for probe, raw in all_raw.items()
     })
 

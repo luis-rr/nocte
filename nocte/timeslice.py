@@ -499,11 +499,11 @@ class Win(tuple):
         if load_hz is None:
             load_hz = stored_hz
 
-        assert_stride(stored_hz, load_hz, 'stored_hz', 'load_hz')
+        SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
 
         from_i = int(np.round(stored_hz * self.start_s))
         to_i = int(np.round(stored_hz * self.stop_s))
-        stride_i = get_stride(stored_hz, load_hz)
+        stride_i = SamplingRate(stored_hz).get_stride(load_hz)
 
         return slice(from_i, to_i, stride_i)
 
@@ -2950,51 +2950,88 @@ def _classify_events_exclusive(
     return df
 
 
-def get_stride(stored_hz, load_hz):
-    """
-    Compute the best stride to load data (length of each jump) when the data was stored at a certain
-    sampling rate but we want to load at a different one.
+class SamplingRate:
+    """Encapsulates sampling rate conversions and precision handling."""
 
-    Note this will not respect exactly the load_hz, but return the stride corresponding to the closest one.
-    """
-    return int(np.round(stored_hz / load_hz))
+    def __init__(self, rate: float):
+        """Initialize with a sampling rate in Hz."""
+
+        if isinstance(rate, SamplingRate):
+            # noinspection PyUnresolvedReferences
+            rate = rate.rate
+
+        assert rate > 0, 'Sampling rate must be positive.'
+
+        self.rate = rate
+
+    @classmethod
+    def from_period(cls, period_ms):
+        return cls(period_ms / S_TO_MS)
+
+    @property
+    def period(self) -> float:
+        return S_TO_MS / self.rate
+
+    def get_stride(self, load_hz) -> float:
+        """
+        Compute the best stride to load data (length of each jump) when the data was stored at
+        this sampling rate but we want to load at a different one.
+
+        Note this will not respect exactly the load_hz, but return the stride corresponding to the closest one.
+        """
+        return int(np.round(self.rate / load_hz))
+
+    def match_load_hz(self, load_hz, thresh=None) -> float:
+        """Adjust the load_hz to produce a perfect integer stride"""
+
+        new_load_hz = (self.rate / self.get_stride(load_hz))
+
+        valid = (
+            abs(new_load_hz - load_hz) < thresh
+            if thresh is not None else
+            np.isclose(new_load_hz - load_hz, 0)
+        )
+
+        if not valid:
+            logging.warning(
+                f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
+                f'a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})')
+
+        return new_load_hz
+
+    def check_stride(self, downsample_hz: float) -> bool:
+        """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
+        return np.isclose(self.get_stride(downsample_hz), (self.rate / downsample_hz))
 
 
-def match_load_hz(stored_hz, load_hz, thresh=None):
-    """Adjust the load_hz to produce a perfect integer stride"""
+    def assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
+        """assert if the downsample_hz is not a divisor of the sampling  rate"""
+        assert self.check_stride(downsample_hz), \
+            f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({self.rate})'
 
-    new_load_hz = (stored_hz / get_stride(stored_hz, load_hz))
+    def ms_to_idcs(self, time_ms: np.array) -> np.array:
+        return np.round(self.rate * time_ms * MS_TO_S).astype(int)
 
-    valid = (
-        abs(new_load_hz - load_hz) < thresh
-        if thresh is not None else
-        np.isclose(new_load_hz - load_hz, 0)
-    )
+    def idcs_to_ms(self, idcs: np.array) -> np.array:
+        return (idcs / self.rate) / MS_TO_S
 
-    if not valid:
-        logging.warning(f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
-                        f'a perfect divisor of stored_hz {stored_hz}Hz (stride: {get_stride(stored_hz, new_load_hz)})')
+    def adjust_sampling_period(self, quiet=False) -> float:
+        # time unit is milliseconds, so we are going
+        # to round up to 1 pico second
+        new = np.round(self.period, decimals=9)
 
-    return new_load_hz
+        if not quiet and not np.isclose(new, self.period):
+            logging.warning(f'Adjusting sampling period from {self.period} to {new}')
 
+        return new
 
-def check_stride(sampling_hz: float, downsample_hz: float):
-    """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
-    return np.isclose(get_stride(sampling_hz, downsample_hz), (sampling_hz / downsample_hz))
+    def adjust_to_sampling_period(self, length, desc=None) -> float:
+        new = np.round(length / self.period) * self.period
 
+        if desc is not None and not np.isclose(new, length):
+            logging.warning(f'Adjusting {desc} from {length} to {new}')
 
-def assert_stride(sampling_hz, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
-    """assert if the downsample_hz is not a divisor of the sampling  rate"""
-    assert check_stride(sampling_hz, downsample_hz), \
-        f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({sampling_hz})'
-
-
-def warn_stride(sampling_hz, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
-    """warn if the downsample_hz is not a divisor of the sampling  rate"""
-    if not check_stride(sampling_hz, downsample_hz):
-        logging.warning(
-            f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({sampling_hz})')
-
+        return new
 
 def strfdelta(tdelta, plus_sign=False, strip=True, show_days=False):
     """
@@ -3176,40 +3213,3 @@ def strf_circ(t_ms, first_timestamp, drop_ms=True) -> str:
         circ = np.round(circ * MS_TO_S) * S_TO_MS
 
     return f'{solar} (ZT{strf_ms(circ, plus_sign=True)})'
-
-
-def ms_to_idcs(sampling_rate: float, time_ms: np.array):
-    return np.round(sampling_rate * time_ms * MS_TO_S).astype(int)
-
-
-def idcs_to_ms(sampling_rate: float, idcs: np.array):
-    return (idcs / sampling_rate) / MS_TO_S
-
-
-def adjust_sampling_period(period, quiet=False):
-    # time unit is milliseconds, so we are going
-    # to round up to 1 pico second
-    new = np.round(period, decimals=9)
-
-    if not quiet and not np.isclose(new, period):
-        logging.warning(f'Adjusting sampling period from {period} to {new}')
-
-    return new
-
-
-def adjust_to_sampling_period(length, period, desc=None):
-    if isinstance(length, tuple):
-        assert len(length) == 2
-        return Win(
-            adjust_to_sampling_period(length[0], period, desc=f'{desc} start' if desc is not None else None),
-            adjust_to_sampling_period(length[1], period, desc=f'{desc} stop' if desc is not None else None),
-        )
-
-    else:
-
-        new = np.round(length / period) * period
-
-        if desc is not None and not np.isclose(new, length):
-            logging.warning(f'Adjusting {desc} from {length} to {new}')
-
-        return new

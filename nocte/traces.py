@@ -306,7 +306,7 @@ class Traces(DataFrameWrapper):
             # To prevent this, let's calculate the final idcs as a shift of the relative idcs
             # which we take as final truth.
 
-            ref_idx = timeslice.ms_to_idcs(loader.sampling_rate, ref)
+            ref_idx = timeslice.SamplingRate(loader.sampling_rate).ms_to_idcs(ref)
             slice_idcs = slice(
                 slice_idcs_rel.start + ref_idx,
                 slice_idcs_rel.stop + ref_idx,

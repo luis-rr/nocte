@@ -372,8 +372,7 @@ class DataLoader(io_common.DataLoader):
             )
             meta['sampling_rate'] = expected_sampling_rate
 
-        period = S_TO_MS / meta['sampling_rate']
-        meta['sampling_period'] = timeslice.adjust_sampling_period(period)
+        meta['sampling_period'] = timeslice.SamplingRate(S_TO_MS / meta['sampling_rate']).adjust_sampling_period()
 
         bin_file_size = os.path.getsize(bin_path)
         if bin_file_size != meta.raw['fileSizeBytes']:
@@ -391,8 +390,7 @@ class DataLoader(io_common.DataLoader):
             meta = pd.Series(json.load(f))
 
             if 'sampling_period' not in meta:
-                period = S_TO_MS / meta['sampling_rate']
-                meta['sampling_period'] = timeslice.adjust_sampling_period(period)
+                meta['sampling_period'] = timeslice.SamplingRate(meta['sampling_rate']).adjust_sampling_period()
 
         return cls(
             meta,

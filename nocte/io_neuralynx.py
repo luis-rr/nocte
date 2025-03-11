@@ -135,8 +135,8 @@ class NeuralynxBaseLoader:
         # See also extra properties in NCSLoader.__init__
         if 'SamplingFrequency' in hdr:
             hdr['sampling_rate'] = hdr['SamplingFrequency']
-            period = S_TO_MS / hdr['sampling_rate']
-            hdr['sampling_period'] = timeslice.adjust_sampling_period(period)
+            sampling_rate = hdr['sampling_rate']
+            hdr['sampling_period'] = timeslice.SamplingRate(sampling_rate).adjust_sampling_period()
 
         for old_key, new_key in ('TimeCreated', 'time_created'), ('TimeClosed', 'time_closed'):
 

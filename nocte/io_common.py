@@ -133,8 +133,7 @@ class MultiDataLoader(DataLoader):
         if not all_sampling_rates.nunique() == 1:
             logger.warning(f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}')
 
-        self._sampling_period = S_TO_MS / sampling_rate
-        self._sampling_period = timeslice.adjust_sampling_period(self._sampling_period)
+        self._sampling_period = timeslice.SamplingRate(sampling_rate).adjust_sampling_period()
 
         all_sample_counts = pd.Series({
             k: loader.sample_count

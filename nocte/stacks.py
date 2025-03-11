@@ -887,9 +887,9 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        load_hz = timeslice.match_load_hz(stored_hz, load_hz, thresh=.1)
-        timeslice.assert_stride(stored_hz, load_hz, 'stored_hz', 'load_hz')
-        load_stride = timeslice.get_stride(stored_hz, load_hz)
+        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=.1)
+        timeslice.SamplingRate(stored_hz).assert_stride(stored_hz, load_hz, 'stored_hz', 'load_hz')
+        load_stride = timeslice.SamplingRate(stored_hz).get_stride(load_hz)
 
         length = int(np.ceil(length / load_stride))
 
@@ -1003,6 +1003,8 @@ class Stack:
         if stored_hz is None:
             stored_hz = raw.sampling_rate
 
+        stored_hz = timeslice.SamplingRate(stored_hz)
+
         if load_win is None:
             load_win = raw.win_ms
 
@@ -1010,13 +1012,13 @@ class Stack:
         assert load_win[1] >= 0, f'Expected absolute time. Got: {load_win}'
 
         load_win = timeslice.Win(
-            timeslice.ms_to_idcs(stored_hz, load_win[0]),
-            timeslice.ms_to_idcs(stored_hz, load_win[1])
+            stored_hz.ms_to_idcs(load_win[0]),
+            stored_hz.ms_to_idcs(load_win[1])
         )
 
         stack = cls.load_single_idcs(
             raw, load_win,
-            stored_hz=stored_hz,
+            stored_hz=stored_hz.rate,
             load_hz=load_hz,
             channels=channels,
             adjust_gain=adjust_gain,
@@ -1056,9 +1058,9 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        load_hz = timeslice.match_load_hz(stored_hz, load_hz, thresh=.1)
-        timeslice.assert_stride(stored_hz, load_hz, 'stored_hz', 'load_hz')
-        stride_i = timeslice.get_stride(stored_hz, load_hz)
+        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=.1)
+        timeslice.SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
+        stride_i = timeslice.SamplingRate(stored_hz).get_stride(load_hz)
 
         load_win = timeslice.Win(*load_win)
         load_win = load_win.clip(raw.win_idcs)
@@ -1148,7 +1150,7 @@ class Stack:
         # 'allclose' can let pass small rounding errors
         # remember time unit is milliseconds, so we are going
         # to round up to 1 pico second
-        tstep = timeslice.adjust_sampling_period(tstep, quiet=True)
+        tstep = timeslice.SamplingRate.from_period(tstep).adjust_sampling_period(quiet=True)
 
         if float(tstep).is_integer():
             tstep = int(tstep)
@@ -1251,10 +1253,11 @@ class Stack:
         refs = np.searchsorted(coord, times)
 
         hz = self.estimate_sampling_rate()
+        hz = timeslice.SamplingRate(hz)
 
         win_idcs = timeslice.Win(
-            timeslice.ms_to_idcs(hz, win_ms[0]),
-            timeslice.ms_to_idcs(hz, win_ms[1])
+            hz.ms_to_idcs(win_ms[0]),
+            hz.ms_to_idcs(win_ms[1])
         )
 
         starts = refs + win_idcs.start
@@ -1278,7 +1281,7 @@ class Stack:
 
         new_coords = {
             new_dim: times[valid],
-            coord_name: timeslice.idcs_to_ms(hz, win_idcs.arange(1)),
+            coord_name: hz.idcs_to_ms(win_idcs.arange(1)),
         }
 
         return self.__class__.from_array(res, new_coords)
@@ -1744,11 +1747,11 @@ class Stack:
         """
         Try to match the new sampling frequency by taking every nth sample (including the first)
         Note the frequency should be as close as possible to a perfect divisor of the current sampling frequency.
-        See timeslice.get_stride
+        See timeslice.SamplingRate
         """
         sampling_hz = self.estimate_sampling_rate()
-        timeslice.assert_stride(sampling_hz, downsample_hz)
-        factor = timeslice.get_stride(sampling_hz, downsample_hz)
+        timeslice.SamplingRate(sampling_hz).assert_stride(sampling_hz, downsample_hz)
+        factor = timeslice.SamplingRate(sampling_hz).get_stride(downsample_hz)
         return self.downsample_by_factor(factor, dim=dim)
 
     def downsample_by_factor(self, factor: int, dim='time'):
