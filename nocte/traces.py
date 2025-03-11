@@ -228,7 +228,6 @@ class Traces(DataFrameWrapper):
         self.traces: pd.DataFrame = traces
 
         assert isinstance(reg, pd.DataFrame)
-        assert 'ref' in reg.columns
         assert reg.index.is_unique
         assert reg.columns.is_unique
 
@@ -383,8 +382,6 @@ class Traces(DataFrameWrapper):
         traces.sort_index(inplace=True)
 
         reg = reg.copy()
-        if 'ref' not in reg.columns:
-            reg['ref'] = 0
 
         return cls(
             reg=reg,
@@ -514,10 +511,11 @@ class Traces(DataFrameWrapper):
     def last_valid_index(self):
         return self.traces.apply(lambda col: col.last_valid_index())
 
-    def to_wins(self, tight=True) -> timeslice.Windows:
+    def to_wins(self, ref='ref', tight=True) -> timeslice.Windows:
 
         assert 'start' not in self.columns
         assert 'stop' not in self.columns
+        assert ref in self.columns
 
         reg = self.reg.copy()
         if tight:
@@ -527,8 +525,10 @@ class Traces(DataFrameWrapper):
             rel_win = self.get_global_win()
             start, stop = rel_win.start, rel_win.stop
 
-        reg['start'] = reg['ref'] + start
-        reg['stop'] = reg['ref'] + stop
+        refs = reg[ref]
+
+        reg['start'] = refs + start
+        reg['stop'] = refs + stop
 
         return timeslice.Windows(reg)
 
@@ -1058,14 +1058,10 @@ class Traces(DataFrameWrapper):
     def shift_time(
             self,
             ref_time: float,
-            adjust_ref=False,
     ):
         new = self.replace_traces(
             self.traces.set_index(self.time + ref_time)
         )
-
-        if adjust_ref:
-            new['ref'] = new['ref'] - ref_time
 
         return new
 
@@ -1340,7 +1336,7 @@ class Traces(DataFrameWrapper):
     def _match_traces_wins(reg: pd.DataFrame, windows, **kwargs):
 
         reg: pd.DataFrame = reg.copy()
-        reg.drop(['ref'], axis=1, inplace=True)
+        # reg.drop(['ref'], axis=1, inplace=True)
 
         if reg.index.name is None:
             reg.index.name = 'index_reg'
@@ -1429,7 +1425,7 @@ class Traces(DataFrameWrapper):
         wins_reg = windows.wins.reindex(new.iloc[:, 0])
         wins_reg.index = new.index
 
-        traces_reg = self.reg.drop(['ref'], axis=1)
+        traces_reg = self.reg  # .drop(['ref'], axis=1)
         traces_reg = traces_reg.reindex(new.iloc[:, 1])
         traces_reg.index = new.index
 
@@ -1562,9 +1558,6 @@ class Traces(DataFrameWrapper):
     @property
     def time(self):
         return self.traces.index
-
-    def time_abs(self, k):
-        return self.time + self.reg.loc[k, 'ref']
 
     @property
     def tloc(self):
