@@ -1813,7 +1813,8 @@ class Traces(DataFrameWrapper):
             traces=self.traces.iloc[offset::factor],
         )
 
-    def contiguous_sampling(self, atol=1.e-6) -> bool:
+    def are_continuously_sampled(self, atol=1.e-6) -> bool:
+        """Check that there are no gaps in the sampling time"""
         dts = np.diff(self.time)
         return np.allclose(dts[0], dts, atol=atol)
 
@@ -1903,7 +1904,7 @@ class Traces(DataFrameWrapper):
         return self.replace_traces(new_traces)
 
     def band_pass(self, low_hz, high_hz, *, order=2):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         sampling_hz = self.sampling_rate
 
@@ -1920,7 +1921,7 @@ class Traces(DataFrameWrapper):
         return self.filtfilt(*params)
 
     def low_pass(self, high_hz, *, order=2):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         sampling_hz = self.sampling_rate
 
@@ -1936,7 +1937,7 @@ class Traces(DataFrameWrapper):
         return self.filtfilt(*params)
 
     def high_pass(self, low_hz, *, order=2):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         sampling_hz = self.sampling_rate
 
@@ -1951,7 +1952,7 @@ class Traces(DataFrameWrapper):
     def _spectral_analysis_single(self, k, spec_func, take_abs, **kwargs):
         """Apply a spectral analysis function to a single trace"""
 
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         sampling_rate = self.sampling_rate
 
@@ -2043,7 +2044,7 @@ class Traces(DataFrameWrapper):
 
     def spectrograms(self, segment_ms=1_000, overlap_ms=None, **kwargs):
         """Specgrograms with sensible defaults"""
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         period = self.sampling_period
         nperseg = int(segment_ms / period)
@@ -2067,7 +2068,7 @@ class Traces(DataFrameWrapper):
             db=False,
             **kwargs,
     ):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         sampling_rate = self.sampling_rate
 
@@ -2096,7 +2097,7 @@ class Traces(DataFrameWrapper):
             pbar=None,
             **kwargs,
     ):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
         sampling_rate = self.sampling_rate
 
         def welch_section(traces: pd.DataFrame):
@@ -2119,7 +2120,7 @@ class Traces(DataFrameWrapper):
         )
 
     def band_power(self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False):
-        assert self.contiguous_sampling()
+        assert self.are_continuously_sampled()
 
         welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
 
