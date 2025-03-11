@@ -252,27 +252,23 @@ class Traces(DataFrameWrapper):
 
         assert np.all(self.reg.index == self.traces.columns)
 
-        # self.traces.sort_index(inplace=True)
-        # self.traces = self.traces.reindex(self.reg.index, axis=1)
-        # assert set(self.reg.index) == set(self.traces.columns)
-
         self.traces.columns.name = self.reg.index.name
 
     @classmethod
-    def from_loader_single(cls, loader, zoom_win, ref=None, load_hz=None, channels=None, pbar=None):
+    def load_single(cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None):
 
         if ref is None:
             zoom_wins = timeslice.Windows.build_around(
-                [zoom_win.start],
-                (0, zoom_win.length),
+                [load_win.start],
+                (0, load_win.length),
             )
         else:
             zoom_wins = timeslice.Windows.build_around(
                 pd.Series([ref]),
-                zoom_win
+                load_win
             )
 
-        result = cls.from_loader(
+        result = cls.load_many(
             loader,
             zoom_wins,
             load_hz=load_hz,
@@ -286,7 +282,7 @@ class Traces(DataFrameWrapper):
         return result
 
     @classmethod
-    def from_loader(cls, loader, zoom_wins, load_hz=None, channels=None, pbar=None):
+    def load_many(cls, loader, load_wins, load_hz=None, channels=None, pbar=None):
 
         if load_hz is None:
             load_hz = loader.sampling_rate
@@ -296,7 +292,7 @@ class Traces(DataFrameWrapper):
 
         traces = {}
 
-        for idx, ref, win_ms in _optional_pbar(zoom_wins.iter_wins_ref(), total=len(zoom_wins), pbar=pbar):
+        for idx, ref, win_ms in _optional_pbar(load_wins.iter_wins_ref(), total=len(load_wins), pbar=pbar):
 
             win_ms = win_ms.clip(loader.win_ms)
 
@@ -333,7 +329,7 @@ class Traces(DataFrameWrapper):
 
             traces[idx] = data
 
-        wins_idx_name = zoom_wins.index.name
+        wins_idx_name = load_wins.index.name
 
         traces = pd.concat(traces, axis=1, names=[wins_idx_name])
 
@@ -347,7 +343,7 @@ class Traces(DataFrameWrapper):
         new_reg = traces.columns.to_frame(index=False)
         merged_reg = pd.merge(
             new_reg,
-            zoom_wins.wins.drop(['start', 'stop'], axis=1),
+            load_wins.wins.drop(['start', 'stop'], axis=1),
             how='left',
             left_on=wins_idx_name,
             right_index=True,
@@ -492,13 +488,13 @@ class Traces(DataFrameWrapper):
 
         return traces
 
-    def to_hdf(self, path):
+    def store_hdf(self, path):
         path = str(path)
         self.reg.to_hdf(path, key='reg')
         self.traces.to_hdf(path, key='traces')
 
     @classmethod
-    def read_hdf(cls, path):
+    def load_hdf(cls, path):
         path = str(path)
         # noinspection PyTypeChecker
         return cls(
@@ -512,7 +508,6 @@ class Traces(DataFrameWrapper):
         Split this traces object into multiple ones with the key being the given column values.
         """
         return dict(self.iter_grouped(col))
-
 
     def first_valid_index(self):
         return self.traces.apply(lambda col: col.first_valid_index())
@@ -1412,29 +1407,55 @@ class Traces(DataFrameWrapper):
             traces=traces_df,
         )
 
-    def cut(
+    def extract_all(
             self,
-            zoom_wins: timeslice.Windows,
+            windows: timeslice.Windows,
             upsampling_ms=None,
             pbar=None,
     ):
+        """
+        Extract all traces using a set of time windows.
+
+        This method applies each window to all traces, generating a new collection of traces
+        where each original trace is split into multiple segments corresponding to the given windows.
+
+        Parameters
+        ----------
+        windows : Windows
+            A `Windows` object defining the time ranges for extraction.
+        upsampling_ms : float, optional
+            If provided, upsample traces to this time resolution before extraction.
+        pbar : bool or tqdm-like, optional
+            Whether to display a progress bar.
+
+        Returns
+        -------
+        Traces
+            A new `Traces` object where each segment corresponds to a window.
+
+        Notes
+        -----
+        - This method differs from `extract()`, which maps traces to their corresponding windows.
+        - If windows overlap, extracted traces may have duplicated time segments.
+        """
+
 
         if upsampling_ms is None:
             upsampling_ms = self.sampling_period
 
-        interp_traces = zoom_wins.interp_df(
+        interp_traces = windows.interp_df(
             self.traces,
             step=upsampling_ms,
             pbar=pbar,
         )
 
-        traces = pd.concat(interp_traces, axis=1, names=[zoom_wins.index.name])
+        traces = pd.concat(interp_traces, axis=1, names=[windows.index.name])
 
         new = traces.columns.to_frame(index=False)
 
         new.rename(columns={new.columns[-1]: f'precut_{new.columns[-1]}'}, inplace=True)
 
-        wins_reg = zoom_wins.wins.reindex(new.iloc[:, 0])
+        wins_reg = windows.wins.reindex(new.iloc[:, 0])
         wins_reg.index = new.index
 
         traces_reg = self.reg.drop(['ref'], axis=1)
@@ -1458,7 +1479,27 @@ class Traces(DataFrameWrapper):
             reg=reg,
         )
 
-    def cut_merge(self, windows, set_index=True, **kwargs):
+    def extract(self, windows, set_index=True, **kwargs):
+        """
+        Extract segments from traces using a `Windows` object.
+
+        This method selects and extracts trace segments according to the time windows
+        defined in `windows`, ensuring that each trace is matched with its corresponding
+        windows. It is the primary method for time-based trace extraction.
+
+        Parameters:
+        -----------
+        windows : Windows
+            A `Windows` object defining the start and stop times for extraction.
+
+        **kwargs :
+            Additional arguments passed to fine-tune extraction behavior through pd.merge.
+
+        Returns:
+        --------
+        Traces
+            A new `Traces` object containing only the extracted segments.
+        """
 
         matched_reg, reg_index_name = Traces._match_traces_wins(
             self.reg,
@@ -1478,7 +1519,6 @@ class Traces(DataFrameWrapper):
                 sel_traces,
                 sel_wins,
             )
-            # assert len(cut_traces.columns) == len(sel_wins)
 
             cut_traces.columns = sel_wins.index
 
@@ -1520,91 +1560,6 @@ class Traces(DataFrameWrapper):
             t = t.mid
 
         return t
-
-    def plot_overlaid(self, ax, label=None, linewidth=1., alpha=.8, **kwargs):
-
-        label = self._get_label(label)
-        ax.plot(
-            self._get_time(),
-            self.traces.values,
-            linewidth=linewidth,
-            alpha=alpha,
-            label=label,
-            **kwargs,
-        )
-
-    def plot_overlaid_sum(
-            self,
-            ax,
-            sum_f=pd.DataFrame.median,
-            label=None,
-            linewidth=1.5,
-            alpha=.4,
-            **kwargs
-    ):
-
-        self.plot_overlaid(
-            ax,
-            linewidth=linewidth * .25,
-            alpha=alpha,
-            **kwargs,
-        )
-
-        t = self._get_time()
-
-        # noinspection PyTypeChecker
-        summary = sum_f(self.traces, axis=1)
-
-        # kwargs['color'] = 'k'
-
-        ax.plot(
-            t,
-            summary.values,
-            linewidth=linewidth,
-            alpha=1,
-            zorder=1e3,
-            label=label,
-            # path_effects=[
-            #     matplotlib.patheffects.Stroke(linewidth=1.5, foreground='k'),
-            #     matplotlib.patheffects.Normal(),
-            # ],
-            **kwargs,
-        )
-
-    def plot_spread(self, ax, y_offset=None, y_scale=1, linewidth=0.5, alpha=1, **kwargs):
-
-        if y_offset is None:
-            y_offset = self.max().quantile(.99)
-
-        offsets = np.arange(len(self.traces.columns)) * y_offset
-
-        ax.plot(
-            self._get_time(),
-            self.traces.values * y_scale + offsets,
-            linewidth=linewidth,
-            alpha=alpha,
-            **kwargs,
-        )
-
-    def plot_spread_fill(self, ax, y_offset=None, y_scale=1, linewidth=0.5, alpha=1, edgecolor='none', **kwargs):
-
-        if y_offset is None:
-            y_offset = self.max().quantile(.99)
-
-        offsets = ((len(self.traces.columns) - 1) - np.arange(len(self.traces.columns))) * y_offset
-
-        x = self._get_time()
-
-        for i, (k, trace) in enumerate(self.items()):
-            ax.fill_between(
-                x,
-                np.zeros(len(x)) + offsets[i],
-                trace.values * y_scale + offsets[i],
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                alpha=alpha,
-                **kwargs,
-            )
 
     def copy(self):
         return self.__class__(
@@ -1868,15 +1823,6 @@ class Traces(DataFrameWrapper):
     def mean(self, *args, **kwargs):
         return self.traces.mean(*args, **kwargs)
 
-    def center_mean(self, *args, **kwargs):
-        return self - self.mean(*args, **kwargs)
-
-    def center_quantile(self, *args, **kwargs):
-        return self - self.quantile(*args, **kwargs)
-
-    def center_median(self, *args, **kwargs):
-        return self - self.median(*args, **kwargs)
-
     def cumsum(self, *args, **kwargs):
         return self.replace_traces(
             self.traces.cumsum(*args, **kwargs)
@@ -2102,7 +2048,7 @@ class Traces(DataFrameWrapper):
 
         return self.filtfilt(*params)
 
-    def spectral_analysis_single(self, k, spec_func, take_abs, **kwargs):
+    def _spectral_analysis_single(self, k, spec_func, take_abs, **kwargs):
         """Apply a spectral analysis function to a single trace"""
 
         assert self.contiguous_sampling()
@@ -2133,7 +2079,7 @@ class Traces(DataFrameWrapper):
 
         return df.rename_axis(index='time', columns='freq')
 
-    def spectral_analysis(self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs):
+    def _spectral_analysis(self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs):
         """
         Apply a spectral analysis function to each trace
 
@@ -2143,7 +2089,7 @@ class Traces(DataFrameWrapper):
         res = {}
 
         for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            spec = self.spectral_analysis_single(k, spec_func, take_abs=take_abs, **kwargs)
+            spec = self._spectral_analysis_single(k, spec_func, take_abs=take_abs, **kwargs)
 
             if db:
                 spec = 10 * np.log10(spec)
@@ -2152,16 +2098,16 @@ class Traces(DataFrameWrapper):
 
         return res
 
-    def spec_stft(self, nperseg=256, noverlap=128, **kwargs):
+    def spectral_analysis_stft(self, nperseg=256, noverlap=128, **kwargs):
         """Short-Time Fourier Transform (STFT)"""
-        return self.spectral_analysis(
+        return self._spectral_analysis(
             scipy.signal.stft,
             nperseg=nperseg,
             noverlap=noverlap,
             **kwargs,
         )
 
-    def spec_wavelet(self, freqs=None, wavelet='morl', **kwargs):
+    def spectral_analysis_wavelet(self, freqs=None, wavelet='morl', **kwargs):
         """Wavelet Transform (Morlet wavelet)"""
         import pywt
         sampling_rate = self.sampling_rate
@@ -2177,7 +2123,7 @@ class Traces(DataFrameWrapper):
             freqs_wt = freqs  # convert scales to frequency
             return freqs_wt, np.arange(0, len(self.time)) / sampling_rate, coef
 
-        return self.spectral_analysis(
+        return self._spectral_analysis(
             wavelet_single,
             scales=scales,
             wavelet=wavelet,
@@ -2187,7 +2133,7 @@ class Traces(DataFrameWrapper):
     def spectrograms_overlapping(self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs):
         """Approximation to multi-taper spectrogram by using overlapping tukey windows"""
 
-        return self.spectral_analysis(
+        return self._spectral_analysis(
             scipy.signal.spectrogram,
             nperseg=nperseg,
             noverlap=noverlap,
@@ -2208,7 +2154,7 @@ class Traces(DataFrameWrapper):
         noverlap = int(overlap_ms / period)
         noverlap = int(np.clip(noverlap, 0, nperseg - 1))
 
-        return self.spectral_analysis(
+        return self._spectral_analysis(
             scipy.signal.spectrogram,
             nperseg=nperseg,
             noverlap=noverlap,

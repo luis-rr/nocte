@@ -95,7 +95,7 @@ def classify_phase(values):
 
 
 def get_phase_cut(phase_traces, analysis_windows, phase_time=ms(seconds=-5), name='single'):
-    phase_detailed_cut = phase_traces.cut_merge(analysis_windows)
+    phase_detailed_cut = phase_traces.extract(analysis_windows)
 
     phase_detailed_cut = phase_detailed_cut - np.floor(phase_detailed_cut.tloc[phase_time])
 

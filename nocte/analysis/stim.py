@@ -137,7 +137,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
                 reg.get_entry(exp_name), lum_raw,
             )
 
-            fixed.to_hdf(str(lum_path), key=fix_key)
+            fixed.store_hdf(str(lum_path), key=fix_key)
 
         except (FileNotFoundError, AssertionError) as e:
             logging.error(f'{exp_name}: {e}')

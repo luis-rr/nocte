@@ -59,11 +59,11 @@ class DataDict(DataFrameWrapper):
         for k, v in self.items(pbar=pbar):
             if hasattr(v, 'to_hdf'):
                 key = f'{desc}_{k:06d}'
-                v.to_hdf(filename, key=key)
+                v.store_hdf(filename, key=key)
 
-            # elif hasattr(v, 'store_hdf'):
-            #     key = f'stack_{k:06d}'
-            #     v.store_hdf(filename, key=key)
+            elif hasattr(v, 'store_hdf'):
+                key = f'{desc}_{k:06d}'
+                v.store_hdf(filename, key=key)
 
             else:
                 raise NotImplementedError()
