@@ -4,7 +4,7 @@ that can be used to cut data.
 """
 import functools
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 import numba
 import numpy as np
@@ -2950,6 +2950,58 @@ def _classify_events_exclusive(
     return df
 
 
+class TimeRef:
+    """
+    Represents a temporal reference to interpret time delays.
+    Enables converting between:
+
+    - Absolute time: following datetime convention.
+    - Recording time: starts at the beginning of the  recording.
+    - Solar time: starts at 00:00 of the first day of the experiment.
+    - Circadian time: starts at 07:00 (or CT0) of the first day of the experiment.
+
+    This class keeps the absolute time reference, that is, the full timestamp of
+    when the recording started.
+
+
+
+    All methods operate and return on timestamps given in milliseconds.
+    The interpretation of these depends on the method used.
+    """
+    def __init__(self, ref: datetime):
+        self.ref = ref
+
+    def _relative_time_offset(self, hour=0, minute=0, second=0, microsecond=0):
+        time_reference = self.ref.replace(hour=hour, minute=minute, second=second, microsecond=microsecond)
+        dt = (self.ref - time_reference)
+        return to_ms(dt)
+
+    @property
+    def solar_offset(self):
+        """when the recording started, in milliseconds from 00:00 of the first day of the recording"""
+        return self._relative_time_offset(hour=0, minute=0)
+
+    @property
+    def circ_offset(self):
+        """when the recording started, in milliseconds from 07:00 of the first day of the recording"""
+        return self._relative_time_offset(hour=7, minute=0)
+
+    def solar_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in solar time to recording time"""
+        return t_ms - self.solar_offset
+
+    def rec_to_solar(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in recoding time to solar time"""
+        return t_ms + self.solar_offset
+
+    def circ_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in circadian time to recording time"""
+        return t_ms - self.circ_offset
+
+    def rec_to_circ(self, t_ms: float | np.ndarray) -> float | np.ndarray:
+        """convert a time in recording time to circadian time"""
+        return t_ms + self.circ_offset
+
 class SamplingRate:
     """Encapsulates sampling rate conversions and precision handling."""
 
@@ -3138,36 +3190,6 @@ def timestamp_to_milliseconds(timestamp) -> float:
     )
 
 
-def get_solar_offset(first_timestamp, hours=0, minutes=0) -> float:
-    """
-    Given a timestamp of when a recording started, calculate the offset in milliseconds
-    from midnight (or from the given hours:minutes).
-    This can be used to transport data from a recording timeframe to a solar timeframe.
-    """
-    zeitgeber = first_timestamp.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-
-    time_offset = (first_timestamp - zeitgeber).total_seconds() * 1000
-
-    return time_offset
-
-
-def time_to_circadian(t_ms, first_timestamp):
-    """adjust a ms timepoint to a ms timepont where t=0 is 7am (this is a circadian convention)"""
-    time_offset = get_solar_offset(first_timestamp, hours=7, minutes=0)
-    return t_ms + time_offset
-
-
-def time_to_solar(t_ms, first_timestamp):
-    """convert a ms timepoint to solar datetime object"""
-    time_offset = get_solar_offset(first_timestamp, hours=0, minutes=0)
-    return t_ms + time_offset
-
-
-def solar_to_time(t_ms, first_timestamp):
-    when = first_timestamp.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(milliseconds=t_ms)
-
-    return to_ms(when - first_timestamp)
-
 
 def build_light_dark_cycle(within, lights_on=ms(hours=7), lights_off=ms(hours=19)) -> Windows:
     """
@@ -3202,14 +3224,3 @@ def build_light_dark_cycle(within, lights_on=ms(hours=7), lights_off=ms(hours=19
     return Windows(cycles)
 
 
-def strf_circ(t_ms, first_timestamp, drop_ms=True) -> str:
-    """pretty print a ms timepoint using circadian convetion"""
-    solar = time_to_solar(t_ms, first_timestamp)
-    if drop_ms:
-        solar = solar.replace(microsecond=0)
-
-    circ = time_to_circadian(t_ms, first_timestamp)
-    if drop_ms:
-        circ = np.round(circ * MS_TO_S) * S_TO_MS
-
-    return f'{solar} (ZT{strf_ms(circ, plus_sign=True)})'

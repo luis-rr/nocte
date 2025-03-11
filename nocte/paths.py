@@ -999,6 +999,6 @@ class Registry(DataFrameWrapper):
             loader = self.get_loader(exp_name)
             first_timestamp = loader.get_first_timestamp()
 
-            offsets[exp_name] = timeslice.get_solar_offset(first_timestamp)
+            offsets[exp_name] = timeslice.TimeRef(first_timestamp).solar_offset
 
         return pd.Series(offsets)
