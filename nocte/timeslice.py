@@ -36,7 +36,7 @@ def ms(**kwargs) -> float:
     return to_ms(timedelta(**kwargs))
 
 
-def ms_scale(scale) -> float:
+def _ms_scale(scale) -> float:
     """
     Determine a scale in milliseconds to work with.
     Accepts exact numbers or strings such as "hours", "minutes", etc..
@@ -586,7 +586,7 @@ class Win(tuple):
 
     def round(self, decimals=0, start=True, stop=True, scale='milliseconds'):
         """round this window """
-        scale_to = ms_scale(scale)
+        scale_to = _ms_scale(scale)
 
         return self.__class__(
             np.round(self.start / scale_to, decimals=decimals) * scale_to if start else self.start,
@@ -595,8 +595,7 @@ class Win(tuple):
 
     def floor(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
-        scale_to = ms_scale(scale)
-
+        scale_to = _ms_scale(scale)
 
         return self.__class__(
             np.floor(self.start / scale_to) * scale_to if start else self.start,
@@ -605,8 +604,7 @@ class Win(tuple):
 
     def ceil(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
-        scale_to = ms_scale(scale)
-
+        scale_to = _ms_scale(scale)
 
         return self.__class__(
             np.ceil(self.start / scale_to) * scale_to if start else self.start,
