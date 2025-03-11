@@ -5,6 +5,7 @@ Internally stored as a simple pd.DataFrame.
 import logging
 import functools
 
+import numba as nb
 import numpy as np
 import pandas as pd
 
@@ -12,6 +13,50 @@ from nocte import plot as splot
 from nocte import timeslice, stacks
 from nocte.timeslice import S_TO_MS
 from nocte.df_wrapper import DataFrameWrapper
+
+
+@nb.njit(parallel=True)
+def _mean_roll_by_nb(_x: np.array, _y: np.array, _win: tuple, _xvals: np.array, nmin):
+    """ fast implementation of mean_roll_by """
+    rolled = np.empty(len(_xvals))
+
+    for i in nb.prange(len(_xvals)):
+        x_center = _xvals[i]
+        vmin = x_center + _win[0]
+        vmax = x_center + _win[1]
+
+        sel = _y[(vmin <= _x) & (_x <= vmax)]
+
+        if len(sel) >= nmin:
+            rolled[i] = np.nanmean(sel)
+        else:
+            rolled[i] = np.nan
+
+    return rolled
+
+
+def _mean_roll_by(x: np.array, y: np.array, win: tuple, xvals: np.array, nmin=1):
+    """
+    for every value in xvals, take the mean of all ys whose corresponding x falls within a given local window
+    """
+
+    if isinstance(x, pd.Series):
+        x = x.values
+
+    if isinstance(y, pd.Series):
+        y = y.values
+
+    assert len(x) == len(y)
+
+    res = _mean_roll_by_nb(
+        np.asarray(x),
+        np.asarray(y),
+        tuple(win),
+        np.asarray(xvals),
+        nmin=nmin,
+    )
+
+    return pd.Series(res, index=xvals)
 
 
 def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:

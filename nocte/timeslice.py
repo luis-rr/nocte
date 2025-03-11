@@ -7,7 +7,6 @@ import functools
 import logging
 from datetime import timedelta, datetime
 
-import numba
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
@@ -16,50 +15,6 @@ from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 S_TO_MS = 1e3
 MS_TO_S = 1. / S_TO_MS
-
-
-@numba.njit(parallel=True)
-def _mean_roll_by(_x: np.array, _y: np.array, _win: tuple, _xvals: np.array, nmin):
-    """ fast implementation of mean_roll_by """
-    rolled = np.empty(len(_xvals))
-
-    for i in numba.prange(len(_xvals)):
-        x_center = _xvals[i]
-        vmin = x_center + _win[0]
-        vmax = x_center + _win[1]
-
-        sel = _y[(vmin <= _x) & (_x <= vmax)]
-
-        if len(sel) >= nmin:
-            rolled[i] = np.nanmean(sel)
-        else:
-            rolled[i] = np.nan
-
-    return rolled
-
-
-def mean_roll_by(x: np.array, y: np.array, win: tuple, xvals: np.array, nmin=1):
-    """
-    for every value in xvals, take the mean of all ys whose corresponding x falls within a given local window
-    """
-
-    if isinstance(x, pd.Series):
-        x = x.values
-
-    if isinstance(y, pd.Series):
-        y = y.values
-
-    assert len(x) == len(y)
-
-    res = _mean_roll_by(
-        np.asarray(x),
-        np.asarray(y),
-        tuple(win),
-        np.asarray(xvals),
-        nmin=nmin,
-    )
-
-    return pd.Series(res, index=xvals)
 
 
 def to_ms(t) -> float:
@@ -526,8 +481,8 @@ class Win(tuple):
     def to_str(self, plus_sign=False, strip=True, show_days=True):
         """pretty str format"""
         return (
-            f'({ms_formatted(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
-            f' {ms_formatted(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
+            f'({ms_to_str(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
+            f' {ms_to_str(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
         )
 
     def __str__(self):
@@ -1798,11 +1753,11 @@ class Windows(DataFrameWrapper):
 
         desc = (
             f'{len(self):,g} {desc_tight}{desc_uniform}{desc_exclusive}wins'
-            f' covering {ms_formatted(self.total())}'
+            f' covering {ms_to_str(self.total())}'
         )
 
         if 'cat' in self.reg.columns:
-            desc_cats = ', '.join([f'{ms_formatted(v)} {k}' for k, v in self.total_by_cat().items()])
+            desc_cats = ', '.join([f'{ms_to_str(v)} {k}' for k, v in self.total_by_cat().items()])
             desc = f'{desc} ({desc_cats})'
 
         if quiet:
@@ -2891,28 +2846,6 @@ class Windows(DataFrameWrapper):
             results[idx] = zoomed
 
         return results
-
-    def get_rolled(self, col, roll_win, on='ref', sampling=101) -> pd.Series:
-        x = self[on]
-        y = self[col]
-
-        if isinstance(sampling, int):
-            new_x = np.linspace(self[on].min(), self[on].max(), sampling)
-
-        else:
-            new_x = sampling
-
-        return mean_roll_by(
-            x, y,
-            Win.build_centered(0, roll_win),
-            new_x,
-        )
-
-    def get_rolled_multiple(self, cols, roll_win, **kwargs) -> pd.DataFrame:
-        return pd.DataFrame({
-            col: self.get_rolled(col=col, roll_win=roll_win, **kwargs)
-            for col in cols
-        })
 
     def get_inter_intervals(
             self,
