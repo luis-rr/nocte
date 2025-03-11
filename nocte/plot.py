@@ -407,7 +407,7 @@ def plot_wins_rectangle(
         how='face',
         **kwargs
 ):
-    assert how in ['face', 'edge']
+    assert how in ['face', 'edge', 'both']
     colors = get_colors_with_defaults(colors, wins[by])
 
     if transform is None:
@@ -427,9 +427,14 @@ def plot_wins_rectangle(
             full_kwargs['facecolor'] = color
             full_kwargs['edgecolor'] = 'none'
 
-        else:
+        elif how == 'edge':
             full_kwargs['edgecolor'] = color
             full_kwargs['facecolor'] = 'none'
+
+        else:
+            assert how == 'both'
+            full_kwargs['edgecolor'] = color
+            full_kwargs['facecolor'] = color
 
         full_kwargs = {**full_kwargs, **kwargs}
 
@@ -578,77 +583,19 @@ def make_axs_long_experiment(
     return dict(zip(tbins, axs.ravel()))
 
 
-def plot_events_vline(ax, events: pd.Series, colors=None, **kwargs):
+def plot_events_vline(ax, events: pd.DataFrame, colors=None, *, time_col='time', color_col='desc', **kwargs):
     """plot a vertical line for every event"""
+
+    names = events[color_col]
+    times = events[time_col]
 
     if colors is None:
         colors = {}
 
     colors = {**COLORS, **colors}
 
-    for name, e in events.items():
-        ax.axvline(e, color=colors.get(name, 'k'), zorder=1e4, linewidth=1, clip_on=False, **kwargs)
-
-
-def plot_traces_wrapped(
-        all_traces=None, events=None, wins=None, axhline=None,
-        linewidth=.5, alpha=.9,
-        figsize=None,
-        tbin_width=timeslice.ms(hours=2.5),
-        suptitle=None,
-        ylim=(-.25, 1),
-        major=None, minor=None,
-        colors=None,
-        show_timestamp=True,
-        tstart_timestamp=None,
-        time_scale='minutes',
-        win_ms=None,
-        legend=True,
-):
-    """plot multiple traces, events and shaded windows for long experiments as wrapped axes"""
-
-    if colors is None:
-        colors = COLORS
-    else:
-        colors = {**colors, **COLORS}
-
-    if win_ms is None:
-        win_ms = (all_traces.index.min(), all_traces.index.max())
-
-    axs = make_axs_long_experiment(
-        win_ms,
-        tbin_width=tbin_width,
-        figsize=figsize,
-        show_timestamp=show_timestamp,
-        tstart_timestamp=tstart_timestamp,
-        time_scale=time_scale,
-        major=major,
-        minor=minor,
-        ylim=ylim,
-        leftspine=False,
-    )
-
-    if wins is not None:
-        plot_wrapped_wins_fill(axs, wins, colors=colors)
-
-    plot_wrapped_lines(axs, all_traces, colors=colors, linewidth=linewidth, alpha=alpha)
-
-    for i, (tbin, ax) in enumerate(axs.items()):
-
-        if axhline is not None:
-            ax.plot([0, tbin.length], [axhline, axhline], color='k', linewidth=1)
-
-        if events is not None:
-            plot_events_vline(ax, events[events.between(*tbin)] - tbin.start, colors=colors)
-
-    ax = list(axs.values())[-1]
-    if legend:
-        ax.legend(loc='lower right', fontsize=6)
-
-    if suptitle is not None:
-        ax.figure.suptitle(suptitle)
-
-    return axs
+    for name, time in zip(names, times):
+        ax.axvline(time, color=colors.get(name, 'k'), zorder=1e4, linewidth=1, clip_on=False, **kwargs)
 
 
 def plot_wrapped_lines(
@@ -678,6 +625,37 @@ def plot_wrapped_lines(
                 color=colors.get(name, f'C{j}'),
                 label=str(name).replace('_', ' '),
                 linewidth=linewidth,
+                **kwargs,
+            )
+
+
+def plot_wrapped_fills(
+        axs,
+        all_traces: pd.DataFrame,
+        y0=0,
+        colors=None,
+        **kwargs,
+):
+    if colors is None:
+        colors = COLORS
+    else:
+        colors = {**COLORS, **colors}
+
+    if isinstance(all_traces, pd.Series):
+        all_traces = all_traces.to_frame()
+
+    for i, (tbin, ax) in enumerate(axs.items()):
+        for j, (name, trace) in enumerate(all_traces.items()):
+            name: str
+
+            trace = tbin.crop_df(trace, reset=True)
+
+            ax.fill_between(
+                trace.index,
+                y0,
+                trace.values,
+                facecolor=colors.get(name, f'C{j}'),
+                label=str(name).replace('_', ' '),
                 **kwargs,
             )
 
@@ -748,17 +726,28 @@ def plot_wrapped_wins_fill(
         )
 
 
-def plot_wrapped_events(
+def plot_wrapped_events_vline(
         axs,
-        events,
+        events: pd.DataFrame,
+        *,
+        time_col='time',
         **kwargs,
 ):
     """plot multiple traces, events and shaded windows for long experiments as wrapped axes"""
 
     for i, (tbin, ax) in enumerate(axs.items()):
         if events is not None:
+
+            time = events[time_col]
+
+            sel_events = events[time.between(*tbin)].copy()
+
+            sel_events[time_col] = sel_events[time_col] - tbin.start
+
             plot_events_vline(
-                ax, events[events.between(*tbin)] - tbin.start,
+                ax,
+                sel_events,
+                time_col=time_col,
                 **kwargs,
             )
 
@@ -829,96 +818,6 @@ def _get_stack_extent(s, xcol, ycol):
         s.coords[ycol][0] * 1.5 - s.coords[ycol][1] * .5,
         s.coords[ycol][-1] * 1.5 - s.coords[ycol][-2] * .5,
     )
-
-
-def plot_traces2d_wrapped(
-        stack2d,
-        events=None,
-        tbin_width=ms(hours=2.5),
-        xcol='time', ycol='lag',
-        grid_steps=None,
-        suptitle=None,
-        cmap='RdGy_r',
-        norm=None,
-        majory=20,
-        minory=10,
-        scaley=None,
-        figsize=(9, 5),
-        major=ms(minutes=15),
-        minor=ms(minutes=5),
-        tstart_timestamp=None,
-        time_scale='minutes',
-        show_timestamp=True,
-        show_colorbar=False,
-        cbar_extend='both',
-        interpolation='antialiased',
-):
-    stack2d = stack2d.transpose(..., xcol)
-
-    axs = make_axs_long_experiment(
-        stack2d.get_rel_win(),
-        tbin_width=tbin_width,
-        figsize=figsize,
-        show_timestamp=show_timestamp,
-        tstart_timestamp=tstart_timestamp,
-        time_scale=time_scale,
-        major=major,
-        minor=minor,
-        suptitle=suptitle,
-    )
-
-    if norm is None:
-        vmax = np.quantile(np.abs(stack2d.values), 0.999)
-        norm = matplotlib.colors.Normalize(-vmax, vmax)
-
-    if events is None:
-        events = pd.Series([], dtype=float)
-
-    for i, (tbin, ax) in tqdm(enumerate(axs.items()), total=len(axs)):
-
-        s = stack2d.sel_between(time=tbin).shift_coord(time=-tbin[0])
-
-        extent = _get_stack_extent(s, xcol, ycol)
-
-        im = ax.imshow(
-            s.values,
-            origin='lower',
-            extent=extent,
-            norm=norm,
-            cmap=cmap,
-            interpolation=interpolation,
-            aspect='auto',
-        )
-
-        # imshow might change the xlim and
-        # the last plot may be shorter, so make sure we show the full tbins
-        ax.set_xlim(0, tbin_width)
-
-        set_time_ticks(ax, which='y', major=majory, minor=minory, scale=scaley)
-
-        es = events[events.between(*tbin)] - tbin.start
-        plot_events_vline(ax, es)
-
-        if grid_steps is not None:
-            for lag in grid_steps:
-                ax.axhline(lag, color='xkcd:black', linewidth=.25, alpha=.5, linestyle='--')
-
-        ax.set_xlabel('')
-
-        if show_colorbar and i == len(axs) - 1:
-            axins = inset_axes(
-                ax,
-                width=.05,
-                height="75%",
-                loc='center right',
-                borderpad=2,
-            )
-
-            ax.figure.colorbar(im, ax=ax, cax=axins, extend=cbar_extend)
-
-            axins.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(nbins=2))
-
-    return axs
 
 
 def add_desc(ax, desc, loc='upper right', bkg_color='w', bkg_edgecolor='none', fontsize=6, loc_pad=0.05, bkg_alpha=0.75, **kwargs):
@@ -1679,4 +1578,57 @@ def plot_df2d(ax, df, origin='lower', interpolation='none', **kwargs):
         origin=origin,
         interpolation=interpolation,
         **kwargs,
+    )
+
+
+def plot_violin_scatter(
+        ax, y, x, y_range=None, scale=0.2, bw_method=None, shade_facecolor='xkcd:magenta',
+        shade_edgecolor='w', shade_linewidth=0.25, shade_alpha=0.25, facecolor='xkcd:magenta', alpha=0.75,
+        edgecolor='w', linewidth=0.25, s=50, **scatter_kwargs):
+    """
+    Plots a violin-like distribution with overlaid jittered scatter points.
+
+    Parameters:
+    - y: array-like, values to plot on the y-axis.
+    - x_fixed: float, the fixed x-position for the plot.
+    - scale: float, width scaling factor for the violin and jitter.
+    - bw_method: float or None, bandwidth for KDE smoothing (None for auto).
+    - num_points: int, number of points for smooth KDE evaluation.
+    - ax: matplotlib Axes object, optional.
+    - scatter_kwargs: additional arguments for plt.scatter.
+
+    Returns:
+    - The matplotlib figure and axis.
+    """
+    y = np.asarray(y)
+
+    # KDE estimation
+    kde = scipy.stats.gaussian_kde(y, bw_method=bw_method)
+    if y_range is None:
+        y_range = y.min(), y.max()
+
+    y_eval = np.linspace(*y_range, 100 + 1)
+
+    density = kde(y_eval)
+
+    # Normalize density and scale
+    density = density / density.max() * scale
+
+    # Plot violin-like shaded area
+    ax.fill_betweenx(y_eval, x - density, x + density, edgecolor=shade_edgecolor, facecolor=shade_facecolor,
+                     alpha=shade_alpha, linewidth=shade_linewidth)
+
+    # Compute jitter based on local density
+    y_density = kde(y)
+    jitter = (np.random.rand(len(y)) - 0.5) * scale * 2 * (y_density / y_density.max())
+
+    # Plot jittered scatter points
+    ax.scatter(
+        x + jitter,
+        y,
+        facecolor=facecolor,
+        alpha=alpha,
+        edgecolor=edgecolor,
+        linewidth=linewidth,
+        s=s,
     )
