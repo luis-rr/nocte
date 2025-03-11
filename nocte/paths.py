@@ -789,7 +789,7 @@ class Registry(DataFrameWrapper):
                 split = string.find(':')
                 entry_desc, time_str = string[:split], string[split + 1:]
 
-                time_ms = timeslice.timestamp_to_milliseconds(time_str)
+                time_ms = timeslice.str_to_ms(time_str)
 
                 return entry_desc, time_ms
 

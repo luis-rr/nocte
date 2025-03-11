@@ -215,8 +215,8 @@ def estimate_onset_actual_time(all_raw, all_onset_idcs):
 
         logging.warning(
             f'Expected onsets to be exactly 1 second apart, but got: {desc}\n'
-            f'Adjusting from [{timeslice.strf_ms(actual_time_bad.min())}-{timeslice.strf_ms(actual_time_bad.max())}]'
-            f' to [{timeslice.strf_ms(actual_time.min())}-{timeslice.strf_ms(actual_time.max())}]'
+            f'Adjusting from [{timeslice.ms_to_str(actual_time_bad.min())}-{timeslice.ms_to_str(actual_time_bad.max())}]'
+            f' to [{timeslice.ms_to_str(actual_time.min())}-{timeslice.ms_to_str(actual_time.max())}]'
         )
 
     return actual_time

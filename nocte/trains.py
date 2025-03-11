@@ -29,8 +29,8 @@ class SpikeTrains:
         if len(self.spikes) > 0:
             tmin = self.spikes['time'].min()
             tmax = self.spikes['time'].max()
-            assert self.win_ms.start <= tmin, f'Spikes start too early ({timeslice.strf_ms(tmin)}) for window {self.win_ms}'
-            assert tmax <= self.win_ms.stop, f'Spikes stop too late ({timeslice.strf_ms(tmax)}) for window {self.win_ms}'
+            assert self.win_ms.start <= tmin, f'Spikes start too early ({timeslice.ms_to_str(tmin)}) for window {self.win_ms}'
+            assert tmax <= self.win_ms.stop, f'Spikes stop too late ({timeslice.ms_to_str(tmax)}) for window {self.win_ms}'
 
         self._add_cells_props(time_col='time')
 

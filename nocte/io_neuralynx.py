@@ -686,7 +686,7 @@ class MultiNCSLoader(io_common.MultiDataLoader):
                 new_time_closed = center + half
 
                 logger.warning(
-                    f'Timestamp and raw data differ by {timeslice.strf_ms(timestamp_duration_ms - self.duration_ms)}.'
+                    f'Timestamp and raw data differ by {timeslice.ms_to_str(timestamp_duration_ms - self.duration_ms)}.'
                     f' Centering timestamps from <{time_created} - {time_closed}> to  '
                     f'<{new_time_created} - {new_time_closed}>'
                 )

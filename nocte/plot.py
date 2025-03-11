@@ -552,15 +552,15 @@ def make_axs_long_experiment(
 
             if tstart_timestamp is None:
                 timestamp = (
-                    f'{timeslice.strf_ms(tbin.start, plus_sign=False)}'
-                    f'-{timeslice.strf_ms(tbin.stop, plus_sign=False)}'
+                    f'{timeslice.ms_to_str(tbin.start, plus_sign=False)}'
+                    f'-{timeslice.ms_to_str(tbin.stop, plus_sign=False)}'
                 )
 
             else:
                 timestamp = f'{(tstart_timestamp + timeslice.timedelta(milliseconds=tbin.start))}'
 
                 # if i == 0:
-                #     timestamp += f' ({timeslice.strf_ms(tbin.length, plus_sign=True)})'
+                #     timestamp += f' ({timeslice.ms_to_str(tbin.length, plus_sign=True)})'
 
             ax.text(
                 0, 1, timestamp,

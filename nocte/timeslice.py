@@ -2,6 +2,7 @@
 Manage conversion between timescales & sampling rates, as well as defining windows of time
 that can be used to cut data.
 """
+import re
 import functools
 import logging
 from datetime import timedelta, datetime
@@ -78,6 +79,7 @@ def to_ms(t) -> float:
 def ms(**kwargs) -> float:
     """short-hand to write a millisecond time-stamp using hours=, minutes=, etc.."""
     return to_ms(timedelta(**kwargs))
+
 
 def ms_scale(scale) -> float:
     """
@@ -305,8 +307,8 @@ class Win(tuple):
     def to_str(self, plus_sign=False, strip=True, show_days=True):
         """pretty str format"""
         return (
-            f'({strfdelta(self.start_td, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
-            f' {strfdelta(self.stop_td, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
+            f'({ms_formatted(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
+            f' {ms_formatted(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
         )
 
     def __str__(self):
@@ -686,8 +688,8 @@ class Windows(DataFrameWrapper):
         desc = []
 
         for _, start, stop, cat in self.reg[['start', 'stop', 'cat']].itertuples():
-            start = milliseconds_to_timestamp(start)
-            stop = milliseconds_to_timestamp(stop)
+            start = ms_to_str(start, plus_sign=False, strip=False, show_days=True)
+            stop = ms_to_str(stop, plus_sign=False, strip=False, show_days=True)
 
             desc.append(
                 f'{cat}-{start}-{stop}',
@@ -707,8 +709,8 @@ class Windows(DataFrameWrapper):
             for win_str in string.strip().replace(';', '\n').split('\n'):
                 cat = win_str[:win_str.find(':')]
                 start, stop = win_str[win_str.find(':') + 1:].split('-')
-                start = timestamp_to_milliseconds(start.strip())
-                stop = timestamp_to_milliseconds(stop.strip())
+                start = str_to_ms(start.strip())
+                stop = str_to_ms(stop.strip())
                 ref = start
 
                 wins.append((cat, start, stop, ref))
@@ -1577,11 +1579,11 @@ class Windows(DataFrameWrapper):
 
         desc = (
             f'{len(self):,g} {desc_tight}{desc_uniform}{desc_exclusive}wins'
-            f' covering {strf_ms(self.total())}'
+            f' covering {ms_formatted(self.total())}'
         )
 
         if 'cat' in self.reg.columns:
-            desc_cats = ', '.join([f'{strf_ms(v)} {k}' for k, v in self.total_by_cat().items()])
+            desc_cats = ', '.join([f'{ms_formatted(v)} {k}' for k, v in self.total_by_cat().items()])
             desc = f'{desc} ({desc_cats})'
 
         if quiet:
@@ -3085,21 +3087,24 @@ class SamplingRate:
 
         return new
 
-def strfdelta(tdelta, plus_sign=False, strip=True, show_days=False):
+def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
+    """
+    Pretty-format a float value representing milliseconds into
+        `[+][DDd ]HH:MM:SS.sss`
+
+    - Accepts negative values.
+    - Uses a plus sign (`+`) if `plus_sign=True`.
+    - Drops seconds and milliseconds if they are zero and `strip=True`.
+
+    :param value: Time value in milliseconds.
+    :param plus_sign: Whether a '+' should be prefixed for positive values.
+    :param strip: Whether to omit seconds and milliseconds when they are zero.
+    :param show_days: Whether to include days in the formatted output.
+    :return: Formatted time string.
     """
 
-    pretty str format a timedelta object
-    accepts negative values!
+    tdelta = timedelta(milliseconds=to_ms(value))
 
-    :param tdelta:
-    :param show_days:
-    :param plus_sign: whether a '+' should be place if the timedelta is positive.
-    This can be useful when we want to ensure a fixed length of the string.
-
-    :param strip:
-        If true don't plot seconds or milliseconds if they are 0.
-    :return:
-    """
     total = tdelta.total_seconds()
 
     sign = '' if not plus_sign else '+'
@@ -3127,46 +3132,20 @@ def strfdelta(tdelta, plus_sign=False, strip=True, show_days=False):
         desc += f':{seconds:02.0f}'
 
         if decimals or not strip:
-            desc += f'.{decimals * 1000.:03.0f}'
+            desc += f'.{int(decimals * 1000.):03g}'
 
     return desc
 
 
-def strf_ms(value, plus_sign=False, strip=True, show_days=False):
-    """
-    pretty str format a float value representing milliseconds
-    """
-    return strfdelta(
-        timedelta(milliseconds=to_ms(value)),
-        plus_sign=plus_sign,
-        strip=strip,
-        show_days=show_days,
-    )
-
-
-def milliseconds_to_timestamp(milliseconds: float):
-    """
-    convert total milliseconds to a formatted timestamp string DDd HH:MM:SS.sss
-
-    This is meant for human-readable serialization.
-    For pretty-printing with more options see strf_ms
-    """
-
-    seconds, mils = divmod(milliseconds, 1000)
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    days, hours = divmod(hours, 24)
-
-    return f"{int(days):02}d {int(hours):02}:{int(minutes):02}:{int(seconds):02}.{int(mils):03}"
-
-
-def timestamp_to_milliseconds(timestamp) -> float:
+def str_to_ms(timestamp) -> float:
     """
     convert a timestamp string DDd HH:MM:SS.sss to total milliseconds
     Days, seconds and milliseconds are optional
     examples: ["3d 19:00:15.143", "19:00", "3d 19:00", "19:00:15"]
+
+    This is meant for human-readable serialization.
+    For pretty-printing with more options see strf_ms
     """
-    import re
     # Define regex pattern with optional days, hours, minutes, optional seconds, and milliseconds
     pattern = r'(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
     match = re.match(pattern, timestamp.strip())
@@ -3188,39 +3167,3 @@ def timestamp_to_milliseconds(timestamp) -> float:
         seconds=seconds,
         milliseconds=milliseconds,
     )
-
-
-
-def build_light_dark_cycle(within, lights_on=ms(hours=7), lights_off=ms(hours=19)) -> Windows:
-    """
-    Build light/dark windows within the given time period, assuming lights are always
-    turned off/on at the same solar times
-    """
-    cycles = []
-
-    one_day = ms(days=1)
-
-    start_in_the_day = within.start % one_day
-    current_state = "on" if lights_on <= start_in_the_day < lights_off else "off"
-
-    current_time = within.start
-
-    while current_time < within.stop:
-        if current_state == "on":
-            next_time = (current_time // one_day) * one_day + lights_off
-        else:
-            next_time = (current_time // one_day + 1) * one_day + lights_on
-
-        if next_time > within.stop:
-            next_time = within.stop
-
-        cycles.append((current_state, current_time, next_time))
-
-        current_time = next_time
-        current_state = "off" if current_state == "on" else "on"
-
-    cycles = pd.DataFrame(cycles, columns=['cat', 'start', 'stop'])
-
-    return Windows(cycles)
-
-
