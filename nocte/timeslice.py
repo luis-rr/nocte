@@ -2802,28 +2802,28 @@ class Windows(DataFrameWrapper):
 
         results = {}
 
-        for idx, zoom in self.iter_wins():
+        for idx, win in self.iter_wins():
 
             if edges == 'crop':
-                zoomed = others.crop_to_main(zoom)
+                cropped = others.crop_to_main(win)
 
             else:
                 if edges == 'drop':
-                    fully = others.contained_in(zoom, fully=True)
-                    zoomed = others.sel_mask(fully)
+                    fully = others.contained_in(win, fully=True)
+                    cropped = others.sel_mask(fully)
 
                 else:
                     assert edges == 'keep'
 
-                    partial = others.contained_in(zoom, fully=False)
-                    zoomed = others.sel_mask(partial)
+                    partial = others.contained_in(win, fully=False)
+                    cropped = others.sel_mask(partial)
 
-            zoomed = zoomed.drop_empty()
+            cropped = cropped.drop_empty()
 
             if ref_times is not None:
-                zoomed = zoomed.shift(-ref_times[idx])
+                cropped = cropped.shift(-ref_times[idx])
 
-            results[idx] = zoomed
+            results[idx] = cropped
 
         return results
 

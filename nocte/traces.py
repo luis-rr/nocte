@@ -257,19 +257,19 @@ class Traces(DataFrameWrapper):
     def load_single(cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None):
 
         if ref is None:
-            zoom_wins = timeslice.Windows.build_around(
+            load_wins = timeslice.Windows.build_around(
                 [load_win.start],
                 (0, load_win.length),
             )
         else:
-            zoom_wins = timeslice.Windows.build_around(
+            load_wins = timeslice.Windows.build_around(
                 pd.Series([ref]),
                 load_win
             )
 
         result = cls.load_many(
             loader,
-            zoom_wins,
+            load_wins,
             load_hz=load_hz,
             channels=channels,
             pbar=pbar,
@@ -1365,10 +1365,10 @@ class Traces(DataFrameWrapper):
     @staticmethod
     def _extract(
             traces,
-            zoom_wins: timeslice.Windows,
+            wins: timeslice.Windows,
             upsampling_ms=100,
     ):
-        traces = zoom_wins.interp_df(
+        traces = wins.interp_df(
             traces,
             step=upsampling_ms,
         )
@@ -1484,7 +1484,7 @@ class Traces(DataFrameWrapper):
 
             cut_traces = Traces._extract(
                 sel_traces,
-                sel_wins,
+                wins=sel_wins,
             )
 
             cut_traces.columns = sel_wins.index
