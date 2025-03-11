@@ -875,15 +875,23 @@ class Traces(DataFrameWrapper):
 
         return df
 
-    def items(self, pbar=None):
+    def items(self, col=None, pbar=None):
         """
-        returns an iterator to go over each trace:
+        Returns an iterator to go over each trace.
+        If 'col' is None, then the key will be the index.
+        If it is not, then the key will be the value of the corresponding column
+        (which must be unique).
 
-            for k, trace in beta.items(pbar=True):
+            for exp_name, trace in beta.items('exp_name', pbar=True):
                 pass
 
         """
-        return _optional_pbar(self.traces.items(), total=len(self.traces.columns), pbar=pbar)
+        if col is not None:
+            data = self.get_df(col)
+        else:
+            data = self.traces
+
+        return _optional_pbar(data.items(), total=len(data.columns), pbar=pbar)
 
     def histograms2d(self, vbins=None, tbins=None, rolling_win=None, pbar=None):
         """
