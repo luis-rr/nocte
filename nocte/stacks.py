@@ -156,7 +156,7 @@ class Stack:
         if time_dim in self.coords:
             time_desc = f'; sampling: {self.estimate_sampling_rate(dim=time_dim)}hz ' \
                         f'({self.estimate_sampling_period(dim=time_dim)}ms)' \
-                        f'; win: {self.get_rel_win(dim=time_dim)}'
+                        f'; win: {self.get_global_win(dim=time_dim)}'
 
             coords_desc += f'{time_desc}'
 
@@ -721,7 +721,7 @@ class Stack:
         """Cut a section in the temporal center of this stack"""
         return self.sel_between(
             **{
-                dim: self.get_rel_win().take_centered(duration)
+                dim: self.get_global_win().take_centered(duration)
             },
             reset=reset,
         )
@@ -1736,7 +1736,7 @@ class Stack:
 
         return rolled
 
-    def get_rel_win(self, dim='time'):
+    def get_global_win(self, dim='time'):
         """
         Get the period (start, stop) covered by this stack in a 'time' dimension
         """
@@ -1772,7 +1772,7 @@ class Stack:
         :return:
         """
         if win is None:
-            win = self.get_rel_win(dim)
+            win = self.get_global_win(dim)
 
         new_sampling_period = S_TO_MS / upsample_hz
 

@@ -455,7 +455,7 @@ def plot_betas_grouped_single(
 
     ax.set(
         ylim=(-.1, y_spacing * 4),
-        xlim=beta_detailed_cut.get_rel_win(),
+        xlim=beta_detailed_cut.get_global_win(),
     )
     # ax.set(ylim=(-1.5, +2), xlim=(ms(minutes=-2), ms(minutes=+4)))
     #     ax.legend(loc='lower right')

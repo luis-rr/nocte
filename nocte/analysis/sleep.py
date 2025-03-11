@@ -179,8 +179,8 @@ def extract_power_sliding(
     :param welch_ms:
     :return:
     """
-    assert main.get_rel_win().length >= sliding_win_len_ms, \
-        f'Data shorter than sliding window ({main.get_rel_win().length} vs {sliding_win_len_ms})'
+    assert main.get_global_win().length >= sliding_win_len_ms, \
+        f'Data shorter than sliding window ({main.get_global_win().length} vs {sliding_win_len_ms})'
 
     if isinstance(bands, list):
         assert all(isinstance(b, str) for b in bands)

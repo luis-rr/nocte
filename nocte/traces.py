@@ -524,7 +524,7 @@ class Traces(DataFrameWrapper):
             start = self.first_valid_index()
             stop = self.last_valid_index()
         else:
-            rel_win = self.get_rel_win()
+            rel_win = self.get_global_win()
             start, stop = rel_win.start, rel_win.stop
 
         reg['start'] = reg['ref'] + start
@@ -910,7 +910,7 @@ class Traces(DataFrameWrapper):
             tbins = float(self.sampling_period)
 
         if isinstance(tbins, float):
-            tbins = self.get_rel_win().arange(tbins)
+            tbins = self.get_global_win().arange(tbins)
 
         hists = {}
         for k, trace in self.items(pbar=pbar):
@@ -1675,7 +1675,7 @@ class Traces(DataFrameWrapper):
         traces = self.traces.dropna(axis=1, how=how)
         return self.replace_traces(traces)
 
-    def get_rel_win(self):
+    def get_global_win(self) -> timeslice.Win:
         return timeslice.Win(
             self.time.min(),
             self.time.max(),
@@ -2153,8 +2153,8 @@ class Traces(DataFrameWrapper):
         Note the windows will overlap and the value generated is assigned to its center.
         This means we cannot cover the beginning and end of the trace.
         """
-        assert self.get_rel_win().length >= sliding_len_ms, \
-            f'Data shorter than sliding window ({self.get_rel_win().length} vs {sliding_len_ms})'
+        assert self.get_global_win().length >= sliding_len_ms, \
+            f'Data shorter than sliding window ({self.get_global_win().length} vs {sliding_len_ms})'
 
         assert not self.contains_nan()
 
@@ -2226,7 +2226,7 @@ class Traces(DataFrameWrapper):
             step_ms = self.sampling_period
 
         # note we want indices to slice signal, which may not start at t=0
-        signal_tstart, signal_tstop = self.get_rel_win()
+        signal_tstart, signal_tstop = self.get_global_win()
         signal_sampling_rate = self.sampling_rate
         start_off_ms = 0
         stop_off_ms = 0

@@ -373,7 +373,7 @@ def process_experiment_matching(
         'xcorr',
     )
 
-    valid_win = xcorr.get_rel_win()
+    valid_win = xcorr.get_global_win()
 
     sns = sne.SharpNegativeEvents(reg.load_all_sne(exp_name, suffix='_cdf'))
     sns = sns.patch_simplified_channels()

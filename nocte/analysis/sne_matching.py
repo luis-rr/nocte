@@ -43,7 +43,7 @@ def _extract_event_pairs_dag(
     """
 
     if lag_win is None:
-        lag_win = xcorr.get_rel_win('lag')
+        lag_win = xcorr.get_global_win('lag')
 
     value_mat = np.ones((len(t0s), len(t1s))) * np.nan
 
@@ -192,7 +192,7 @@ def find_highest_path_dag(
 
 
 def _trim_events_outside(xcorr, events):
-    valid_win = xcorr.get_rel_win()
+    valid_win = xcorr.get_global_win()
     valid_events = events.sel_between(ref_time=valid_win)
 
     if len(valid_events) != len(events):
@@ -356,8 +356,8 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
         origin='lower',
         cmap='seismic',
         extent=(
-            *diagmat.get_rel_win('time0'),
-            *diagmat.get_rel_win('time1'),
+            *diagmat.get_global_win('time0'),
+            *diagmat.get_global_win('time1'),
         )
     )
 
@@ -369,14 +369,14 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
     mesh_t0 = mesh_t0.ravel()
     mesh_t1 = mesh_t1.ravel()
     lag = mesh_t1 - mesh_t0
-    valid_lag = (xcorr.get_rel_win('lag')[0] <= lag) & (lag <= xcorr.get_rel_win('lag')[1])
+    valid_lag = (xcorr.get_global_win('lag')[0] <= lag) & (lag <= xcorr.get_global_win('lag')[1])
 
     mesh_t0 = mesh_t0[valid_lag]
     mesh_t1 = mesh_t1[valid_lag]
 
     ax.plot(
-        xcorr.get_rel_win('time'),
-        xcorr.get_rel_win('time'),
+        xcorr.get_global_win('time'),
+        xcorr.get_global_win('time'),
         color='k',
         linewidth=.5,
     )

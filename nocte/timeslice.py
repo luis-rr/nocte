@@ -2097,23 +2097,6 @@ class Windows(DataFrameWrapper):
 
         return (self.reg['stop'] - self.reg['start']).groupby(by).sum()
 
-    def get_rel_win(self, ref='ref', atol=1.e-8, ):
-        """
-        Get the original window (pre, post) relative to ref
-        windows must all have the same rel_window within some tolerance.
-
-        Average window edges is taken (only relevant for very high tolerance).
-        :return:
-        """
-        assert self.are_uniform(atol=atol)
-
-        ref_t = self.relative_time(ref)
-
-        pre = (self.reg['start'] - ref_t)
-        post = (self.reg['stop'] - ref_t)
-
-        return Win(pre.mean(), post.mean())
-
     def get_global_win(self):
         """
         Get the minimum window that includes all of these windows

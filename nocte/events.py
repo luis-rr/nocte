@@ -412,7 +412,7 @@ class Events(DataFrameWrapper):
         """
         assert len(traces.shape) == 2
 
-        main_win = traces.get_rel_win()
+        main_win = traces.get_global_win()
 
         for ch in traces.coords['channel']:
             styles = {
