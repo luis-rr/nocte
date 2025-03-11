@@ -140,7 +140,8 @@ def get_phase_evolution(all_light_wins, valid_trains, exp_phases):
 
             light_phases = exp_phases.sel(exp_name=props['exp_name']).interp(times)
 
-            light_phases = light_phases.add_props(**props)
+            for name, column in props.items():
+                light_phases[name] = column
 
             ideal_times = np.arange(len(times)) * (interval + props['pulse_len'])
 

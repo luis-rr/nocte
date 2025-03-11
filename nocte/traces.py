@@ -1379,33 +1379,6 @@ class Traces(DataFrameWrapper):
 
         return pd.concat(traces, axis=1, names=['pulse_idx'])
 
-    @classmethod
-    def from_series_cut(
-            cls,
-            series: pd.Series,
-            zoom_wins: timeslice.Windows,
-            upsampling_ms=None,
-            pbar=None,
-    ):
-        if upsampling_ms is None:
-            period = np.diff(series.index)[0]
-            upsampling_ms = period * .5
-
-        traces = zoom_wins.interp_series(
-            series,
-            step=upsampling_ms,
-            pbar=pbar,
-        )
-
-        traces_df = pd.concat(traces, axis=1, names=[zoom_wins.index.name])
-
-        reg = zoom_wins.wins.drop(['start', 'stop'], axis=1)
-
-        return cls.from_df(
-            reg=reg,
-            traces=traces_df,
-        )
-
     def extract_all(
             self,
             windows: timeslice.Windows,
@@ -1532,55 +1505,10 @@ class Traces(DataFrameWrapper):
 
         return result
 
-    def _get_label(self, label):
-        if label is None:
-            return label
-
-        else:
-            if isinstance(label, list):
-                assert all(lab in self.reg.columns for lab in label)
-
-                label = self.reg[label].apply(
-                    lambda row: ' '.join([f'{v}' for v in row.values]),
-                    axis=1
-                )
-                label = label.values
-
-            elif label in self.reg.columns:
-                label = self.reg[label].values
-
-            return label
-
-    def _get_time(self):
-        t = self.traces.index
-
-        if isinstance(t, pd.IntervalIndex):
-            t = t.mid
-
-        return t
-
     def copy(self):
         return self.__class__(
             reg=self.reg.copy(),
             traces=self.traces.copy(),
-        )
-
-    def add_props(self, **kwargs):
-        reg = self.reg.copy()
-
-        for name, column in kwargs.items():
-            reg[name] = column
-
-        return self.__class__(
-            reg=reg,
-            traces=self.traces,
-        )
-
-    def add_cols(self, extra: pd.DataFrame):
-        reg = pd.concat([self.reg, extra], axis=1)
-        return self.__class__(
-            reg=reg,
-            traces=self.traces,
         )
 
     def set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None):
@@ -1616,16 +1544,6 @@ class Traces(DataFrameWrapper):
             self.reg.drop(*args, **kwargs),
             self.traces,
         )
-
-    def add_trace(self, trace: pd.Series, props: pd.Series):
-        k = self.index.max() + 1
-
-        copy = self.copy()
-
-        copy.traces[k] = trace
-        copy.reg.loc[k] = props
-
-        return copy
 
     def _apply_mask(self, mask):
         return self.__class__(
@@ -1685,22 +1603,6 @@ class Traces(DataFrameWrapper):
             k: lookup_single(self.get(k), t)
             for k, t in times.items()
         })
-
-    def is_local_peak(self, times):
-
-        if isinstance(times, str):
-            times = self[times]
-
-        prev_idx = self.time[self.time.get_indexer(times) - 1]
-        next_idx = self.time[self.time.get_indexer(times) + 1]
-
-        prev_val = self.lookup(prev_idx)
-        this_val = self.lookup(times)
-        next_val = self.lookup(next_idx)
-
-        mask = (prev_val <= this_val) & (next_val <= this_val)
-
-        return mask
 
     def apply(self, *args, **kwargs):
         new = self.traces.apply(*args, **kwargs)

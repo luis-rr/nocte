@@ -67,6 +67,20 @@ def extract_rem_wins(beta, **kwargs):
     )
 
 
+def _is_local_peak(traces, times):
+
+    prev_idx = traces.time[traces.time.get_indexer(times) - 1]
+    next_idx = traces.time[traces.time.get_indexer(times) + 1]
+
+    prev_val = traces.lookup(prev_idx)
+    this_val = traces.lookup(times)
+    next_val = traces.lookup(next_idx)
+
+    mask = (prev_val <= this_val) & (next_val <= this_val)
+
+    return mask
+
+
 def estimate_interval(acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3))):
     cropped = acorrs_baselines.crop(between)
 
