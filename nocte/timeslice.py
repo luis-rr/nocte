@@ -353,7 +353,7 @@ class Win(tuple):
 
         return pre, post
 
-    def fragment(self, length_ms):
+    def split(self, length_ms):
         """
         Break this window into multiple smaller ones that fit within.
         """
@@ -1977,7 +1977,7 @@ class Windows(DataFrameWrapper):
     def sel_length_between(self, vmin=-np.inf, vmax=+np.inf):
         return self.sel_mask(self.lengths().between(vmin, vmax))
 
-    def fragment(self, length_ms, align='left'):
+    def split(self, length_ms, align='left'):
         """
         Break these windows into smaller ones that fit within.
         This is useful if windows are uneven but we want to compute something evenly.
