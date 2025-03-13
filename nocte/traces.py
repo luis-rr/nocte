@@ -291,7 +291,7 @@ class Traces(DataFrameWrapper):
 
         traces = {}
 
-        for idx, ref, win_ms in _optional_pbar(load_wins.iter_wins_ref(), total=len(load_wins), pbar=pbar):
+        for idx, ref, win_ms in load_wins.iter_wins_ref(pbar=pbar):
             win_ms = win_ms.clip(loader.win_ms)
 
             win_ms_rel = win_ms.shift(-ref)
@@ -321,6 +321,8 @@ class Traces(DataFrameWrapper):
             )
 
             data = loader.load(slice_idcs, channels)
+
+            assert data.shape[1] == (slice_idcs.stop - slice_idcs.start) // slice_idcs.step, f'{data.shape} does not match {slice_idcs} '
 
             data = pd.DataFrame(data.T, index=rel_idcs, columns=channels)
             data.rename_axis('channel', axis=1, inplace=True)

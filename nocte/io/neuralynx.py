@@ -428,26 +428,32 @@ class NCSLoader(common.DataLoader):
         assert channels[0] == self.channels.index[0]
 
         assert isinstance(sample_idcs, slice)
-        sample_idcs = slice(*sample_idcs.indices(self.header['sample_count']))
+        valid_idcs = slice(*sample_idcs.indices(self.header['sample_count']))
 
         data = self._load_records(
-            int(np.floor(sample_idcs.start / NCSLoader._SAMPLES_PER_RECORD)),
-            int(np.floor(sample_idcs.stop / NCSLoader._SAMPLES_PER_RECORD)) + 1,
+            int(np.floor(valid_idcs.start / NCSLoader._SAMPLES_PER_RECORD)),
+            int(np.floor(valid_idcs.stop / NCSLoader._SAMPLES_PER_RECORD)) + 1,
             adjust_gain=adjust_gain,
             verify_timestamps=verify_timestamps,
         )
 
-        start_in_records = sample_idcs.start % NCSLoader._SAMPLES_PER_RECORD
+        start_in_records = valid_idcs.start % NCSLoader._SAMPLES_PER_RECORD
 
         sample_idcs_in_records = slice(
             start_in_records,
-            start_in_records + (sample_idcs.stop - sample_idcs.start),
-            sample_idcs.step
+            start_in_records + (valid_idcs.stop - valid_idcs.start),
+            valid_idcs.step
         )
+        assert sample_idcs_in_records.stop < data.shape[0]
 
         loaded = data[sample_idcs_in_records]
 
-        return loaded.reshape(1, -1)
+        loaded = loaded.reshape(1, -1)
+
+        assert loaded.shape[1] == (valid_idcs.stop - valid_idcs.start) // valid_idcs.step, \
+            f'{loaded.shape} does not match {(valid_idcs.stop - valid_idcs.start) // valid_idcs.step} '
+
+        return loaded
 
     def get_first_timestamp(self):
         import datetime
