@@ -180,70 +180,37 @@ class Events(DataFrameWrapper):
 
         return self.sel_mask(values.index[indices])
 
-    def lookup_values(self, name, values: pd.Index, cols=None, by='idx'):
-        cols = self._time_cols_param(cols, strip=True)
+    def lookup(self, trace: pd.Series, col='ref_time') -> pd.Series:
+        """
+        Look up the value of a signal at the time of each one of these events.
+        If the exact time is not available, it will be generated through linear interpolation.
 
-        new_cols = pd.DataFrame({
-            f'{col}_{name}': values[self.reg[f'{col}_{by}'].values]
-            for col in cols
-        }, index=self.reg.index)
+        Parameters
+        ----------
+        trace: a time series with time as index and data as values
+        col: a column property of these events
 
-        return self.__class__(pd.concat([self.reg, new_cols], axis=1))
+        Returns
+        -------
+        A series with index matching these events and value extracted from the trace.
 
-    def lookup_series(self, series: pd.Series, name=None, cols=None, by='idx'):
-        cols = self._time_cols_param(cols, strip=True)
+        """
+        values = interpolate_trace(trace, self.reg[col])
+        return pd.Series(values, index=self.index)
 
-        if name is None:
-            name = series.name
-
-        assert name is not None
-
-        new_cols = pd.DataFrame({
-            f'{col}_{name}': series.reindex(self.reg[f'{col}_{by}'].values).values
-            for col in cols
-        }, index=self.reg.index)
-
-        return self.__class__(pd.concat([self.reg, new_cols], axis=1))
-
-    def lookup_dataframe(self, df: pd.DataFrame):
-        ev = self
-
-        for name, series in df.items():
-            ev = ev.lookup_series(series)
-
-        return ev
-
-    def lookup_values_per_channel(self, name, stack, cols=None, by='idx'):
-        cols = self._time_cols_param(cols, strip=True)
-
-        assert stack.ndim == 2
-        assert 'channel' in stack.dims
-
-        all_new_cols = []
-        for chan, sreg in self.reg.groupby('channel'):
-            trace = stack.sel(channel=chan)
-
-            new_cols = pd.DataFrame(
-                {f'{col}_{name}': trace.values[sreg[f'{col}_{by}'].values] for col in cols},
-                index=sreg.index
-            )
-
-            all_new_cols.append(new_cols)
-
-        all_new_cols = pd.concat(all_new_cols, axis=0, ignore_index=False, sort=True)
-
-        return self.__class__(
-            pd.concat([self.reg, all_new_cols], axis=1)
-        )
-
-    def lookup_values_interp(self, name, data: pd.Series, cols=None):
+    def lookup_and_set(self, name, data: pd.Series, by, cols=None):
+        """Look up many values at once and return a copy of this object with those values set as new columns"""
         cols = self._time_cols_param(cols, strip=True)
 
         if isinstance(cols, str):
             cols = [cols]
 
+        if not isinstance(data, pd.Series):
+            data = np.asarray(data)
+            data = pd.Series(data, index=np.arange(len(data)))
+
         new_cols = pd.DataFrame({
-            f'{col}_{name}': interpolate_trace(data, self.reg[f'{col}_time']).values
+            f'{col}_{name}': self.lookup(data, col=f'{col}_{by}').values
             for col in cols
         }, index=self.reg.index)
 

@@ -92,10 +92,10 @@ class SharpNegativeEvents(Events):
 
         sns = cls(events)
 
-        sns = sns.lookup_values('speed', speed.values)
-        sns = sns.lookup_values('acc', acc.values)
-        sns = sns.lookup_values('raw', main.values)
-        sns = sns.lookup_values('filt', filtered.values)
+        sns = sns.lookup_and_set('speed', speed.values, by='idx')
+        sns = sns.lookup_and_set('acc', acc.values, by='idx')
+        sns = sns.lookup_and_set('raw', main.values, by='idx')
+        sns = sns.lookup_and_set('filt', filtered.values, by='idx')
 
         sns.reg['acc_diff'] = sns.reg['stop_acc'] - sns.reg['start_acc']
         sns.reg['amplitude_filt'] = sns.reg['stop_filt'] - sns.reg['start_filt']
@@ -118,10 +118,10 @@ class SharpNegativeEvents(Events):
 
     def add_details(self, all_beta):
         beta_max = all_beta.max(axis=1)
-        copy = self.lookup_values_interp(f'beta_max', beta_max, cols=['ref'])
+        copy = self.lookup_and_set(f'beta_max', beta_max, cols=['ref'], by='time')
 
         for ch, beta in all_beta.items():
-            copy = copy.lookup_values_interp(f'beta_ch{ch}', beta, cols=['ref'])
+            copy = copy.lookup_and_set(f'beta_ch{ch}', beta, cols=['ref'], by='time')
 
         copy.reg['ref_beta_local'] = pd.concat([
             copy.sel(channel=ch).reg[f'ref_beta_ch{ch}']
