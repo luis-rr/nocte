@@ -204,7 +204,7 @@ class SamplingRate:
 
     @classmethod
     def from_period(cls, period_ms):
-        return cls(period_ms / S_TO_MS)
+        return cls(S_TO_MS / period_ms)
 
     @property
     def period(self) -> float:
@@ -311,6 +311,13 @@ class Win(tuple):
         duration = to_ms(duration)
         # noinspection PyArgumentList
         return cls(ref - duration * .5, ref + duration * .5)
+
+    @classmethod
+    def from_str(cls, s):
+        start, stop = s.split('-')
+        start = str_to_ms(start.strip())
+        stop = str_to_ms(stop.strip())
+        return cls(start, stop)
 
     @property
     def start(self):
@@ -877,14 +884,13 @@ class Windows(DataFrameWrapper):
         try:
             wins = []
 
-            for win_str in string.strip().replace(';', '\n').split('\n'):
-                cat = win_str[:win_str.find(':')]
-                start, stop = win_str[win_str.find(':') + 1:].split('-')
-                start = str_to_ms(start.strip())
-                stop = str_to_ms(stop.strip())
-                ref = start
+            for line in string.strip().replace(';', '\n').split('\n'):
+                cat = line[:line.find(':')]
+                win_str = line[line.find(':') + 1:]
+                win = Win.from_str(win_str)
+                ref = win.start
 
-                wins.append((cat, start, stop, ref))
+                wins.append((cat, win.start, win.stop, ref))
 
             df = pd.DataFrame(wins, columns=['cat', 'start', 'stop', 'ref'])
 
@@ -1331,6 +1337,13 @@ class Windows(DataFrameWrapper):
             3236  218808  218955  unknown
             3237  218955  218989      sws
         """
+
+        if isinstance(values, list):
+            values = np.asarray(values)
+
+        if isinstance(values, np.ndarray):
+            values = pd.Series(values)
+
         if values.empty:
             return cls(pd.DataFrame({'start': [], 'stop': [], 'ref': [], 'cat': []}))
 

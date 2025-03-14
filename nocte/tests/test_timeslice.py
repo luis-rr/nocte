@@ -1,7 +1,16 @@
 import numpy as np
 import pandas as pd
 
+import timeslice
 from nocte.timeslice import Windows, _classify_events_exclusive
+
+
+def test_sampling_rate():
+    assert timeslice.SamplingRate.from_period(1.).period == 1.
+    assert timeslice.SamplingRate.from_period(1.).rate == 1000.
+
+    assert timeslice.SamplingRate.from_period(1000.).period == 1000.
+    assert timeslice.SamplingRate.from_period(1000.).rate == 1.
 
 
 def test_build_around():
