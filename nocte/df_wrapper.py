@@ -73,7 +73,7 @@ class DataFrameWrapper:
     def sort_index(self, *args, **kwargs):
         return self.__class__(self.reg.sort_index(*args, **kwargs))
 
-    def sel(self, rows=None, /, **kwargs):
+    def sel(self, rows=None, /, invert=False, **kwargs):
         """
         Select rows either by index or by matching column values.
         """
@@ -84,10 +84,10 @@ class DataFrameWrapper:
             if not isinstance(rows, (slice, tuple, list, np.ndarray, pd.Index)):
                 rows = [rows]
 
-            return self.sel_mask(rows)
+            return self.sel_mask(rows, invert=invert)
 
         if kwargs:
-            return self.sel_match(**kwargs)
+            return self.sel_match(**kwargs, invert=invert)
 
         raise ValueError("Must provide either row indices or keyword arguments.")
 
