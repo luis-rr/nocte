@@ -60,12 +60,13 @@ def _mean_roll_by(x: np.array, y: np.array, win: tuple, xvals: np.array, nmin=1)
 
 
 def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
+
     values = np.interp(
         times,
         data.index,
         data.values,
         left=np.nan,
-        right=np.nan
+        right=np.nan,
     )
 
     return pd.Series(values, index=times)
@@ -195,7 +196,7 @@ class Events(DataFrameWrapper):
         A series with index matching these events and value extracted from the trace.
 
         """
-        values = interpolate_trace(trace, self.reg[col])
+        values = interpolate_trace(trace, self.reg[col].values).values
         return pd.Series(values, index=self.index)
 
     def lookup_and_set(self, name, data: pd.Series, by, cols=None):
