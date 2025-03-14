@@ -45,6 +45,15 @@ class DataLoader(abc.ABC):
     ##############################################################
     # Convenience methods
 
+    @staticmethod
+    def slice_size(s: slice, total: int):
+        """evaluate the expected size of slicing an array"""
+        start, stop, step = s.indices(total)
+        if step > 0:
+            return max(0, (stop - start + step - 1) // step)
+        else:
+            return max(0, (start - stop - abs(step) + 1) // abs(step))
+
     @property
     def sampling_rate(self) -> float:
         return S_TO_MS / self.sampling_period

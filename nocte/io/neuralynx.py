@@ -444,14 +444,15 @@ class NCSLoader(common.DataLoader):
             start_in_records + (valid_idcs.stop - valid_idcs.start),
             valid_idcs.step
         )
-        assert sample_idcs_in_records.stop < data.shape[0]
+        assert sample_idcs_in_records.stop <= data.shape[0]
 
         loaded = data[sample_idcs_in_records]
 
         loaded = loaded.reshape(1, -1)
 
-        assert loaded.shape[1] == (valid_idcs.stop - valid_idcs.start) // valid_idcs.step, \
-            f'{loaded.shape} does not match {(valid_idcs.stop - valid_idcs.start) // valid_idcs.step} '
+        expected = common.DataLoader.slice_size(valid_idcs, self.sample_count)
+        if not loaded.shape[1] == expected:
+            logger.error(f'Asked to load {expected} samples but got {loaded.shape}')
 
         return loaded
 

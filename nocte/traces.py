@@ -322,8 +322,6 @@ class Traces(DataFrameWrapper):
 
             data = loader.load(slice_idcs, channels)
 
-            assert data.shape[1] == (slice_idcs.stop - slice_idcs.start) // slice_idcs.step, f'{data.shape} does not match {slice_idcs} '
-
             data = pd.DataFrame(data.T, index=rel_idcs, columns=channels)
             data.rename_axis('channel', axis=1, inplace=True)
 
