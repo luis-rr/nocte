@@ -5,6 +5,7 @@ import colorsys
 import pathlib
 from contextlib import contextmanager
 
+import matplotlib.axes
 import matplotlib.cm
 import matplotlib.colors
 import matplotlib.gridspec
@@ -818,8 +819,14 @@ def _get_stack_extent(s, xcol, ycol):
 
 
 def add_desc(
-        ax, desc, loc='upper right',
-        bkg_color='w', bkg_edgecolor='none', fontsize=6, loc_pad=0.05, bkg_alpha=0.75,
+        ax: matplotlib.axes.Axes,
+        desc,
+        loc='upper right',
+        bkg_color='w',
+        bkg_edgecolor='none',
+        fontsize=6,
+        loc_pad=0.05,
+        bkg_alpha=0.75,
         **kwargs
 ):
     """add a small text description on the axes, usually for n=X """
@@ -1635,3 +1642,51 @@ def plot_violin_scatter(
         linewidth=linewidth,
         s=s,
     )
+
+
+def plot_scatter_many(
+        dfs,
+        ycol,
+        xcol,
+        colors,
+        s=3,
+        alpha=0.25,
+        xscale='linear',
+        yscale='linear',
+        max_dots=10_000,
+        figsize=None,
+):
+    if figsize is None:
+        figsize = (min(2 * len(dfs), 8), 2)
+
+    f, axs = plt.subplots(figsize=figsize, ncols=len(dfs), sharex='all', sharey='all', squeeze=False)
+
+    for i, (k, df) in enumerate(dfs.items()):
+
+        # noinspection PyTypeChecker
+        ax: matplotlib.axes.Axes = axs.ravel()[i]
+
+        add_desc(ax, f'n={len(df):,d}', loc='upper left', fontsize=4)
+
+        if len(df) > max_dots:
+            df = df.sample(max_dots, replace=False)
+
+        ax.scatter(
+            df[xcol].values,
+            df[ycol].values,
+            alpha=alpha,
+            s=s,
+            facecolor=colors[k],
+        )
+
+    for ax in axs[:, 0]:
+        ax.set_ylabel(ycol.replace('_', ' '))
+
+    for ax in axs[-1, :]:
+        ax.set_xlabel(xcol.replace('_', ' '))
+
+    for ax in axs.ravel():
+        ax.set(
+            xscale=xscale,
+            yscale=yscale,
+        )
