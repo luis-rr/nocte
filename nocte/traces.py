@@ -869,7 +869,7 @@ class Traces(DataFrameWrapper):
 
         return df
 
-    def items(self, col=None, pbar=None):
+    def items(self, col=None, *, pbar=None):
         """
         Returns an iterator to go over each trace.
         If 'col' is None, then the key will be the index.
@@ -1264,7 +1264,7 @@ class Traces(DataFrameWrapper):
 
         acorrs = {}
 
-        for k, trace in self.items(pbar):
+        for k, trace in self.items(pbar=pbar):
             acorr = _rolling_cross_corr_ms(
                 trace.values,
                 trace.values,

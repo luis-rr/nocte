@@ -119,7 +119,7 @@ class DataDict(DataFrameWrapper):
 
         return self.data[idx]
 
-    def items(self, pbar=None):
+    def items(self, *, pbar=None):
         """
         returns an iterator to go over each data object:
 
