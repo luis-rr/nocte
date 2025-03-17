@@ -1,7 +1,7 @@
 """
 Locate files (raw data and partial results).
 All information is in an excel sheet that we process here (the Registry).
-All partial results and processed data are stored in HDF5 files within a folder "swsort" next to the data.
+All partial results and processed data are stored in HDF5 files within a folder next to the data.
 """
 import datetime
 import functools
@@ -229,10 +229,10 @@ class Entry:
 
         location = f'p{int(probe)}c{int(ch)}'
         params = f'w{sliding_win:g}_s{sliding_step:g}'
-        return self.get_path() / f'swsort/power_{band}_{location}_{params}{suffix}.h5'
+        return self.get_path() / self._reg.subfolder / f'power_{band}_{location}_{params}{suffix}.h5'
 
     def get_path_luminance(self):
-        return self.get_path() / 'swsort' / 'luminance.h5'
+        return self.get_path() / self._reg.subfolder / 'luminance.h5'
 
     def load_all_beta(
             self,
@@ -285,7 +285,7 @@ class Entry:
 
 
 class Registry(DataFrameWrapper):
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame, subfolder='swsort'):
         assert df.index.is_unique, df.index[df.index.duplicated()]
 
         super().__init__(df.copy())
@@ -298,6 +298,7 @@ class Registry(DataFrameWrapper):
         self._warn_invalid_probe_info()
         self._warn_missing_entries()
 
+        self.subfolder = subfolder
         self.reg = self.reg.copy()
 
     def copy(self):
@@ -522,7 +523,7 @@ class Registry(DataFrameWrapper):
         return self.get_entry(exp_name).get_path(*args, **kwargs)
 
     def get_path_sne(self, exp_name, probe: int, ch: int, suffix='') -> Path:
-        return self.get_path(exp_name) / f'swsort/sne_p{probe}c{ch}{suffix}.h5'
+        return self.get_path(exp_name) / self.subfolder / f'sne_p{probe}c{ch}{suffix}.h5'
 
     def get_path_sne_all(self, exp_name, area='CLA', suffix='') -> list:
         paths = []
@@ -541,7 +542,8 @@ class Registry(DataFrameWrapper):
         assert len(pcs) >= 2
         return (
                 self.get_path(exp_name) /
-                f'swsort/sne_matching_p{pcs[0][0]}c{pcs[0][1]}_p{pcs[1][0]}c{pcs[1][1]}{suffix}.h5'
+                self.subfolder /
+                f'sne_matching_p{pcs[0][0]}c{pcs[0][1]}_p{pcs[1][0]}c{pcs[1][1]}{suffix}.h5'
         )
 
     def get_path_power(self, exp_name, *args, **kwargs) -> Path:
@@ -553,7 +555,7 @@ class Registry(DataFrameWrapper):
     ) -> Path:
         location = f'p{int(probe0)}c{int(ch0)}_p{int(probe1)}c{int(ch1)}'
         params = f'w{sliding_win:g}'
-        return self.get_path(exp_name) / f'swsort/xcorr_{location}_{params}{suffix}_{low_hz:g}hz.h5'
+        return self.get_path(exp_name) / self.subfolder / f'xcorr_{location}_{params}{suffix}_{low_hz:g}hz.h5'
 
     def get_path_xcorr_area(
             self, exp_name, sliding_win: int,
