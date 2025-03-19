@@ -513,8 +513,6 @@ class Traces(DataFrameWrapper):
 
     def to_wins(self, ref='ref', tight=True) -> timeslice.Windows:
 
-        assert 'start' not in self.columns
-        assert 'stop' not in self.columns
         assert ref in self.columns
 
         reg = self.reg.copy()
