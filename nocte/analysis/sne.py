@@ -7,25 +7,7 @@ import numpy as np
 import pandas as pd
 
 from nocte.events import Events
-
-
-@numba.njit(parallel=True)
-def _extract_cdf_other_nb(this, null):
-    counts = np.empty(this.shape[0])
-    for i in numba.prange(this.shape[0]):
-
-        # noinspection PyTypeChecker
-        mask: np.ndarray = (null >= this[i])
-
-        which = np.ones(mask.shape[0], dtype=np.bool_)
-
-        for row in mask.T:
-            which = which & row
-
-        count = np.count_nonzero(which)
-        counts[i] = count
-
-    return counts / null.shape[0]
+from nocte.analysis import wave_detection
 
 
 class SharpNegativeEvents(Events):
@@ -109,7 +91,7 @@ class SharpNegativeEvents(Events):
 
         cols = list(cols)
 
-        rates = _extract_cdf_other_nb(
+        rates = wave_detection.extract_cdf_other_nb(
             self.reg[cols].abs().values,
             sns_null.reg[cols].abs().values,
         )
