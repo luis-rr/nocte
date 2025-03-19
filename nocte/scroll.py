@@ -19,6 +19,7 @@ class ScrollablePlot:
             zoom_window = Win.build_centered(0, zoom_window)
 
         self.zoom_window = zoom_window
+        self.center = zoom_window.mid
 
         # Create the figure and axes
         self.fig, axs = plt.subplots(
@@ -46,6 +47,7 @@ class ScrollablePlot:
 
     def set_view(self, center):
         """Set the view with a given center point."""
+        self.center = center
         win = self.zoom_window.shift(center)
         self.update_fill(win)
         self.update_zoom(win)
@@ -83,6 +85,7 @@ class ScrollablePlot:
             scale_overview='hours',
             scale_zoom='seconds',
             overview_subsample=1000,
+            figsize=(9, 3),
             **kwargs,
     ):
 
@@ -93,8 +96,9 @@ class ScrollablePlot:
                 **kwargs,
             )
             splot.set_time_ticks(ax, scale=scale_zoom)
+            # splot.set_time_ticks(ax, scale='seconds', major=ms(seconds=30), minor=ms(seconds=1))
 
-        sp = cls(plot_zoomed, zoom_window=zoom_window)
+        sp = cls(plot_zoomed, zoom_window=zoom_window, figsize=figsize)
 
         sp.overview_ax.plot(
             data.traces.iloc[::overview_subsample],
