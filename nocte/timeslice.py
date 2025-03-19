@@ -1604,15 +1604,18 @@ class Windows(DataFrameWrapper):
 
         return wins_ms
 
-    def iter_wins(self, pbar=None):
+    def iter_wins(self, col=None, *, pbar=None):
         for idx, ref, win in self.iter_wins_ref(pbar=pbar):
-            yield idx, win
+            if col is None:
+                yield idx, win
+            else:
+                yield self.loc[idx, col], win
 
-    def iter_wins_ref(self, pbar=None):
+    def iter_wins_ref(self, *, pbar=None):
         for idx, win, props in self.iter_wins_items(pbar=pbar):
             yield idx, props['ref'], win
 
-    def iter_wins_items(self, pbar=None):
+    def iter_wins_items(self, *, pbar=None):
         """
         Iterate over the windows with all of their properties.
         :returns: Iterable where the returned items are tuples:
