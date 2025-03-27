@@ -17,6 +17,7 @@ from tqdm.auto import tqdm
 
 import nocte.traces
 from nocte import timeslice
+import nocte.events
 from nocte.datadict import DataDict
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 from nocte.stacks import Stack
@@ -782,7 +783,7 @@ class Registry(DataFrameWrapper):
     def get_loader_simplified(self, exp_name, *args, **kwargs):
         return self.get_entry(exp_name).get_loader_simplified(*args, **kwargs)
 
-    def load_timestamps(self, col):
+    def load_timestamps(self, col, rename='ref_time') -> nocte.events.Events:
 
         def parse_entry(string):
             try:
@@ -806,17 +807,21 @@ class Registry(DataFrameWrapper):
 
                 table.append((exp_name, desc, time, i))
 
-        return pd.DataFrame(table, columns=['exp_name', 'desc', 'time', f'{col}_idx'])
+        events_reg = pd.DataFrame(table, columns=['exp_name', 'desc', rename, f'{col}_idx'])
 
-    def load_wins(self, col):
+        return nocte.events.Events(events_reg)
+
+    def load_wins(self, col) -> nocte.timeslice.Windows:
         lights_desc = self[col].dropna()
 
-        exp_wins = {
-            exp_name: timeslice.Windows.from_str(lights_str)
-            for exp_name, lights_str in lights_desc.items()
-        }
+        exp_wins = []
 
-        return exp_wins
+        for exp_name, lights_str in lights_desc.items():
+            wins = timeslice.Windows.from_str(lights_str)
+            wins['exp_name'] = exp_name
+            exp_wins.append(wins)
+
+        return timeslice.Windows.concat_list(exp_wins)
 
     def load_all_sne(self, exp_name, **kwargs) -> pd.DataFrame:
 

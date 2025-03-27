@@ -16,47 +16,125 @@ from nocte.timeslice import S_TO_MS
 
 
 @nb.njit(parallel=True)
-def _mean_roll_by_nb(_x: np.array, _y: np.array, _win: tuple, _xvals: np.array, nmin):
-    """ fast implementation of mean_roll_by """
-    rolled = np.empty(len(_xvals))
+def _quantile_rolling_nb(
+    time: np.ndarray,
+    values: np.ndarray,
+    new_time: np.ndarray,
+    win: tuple,
+    q: float,
+    nmin: int
+) -> np.ndarray:
+    """
+    Compute the rolling quantile over a time-based window, using a time-sorted array.
 
-    for i in nb.prange(len(_xvals)):
-        x_center = _xvals[i]
-        vmin = x_center + _win[0]
-        vmax = x_center + _win[1]
+    Parameters
+    ----------
+    time : np.ndarray
+        1D sorted array of timestamps (sorted once globally).
+    values : np.ndarray
+        1D array of values corresponding to time_s, in the same sorted order.
+    new_time : np.ndarray
+        The times at which we want the window centered.
+    win : tuple (left, right)
+        The half-window offsets. The window around new_time[i] covers
+        [new_time[i] + win[0], new_time[i] + win[1]].
+    q : float
+        The quantile to compute (e.g. 0.5 for median).
+    nmin : int
+        Minimum number of points required to return a valid quantile.
 
-        sel = _y[(vmin <= _x) & (_x <= vmax)]
+    Returns
+    -------
+    np.ndarray
+        Same shape as new_time. Each entry is the rolling quantile for that window
+        (or NaN if fewer than nmin data points lie in the window).
+    """
+    idx_sort = np.argsort(time)
+    time = time[idx_sort]
+    values = values[idx_sort]
 
-        if len(sel) >= nmin:
-            rolled[i] = np.nanmean(sel)
+    result = np.empty(new_time.shape[0])
+
+    for i in nb.prange(new_time.shape[0]):
+        center = new_time[i]
+        start = center + win[0]
+        stop  = center + win[1]
+
+        # Find the left and right indices for this window
+        left_idx  = np.searchsorted(time, start, side='left')
+        right_idx = np.searchsorted(time, stop, side='right')
+
+        # Slice the relevant values
+        window_vals = values[left_idx:right_idx]
+        if window_vals.size >= nmin:
+            result[i] = np.nanquantile(window_vals, q)
         else:
-            rolled[i] = np.nan
+            result[i] = np.nan
 
-    return rolled
+    return result
 
 
-def _mean_roll_by(x: np.array, y: np.array, win: tuple, xvals: np.array, nmin=1):
-    """
-    for every value in xvals, take the mean of all ys whose corresponding x falls within a given local window
-    """
+@nb.njit(parallel=True)
+def _mean_rolling_nb(
+        time: np.ndarray,
+        values: np.ndarray,
+        new_time: np.ndarray,
+        win: tuple,
+        nmin: int
+) -> np.ndarray:
+    """Same as _quantile_rolling_nb but for mean"""
+    idx_sort = np.argsort(time)
+    time = time[idx_sort]
+    values = values[idx_sort]
 
-    if isinstance(x, pd.Series):
-        x = x.values
+    result = np.empty(new_time.shape[0])
 
-    if isinstance(y, pd.Series):
-        y = y.values
+    for i in nb.prange(new_time.shape[0]):
+        center = new_time[i]
+        start = center + win[0]
+        stop = center + win[1]
 
-    assert len(x) == len(y)
+        # Find the left and right indices for this window
+        left_idx = np.searchsorted(time, start, side='left')
+        right_idx = np.searchsorted(time, stop, side='right')
 
-    res = _mean_roll_by_nb(
-        np.asarray(x),
-        np.asarray(y),
-        tuple(win),
-        np.asarray(xvals),
-        nmin=nmin,
-    )
+        # Slice the relevant values
+        window_vals = values[left_idx:right_idx]
 
-    return pd.Series(res, index=xvals)
+        if window_vals.size >= nmin:
+            result[i] = np.nanmean(window_vals)
+        else:
+            result[i] = np.nan
+
+    return result
+
+
+@nb.njit(parallel=True)
+def _count_rolling_nb(
+        time: np.ndarray,
+        new_time: np.ndarray,
+        win: tuple,
+) -> np.ndarray:
+    """Same as _quantile_rolling_nb but for counting"""
+    idx_sort = np.argsort(time)
+    time = time[idx_sort]
+
+    result = np.empty(new_time.shape[0])
+
+    for i in nb.prange(new_time.shape[0]):
+        center = new_time[i]
+        start = center + win[0]
+        stop = center + win[1]
+
+        # Find the left and right indices for this window
+        left_idx = np.searchsorted(time, start, side='left')
+        right_idx = np.searchsorted(time, stop, side='right')
+
+        # Slice the relevant values
+        result[i] = len(time[left_idx:right_idx])
+
+    return result
+
 
 
 def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
@@ -307,7 +385,7 @@ class Events(DataFrameWrapper):
             by=by,
         )
 
-    def get_histogram_sliding(self, col='amplitude', tbins=None, vbins=None, by='ref_time'):
+    def get_histogram2d(self, col='amplitude', tbins=None, vbins=None, by='ref_time'):
 
         if tbins is None:
             global_tbin = timeslice.Win(self[by].min(), self[by].max())
@@ -349,29 +427,161 @@ class Events(DataFrameWrapper):
         counts = self.get_counts(load_win, step=step)
         return self.__class__._get_rate_from_counts(counts, rolling_win=rolling_win, win_type=win_type)
 
-    def get_rate_in_bins(self, bins, rolling_win=100, win_type='hamming'):
-        counts = self.get_counts_in_bins(bins)
-        return self.__class__._get_rate_from_counts(counts, rolling_win=rolling_win, win_type=win_type)
-
-    def shift_time(self, shift, cols=None):
+    def shift_time(self, shift, cols=None, copy=True):
         cols = self._time_cols_param(cols)
 
-        reg = self.reg.copy()
+        if copy:
+            reg = self.reg.copy()
+        else:
+            reg = self.reg
+
         cols = list(cols)
         reg[cols] = reg[cols] + shift
         return self.__class__(reg)
 
-    def mean_roll_by(self, valid_win=None, on='amplitude', by='ref_time', sliding_win=1_000, step=10, nmin=1):
-        if valid_win is None:
-            valid_win = (self.reg[by].min(), self.reg[by].max())
+    def count_rolling(
+            self,
+            valid_win: timeslice.Win = None,
+            by='ref_time',
+            sliding_win=1_000,
+            step=10,
+        ) -> pd.Series:
+        """Calculate how many items are in a sliding window over time (by)"""
+        valid_win = self.get_global_win(by) if valid_win is None else valid_win
 
-        return timeslice.mean_roll_by(
-            self.reg[by],
-            self.reg[on],
-            timeslice.Win.build_centered(0, sliding_win),
-            np.arange(*valid_win, step),
+        time = self.reg[by].values
+
+        win = timeslice.Win.build_centered(0, sliding_win)
+        new_time = valid_win.arange(step)
+
+        res = _count_rolling_nb(
+            time=time,
+            win=tuple(win),
+            new_time=new_time,
+        )
+
+        return pd.Series(res, index=new_time)
+
+    def rate_rolling(
+            self,
+            valid_win: timeslice.Win = None,
+            by='ref_time',
+            sliding_win=10_000,
+            step=1_000,
+        ) -> pd.Series:
+        """Calculate how many items are in a sliding window over time (by)"""
+        # TODO replace "get_rate"
+
+        counts = self.count_rolling(valid_win=valid_win, by=by, sliding_win=sliding_win, step=step)
+        return counts / (sliding_win / timeslice.ms(seconds=1))
+
+    def mean_rolling(
+            self,
+            valid_win: timeslice.Win = None,
+            on='amplitude',
+            by='ref_time',
+            sliding_win=1_000,
+            step=10,
+            nmin=1,
+        ) -> pd.Series:
+        """Calculate the mean of a property (on) in a sliding window over time (by)"""
+        return self._rolling_nb(
+            func=_mean_rolling_nb,
+            valid_win=valid_win,
+            on=on,
+            by=by,
+            sliding_win=sliding_win,
+            step=step,
             nmin=nmin,
         )
+
+    def quantile_rolling(
+            self,
+            q,
+            valid_win: timeslice.Win = None,
+            on='amplitude',
+            by='ref_time',
+            sliding_win=1_000,
+            step=10,
+            nmin=1,
+    ) -> pd.Series:
+        """Calculate the quantile of a property (on) in a sliding window over time (by)"""
+        return self._rolling_nb(
+            func=_quantile_rolling_nb,
+            valid_win=valid_win,
+            on=on,
+            by=by,
+            sliding_win=sliding_win,
+            step=step,
+            nmin=nmin,
+            q=q,
+        )
+
+    def iqr_rolling(
+            self,
+            low=0.25,
+            mid=0.5,
+            high=0.75,
+            **kwargs,
+    ) -> pd.DataFrame:
+        """Calculate the median and inter-quantile range of a property (on) in a sliding window over time (by)"""
+        return pd.DataFrame({
+            name: self.quantile_rolling(q=q, **kwargs)
+            for name, q in dict(low=low, mid=mid, high=high).items()
+        })
+
+    def _rolling_nb(
+            self,
+            func,
+            valid_win: timeslice.Win = None,
+            on='amplitude',
+            by='ref_time',
+            sliding_win=1_000,
+            step=10,
+            nmin=1,
+            **kwargs,
+    ) -> pd.Series:
+        """
+        Wrapper for  numba implementation of rolling calculations.
+        Generally: for every step, take the mean/quantile/etc of all values "on" whose corresponding "by" falls within
+        a given local window.
+        """
+        valid_win = self.get_global_win(by) if valid_win is None else valid_win
+
+        x = self.reg[by].values
+        y = self.reg[on].values
+
+        win = timeslice.Win.build_centered(0, sliding_win)
+        xvals = valid_win.arange(step)
+
+        res = func(
+            time=x,
+            values=y,
+            win=tuple(win),
+            new_time=xvals,
+            nmin=nmin,
+            **kwargs,
+        )
+
+        return pd.Series(res, index=xvals)
+
+    def classify_by(self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat') -> pd.Series:
+        """classify each event by the category of selected windows after matching them by a common value"""
+        cats = []
+        for k, injs in self.reg.groupby(by):
+            swins = wins.sel(**{by: k})
+            assert swins.are_exclusive()
+            cats.append(
+                swins.classify_events(injs[on])[col]
+            )
+
+        # noinspection PyTypeChecker
+        s: pd.Series = pd.concat(cats)
+
+        return s.reindex(self.index)
+
+    def get_global_win(self, by='ref_time') -> timeslice.Win:
+        return timeslice.Win(self.reg[by].min(), self.reg[by].max())
 
     def plot_traces_highlighted(self, ax, traces: stacks.Stack):
         """

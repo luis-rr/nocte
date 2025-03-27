@@ -26,6 +26,7 @@ using a fast template-matching approach optimized with NumPy, Numba, and SciPy.
      a null CDF value. Picking a p-value to compare to, we filter out peaks that are
      not statistically significantly different from noise.
 """
+import numba
 import numba as nb
 import numpy as np
 import pandas as pd
@@ -150,19 +151,19 @@ def look_up_peak_properties(signal: pd.Series, peak_idcs: np.ndarray) -> pd.Data
     return pd.DataFrame(peaks)
 
 
-def find_closest_peak(peaks, times):
+def find_closest_peak(peaks, times, col='time'):
     closest_idcs = np.argmin(
-        np.abs(peaks['time'].values[:, np.newaxis] - times[np.newaxis, :]), axis=0)
+        np.abs(peaks[col].values[:, np.newaxis] - times[np.newaxis, :]), axis=0)
 
-    return peaks['time'][closest_idcs]
+    return peaks[col][closest_idcs]
 
 
 def find_template(
     signal: pd.Series,
     template: pd.Series,
-    height_range=(0.25, np.inf),
-    width_range=(100, np.inf),
-    prominence_range=(-np.inf, + np.inf)
+    height_range=(-np.inf, +np.inf),
+    width_range=(-np.inf, +np.inf),
+    prominence_range=(-np.inf, +np.inf)
 ):
     scores = slide_template(
         signal,
@@ -284,7 +285,7 @@ def find_waves_in_recording(
 
         all_peaks.append(peaks)
 
-    return pd.concat(all_peaks)
+    return pd.concat(all_peaks, ignore_index=True)
 
 
 
@@ -351,3 +352,48 @@ def plot_hists_many(axs, df, alpha=0.5, bins=100, density=True, **kwargs):
             density=density,
             **kwargs,
         )
+
+
+@numba.njit
+def evaluate_traces_shift_nb(traces: np.array, offsets):
+    """
+    Align multiple traces by shifting time and baseline
+
+    Parameters
+    ----------
+    traces
+    numpy array of shape <TIME, TRACE>
+
+    offsets
+    numpy array of shape <SAMPLED_OFFSET, TRACE, DIM>
+
+    where DIM is either x (time) or y (value)
+
+    Returns
+    -------
+
+    """
+    assert offsets.shape[1] == traces.shape[1]
+
+    scores = np.empty(offsets.shape[0])
+
+    for i in nb.prange(len(scores)):
+
+        shifted_traces = np.empty(traces.shape, dtype=traces.dtype)
+
+        for j in range(traces.shape[1]):
+
+            offset_x = offsets[i, j, 0]
+            offset_y = offsets[i, j, 1]
+
+            trace = traces[:, j]
+
+            shifted_trace = np.roll(trace, offset_x) + offset_y
+
+            shifted_traces[:, j] = shifted_trace
+
+        residual_trace = np.std(shifted_traces, axis=1)
+
+        scores[i] = np.mean(residual_trace)
+
+    return scores
