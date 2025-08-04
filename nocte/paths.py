@@ -165,6 +165,12 @@ class Entry:
                 else:
                     raw = neuropixel.MultiProbeLoader.multiprobe_spikeglx(self.get_path('raw'))
 
+        elif probe == 'OpenEphys':
+            from nocte.io import openephys
+            # Lots of assumptions:
+            # 1 recording node, 1 experiment, 1 recording, 1 continuous stream
+            raw = openephys.ContinuousLoader.from_session(self.get_path('raw'))
+
         else:
             assert probe in ['neuronexus', 'CamNeurotech'], f'Unknown probe {probe}'
 

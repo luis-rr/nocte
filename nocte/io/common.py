@@ -21,25 +21,36 @@ class DataLoader(abc.ABC):
     @property
     @abc.abstractmethod
     def sample_count(self) -> int:
+        """The total number of samples in this loader"""
         pass
 
     @property
     @abc.abstractmethod
     def sampling_period(self) -> float:
+        """The inter-sample interval in ms"""
         pass
 
     @property
     @abc.abstractmethod
     def channels(self) -> pd.DataFrame:
         """
-        A DataFrame with metadata about the channels that this loader
-        can load from.
-        Index must be unique.
+        A DataFrame with metadata about the channels that this loader can load from.
+        Index must be unique and will be used to select channels to load.
         """
         pass
 
     @abc.abstractmethod
-    def load(self, sample_idcs, channels: pd.Index, adjust_gain=True) -> np.ndarray:
+    def load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray:
+        """
+        Load as a numpy array some sample range of some channels.
+
+        :param sample_idcs: a range of samples to load
+        :param channels: explicitly what channels to load
+        :param adjust_gain: optional, if probe internally stores data as integers
+        :return:
+        """
+        # TODO: most implementations ignore "sample_idcs.stride",
+        #  so this should instead be just a pair of [start, stop) params
         pass
 
     ##############################################################

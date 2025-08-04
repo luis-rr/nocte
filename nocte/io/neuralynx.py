@@ -418,7 +418,7 @@ class NCSLoader(common.DataLoader):
 
         return data
 
-    def load(self, sample_idcs, channels=(0,), adjust_gain=True, verify_timestamps=False) -> np.ndarray:
+    def load(self, sample_idcs: slice, channels=(0,), adjust_gain=True, verify_timestamps=False) -> np.ndarray:
         """
         Load data given a range of sample indices.
         To be consistent with neuropixels (which can load more than one channel at once),
@@ -526,7 +526,7 @@ class NCSLoaderUneven(NCSLoader):
 
         return data
 
-    def load(self, sample_idcs, channels=None, adjust_gain=True, verify_timestamps=False) -> np.ndarray:
+    def load(self, sample_idcs: slice, channels=None, adjust_gain=True, verify_timestamps=False) -> np.ndarray:
         """
         Load data given a range of sample indices.
         To be consistent with neuropixels (which can load more than one channel at once),
