@@ -62,7 +62,7 @@ class ContinuousLoader(common.DataLoader):
         :param sample_idcs: a range of samples to load
         :param channels: explicitly what channels to load
         :param adjust_gain: optional, if probe internally stores data as integers
-        :return:
+        :return: a numpy array of shape <#channels, #samples>
         """
 
         # Note: openephys already adjusts gain for us,
@@ -78,7 +78,10 @@ class ContinuousLoader(common.DataLoader):
             selected_channels=local_channels,
         )
 
-        return np.asarray(data)
+        array = np.asarray(data).T
+        array = array[:, ::sample_idcs.step]
+
+        return array
 
     @classmethod
     def from_session(cls, session_path: str | Path, recording_node_idx=0, recording_idx=0, continuous_idx=0):

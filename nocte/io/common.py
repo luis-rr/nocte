@@ -47,7 +47,7 @@ class DataLoader(abc.ABC):
         :param sample_idcs: a range of samples to load
         :param channels: explicitly what channels to load
         :param adjust_gain: optional, if probe internally stores data as integers
-        :return:
+        :return: a numpy array of shape <#channels, #samples>
         """
         # TODO: most implementations ignore "sample_idcs.stride",
         #  so this should instead be just a pair of [start, stop) params
