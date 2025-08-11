@@ -26,6 +26,8 @@ using a fast template-matching approach optimized with NumPy, Numba, and SciPy.
      a null CDF value. Picking a p-value to compare to, we filter out peaks that are
      not statistically significantly different from noise.
 """
+import logging
+
 import numba
 import numba as nb
 import numpy as np
@@ -104,6 +106,8 @@ def _slide_template_nb(signal: np.array, template: np.array):
 
 
 def slide_template(signal: pd.Series, template: pd.Series):
+    assert len(template) <= len(signal)
+
     scores = _slide_template_nb(
         signal.values,
         template.values,
@@ -278,6 +282,13 @@ def find_waves_in_recording(
         filt = raw.filter_pass(filter_hz)
 
         signal = filt.get()
+
+        if len(signal) <= len(template):
+            assert len(template) <= len(signal)
+            logging.warning(
+                f'Skipping chunk smaller than template ({len(template)} > {len(signal)}).'
+            )
+            continue
 
         peaks = find_template(signal, template, **kwargs)
 
