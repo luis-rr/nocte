@@ -101,6 +101,8 @@ def write_ap_meta(
     imro_entries = "".join(f"({ch} 0 0 {ap_gain_index} {ap_gain_index} 0)" for ch in range(n_channels))
     imro_tbl = imro_header + imro_entries
 
+    sns_shank_map = ";".join(f"{ch}:0" for ch in range(n_channels))
+
     lines = [
         f"fileSizeBytes={file_size_bytes}",
         f"nSavedChans={n_channels}",
@@ -112,6 +114,7 @@ def write_ap_meta(
         f"snsSaveChanSubset={sns_save_subset}",
         "imStdby=",
         f"~imroTbl={imro_tbl}",
+        f"snsShankMap={sns_shank_map}",
     ]
 
     with open(str(meta_path), "w") as f:
