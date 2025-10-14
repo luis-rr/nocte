@@ -373,7 +373,7 @@ class DataLoader(common.DataLoader):
             )
             meta['sampling_rate'] = expected_sampling_rate
 
-        meta['sampling_period'] = timeslice.SamplingRate(S_TO_MS / meta['sampling_rate']).adjust_sampling_period()
+        meta['sampling_period'] = timeslice.SamplingRate(meta['sampling_rate']).adjust_sampling_period()
 
         bin_file_size = os.path.getsize(bin_path)
         if bin_file_size != meta.raw['fileSizeBytes']:
