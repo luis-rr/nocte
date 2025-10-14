@@ -169,6 +169,7 @@ def find_template(
     width_range=(-np.inf, +np.inf),
     prominence_range=(-np.inf, +np.inf)
 ):
+    assert len(template) <= len(signal)
     scores = slide_template(
         signal,
         template,
@@ -284,17 +285,16 @@ def find_waves_in_recording(
         signal = filt.get()
 
         if len(signal) <= len(template):
-            assert len(template) <= len(signal)
             logging.warning(
                 f'Skipping chunk smaller than template ({len(template)} > {len(signal)}).'
             )
-            continue
 
-        peaks = find_template(signal, template, **kwargs)
+        else:
+            peaks = find_template(signal, template, **kwargs)
 
-        peaks['time'] = peaks['time']  + t0
+            peaks['time'] = peaks['time']  + t0
 
-        all_peaks.append(peaks)
+            all_peaks.append(peaks)
 
     return pd.concat(all_peaks, ignore_index=True)
 
