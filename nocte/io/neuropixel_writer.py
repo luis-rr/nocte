@@ -5,6 +5,8 @@ format that is transparent for the rest of the pipeline.
 
 Code is very simplified and does not support full npix format potential.
 """
+from tqdm.auto import tqdm
+
 import logging
 import math
 from pathlib import Path
@@ -62,7 +64,7 @@ def write_ap_bin(
     Each chunk must be (n_channels, n_samples).
     """
     with open(str(bin_path), "wb") as f:
-        for chunk in chunks:
+        for chunk in tqdm(chunks):
             chunk_float = _as_2d_float(chunk)                               # (C, S) float uV
             chunk_i16 = _float_microvolts_to_int16(chunk_float, im_ai_range_max_v, ap_gain_index)
             # write as C-order time-major: [t0: ch0..chC-1, t1: ch0..] etc.
