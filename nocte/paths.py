@@ -23,6 +23,9 @@ from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 from nocte.stacks import Stack
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_root_laur():
     """path to laur data folder"""
     windows_base = Path('\\\\gpfs.corp.brain.mpg.de\\laur')
@@ -135,7 +138,7 @@ class Entry:
             path = get_root() / path
 
         if not path.exists():
-            logging.warning(f"Path doesn't exist: {path}")
+            logger.warning(f"Path doesn't exist: {path}")
 
         return path
 
@@ -196,7 +199,7 @@ class Entry:
             folder = self.get_path() / 'videos'
 
         if not folder.exists():
-            logging.error(f'Video folder missing. Expected: {folder}')
+            logger.error(f'Video folder missing. Expected: {folder}')
 
         else:
             try:
@@ -205,10 +208,10 @@ class Entry:
                 if len(vid_paths) == 0:
                     vid_paths = list(folder.glob('cam*_20*.avi'))
                     if len(vid_paths) == 0:
-                        logging.warning(f'Missing video for {self.name}. Expected in: {folder}')
+                        logger.warning(f'Missing video for {self.name}. Expected in: {folder}')
 
                 if len(vid_paths) > 1:
-                    logging.warning(f'Found {len(vid_paths)} videos for {self.name}')
+                    logger.warning(f'Found {len(vid_paths)} videos for {self.name}')
 
                     shortest = vid_paths[0]
                     for path in vid_paths:
@@ -221,7 +224,7 @@ class Entry:
                 vid_path = vid_paths[0]
 
             except PermissionError as e:
-                logging.error(f'{self.name}: {e}')
+                logger.error(f'{self.name}: {e}')
 
         return vid_path
 
@@ -326,7 +329,7 @@ class Registry(DataFrameWrapper):
             invalid = self[col].isna()
 
             if invalid.any() and not quiet:
-                logging.warning(
+                logger.warning(
                     f'Ignoring {np.count_nonzero(invalid)} experiments without "{col}":' +
                     ', '.join(self.index[invalid])
                 )
@@ -345,7 +348,7 @@ class Registry(DataFrameWrapper):
             valid_path = self.reg[col].notna()
 
             for k in self.reg.index[~valid_path]:
-                logging.warning(f'{k} is missing entry "{col}".')
+                logger.warning(f'{k} is missing entry "{col}".')
 
     def _warn_invalid_probe_info(self):
         probe_info = self.reg[[
@@ -364,7 +367,7 @@ class Registry(DataFrameWrapper):
         invalid = invalid.all(axis=1)
 
         if invalid.any():
-            logging.warning(f'Missing information for probes in {invalid.index[invalid]}')
+            logger.warning(f'Missing information for probes in {invalid.index[invalid]}')
 
         probe_counts = pd.Series({
             exp_name: len(self.get_probe_channels(exp_name))
@@ -374,7 +377,7 @@ class Registry(DataFrameWrapper):
         probe_counts_totals = probe_counts.value_counts()
 
         if probe_counts_totals.get(0, default=0) > 0:
-            logging.warning(
+            logger.warning(
                 f'{probe_counts_totals[0]} experiments without probes! '
                 f'{list(probe_counts.index[probe_counts == 0])}'
             )
@@ -396,7 +399,7 @@ class Registry(DataFrameWrapper):
             valid_path = self.reg[col].notna()
 
             for k in self.reg.index[~valid_path]:
-                logging.error(f'Dropping {k}: missing {col}:\n{self.reg.loc[k]}')
+                logger.error(f'Dropping {k}: missing {col}:\n{self.reg.loc[k]}')
 
             self.reg = self.reg.loc[valid_path]
 
@@ -415,7 +418,7 @@ class Registry(DataFrameWrapper):
         to_patch = (~paths_exist) & alt_exist
 
         if to_patch.any():
-            logging.warning(f'Patching {np.count_nonzero(to_patch)} paths: {list(to_patch.index[to_patch])}')
+            logger.warning(f'Patching {np.count_nonzero(to_patch)} paths: {list(to_patch.index[to_patch])}')
             patched.loc[to_patch] = alt.loc[to_patch]
 
         patched = patched.reindex(paths.index)
@@ -423,7 +426,7 @@ class Registry(DataFrameWrapper):
         return patched
 
     @staticmethod
-    def _paths_ensure(paths: pd.Series()):
+    def _paths_ensure(paths: pd.Series):
         safe = paths.copy()
 
         for k, file_name in paths.dropna().items():
@@ -431,13 +434,13 @@ class Registry(DataFrameWrapper):
             file_name = Path(file_name)
 
             if not file_name.exists():
-                logging.warning(f'{k}: {file_name} does not exist')
+                logger.warning(f'{k}: {file_name} does not exist')
                 safe.loc[k] = np.nan
 
         return safe
 
     @staticmethod
-    def _paths_abs(paths: pd.Series()):
+    def _paths_abs(paths: pd.Series):
 
         def _abs(p):
             candidate_folders = [
@@ -586,7 +589,7 @@ class Registry(DataFrameWrapper):
 
                 ch = self.reg.loc[exp_name, f'ch{idx}']
                 if np.isnan(ch):
-                    logging.error(f'Missing channel {idx} for {exp_name}')
+                    logger.error(f'Missing channel {idx} for {exp_name}')
                     continue
 
                 ch = int(ch)
@@ -690,7 +693,7 @@ class Registry(DataFrameWrapper):
 
                     shortest = min(paths, key=len)
 
-                    logging.warning(
+                    logger.warning(
                         f'Exp {exp_name} has {len(paths)} files:\n' + '\n'.join(paths) + f'\nTaking:\n{shortest}')
 
                     exp_paths[exp_name] = shortest
@@ -916,7 +919,7 @@ class Registry(DataFrameWrapper):
                 exp_beta[exp_name] = self.load_all_beta_norm(exp_name, **kwargs)
 
             except FileNotFoundError as e:
-                logging.error(f'Missing data for {exp_name}: {e}')
+                logger.error(f'Missing data for {exp_name}: {e}')
 
         return exp_beta
 
@@ -964,7 +967,7 @@ class Registry(DataFrameWrapper):
                         all_paths[key, exp_name] = path, swap
 
                     else:
-                        logging.warning(f'{exp_name}: Missing expected x-corr {p0}-{c0} vs {p1}-{c1}: {path}')
+                        logger.warning(f'{exp_name}: Missing expected x-corr {p0}-{c0} vs {p1}-{c1}: {path}')
 
         # noinspection PyTypeChecker
         for (key, exp_name), (path, swap) in tqdm(all_paths.items(), desc='load x-corr'):
