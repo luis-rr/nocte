@@ -151,7 +151,7 @@ class Entry:
             for name, idx in self[['ch0', 'ch1', 'ch2', 'ch3']][mask].dropna().items()
         ]
 
-    def get_loader(self, accept_non_interp=False):
+    def get_loader(self, accept_non_interp=True):
         """
         Get a loader of raw data. Probe-dependent.
         """
@@ -182,7 +182,7 @@ class Entry:
 
         return raw
 
-    def get_loader_simplified(self, area='', accept_non_interp=False):
+    def get_loader_simplified(self, area='', accept_non_interp=True):
         loader = self.get_loader(accept_non_interp=accept_non_interp)
         load_chans = loader.channel_probes_to_global(self.get_probe_channels(area))
         loader = loader.sel_channels(load_chans)
