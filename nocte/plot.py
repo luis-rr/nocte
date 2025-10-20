@@ -446,6 +446,48 @@ def plot_wins_rectangle(
 
         ax.update_datalim([[x0, y0], [x1, y1]])
 
+def plot_win_rectangle(
+        ax, win, y0=0., y1=1.,
+        transform=None, clip_on=False, colors=None,
+        how='edge',
+        color='k',
+        **kwargs
+):
+    if transform is None:
+        transform = ax.get_xaxis_transform()
+
+    x0, x1 = win
+
+    full_kwargs = dict(
+        width=x1 - x0,
+        height=y1 - y0,
+        transform=transform,
+        clip_on=clip_on,
+    )
+    if how == 'face':
+        full_kwargs['facecolor'] = color
+        full_kwargs['edgecolor'] = 'none'
+
+    elif how == 'edge':
+        full_kwargs['edgecolor'] = color
+        full_kwargs['facecolor'] = 'none'
+
+    else:
+        assert how == 'both'
+        full_kwargs['edgecolor'] = color
+        full_kwargs['facecolor'] = color
+
+    full_kwargs = {**full_kwargs, **kwargs}
+
+    rect = matplotlib.patches.Rectangle(
+        (x0, y0),
+        **full_kwargs
+    )
+
+    ax.add_patch(rect)
+
+    ax.update_datalim([[x0, y0], [x1, y1]])
+
 
 def plot_spectrogram(ax, spec, yscale='log', ylim=None, scale='minutes', shading='nearest', cmap='jet', norm=None):
     assert isinstance(spec, pd.DataFrame)
@@ -1164,12 +1206,15 @@ def add_scale_bar(
         vmax=1,
         nospine=True,
         color='k',
-        linewidth=2,
+        linewidth=4,
         zorder=1e6,
-        fontsize=6,
+        fontsize=None,
         unit='',
         **kwargs
 ):
+    if fontsize is None:
+        fontsize = plt.rcParams['axes.labelsize']
+
     if isinstance(pos, str):
         pos = {
             'upper': 1,
@@ -1230,13 +1275,14 @@ def add_scale_bar(
 
         ax.text(
             *coord,
-            f'{desc}\n',
+            f'{desc}',
             clip_on=clip_on,
             rotation=90 if which == 'y' else None,
-            ha='center',
-            va='center',
+            ha='center' if which == 'x' else ['right', 'left'][pos],
+            va='center' if which == 'y' else ['bottom', 'top'][pos],
             fontsize=fontsize,
             transform=transform,
+            color=color,
         )
 
 
