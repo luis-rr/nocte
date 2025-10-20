@@ -256,6 +256,8 @@ class Traces(DataFrameWrapper):
     @classmethod
     def load_single(cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None):
 
+        load_win = timeslice.Win(*load_win)
+
         if ref is None:
             load_wins = timeslice.Windows.build_around(
                 [load_win.start],
