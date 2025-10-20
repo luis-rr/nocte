@@ -103,7 +103,8 @@ class Stack:
 
         if coords_shape != values.shape:
             if coords_shape[::-1] == values.shape:
-                logging.warning(f'Transposing data')
+                # TODO fix
+                # logging.warning(f'Transposing data')
                 values = values.T
 
             else:
