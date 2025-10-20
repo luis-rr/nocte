@@ -231,7 +231,7 @@ class MultiDataLoader(DataLoader):
                 if len(local_ids) == 0:
                     raise KeyError(f'Failed to locate probe-{probe} channel-{ch}')
                 else:
-                    logger.warning(f'Channel error by 1')
+                    logger.error(f'Channel error by 1')
 
             assert len(local_ids) == 1
             collect.append(local_ids)

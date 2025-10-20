@@ -297,7 +297,7 @@ class NCSLoader(common.DataLoader):
 
     @property
     def channels(self) -> pd.DataFrame:
-        index = pd.Index([self._get_channel_number() + 1])
+        index = pd.Index([self._get_channel_number()])
         df = self.header.to_frame().T
         return df.set_index(index)
 
