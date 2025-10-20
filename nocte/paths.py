@@ -8,6 +8,8 @@ import functools
 import itertools
 import logging
 import os
+import io
+import requests
 from pathlib import Path
 from socket import gethostname
 
@@ -70,6 +72,13 @@ def get_root():
 
     return root
 
+def _download_contents(url: str):
+    file_id = url.split("/d/")[1].split("/")[0]
+    export_url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+    r = requests.get(export_url)
+    r.raise_for_status()
+
+    return io.BytesIO(r.content)
 
 class Entry:
     def __init__(self, reg, exp_name):
@@ -474,6 +483,10 @@ class Registry(DataFrameWrapper):
         for col in optional_cols:
             if col not in self.reg.columns:
                 self.reg[col] = np.nan
+
+    @classmethod
+    def read_online(cls, url: str, sheet_name='swr'):
+        return cls.read_excel(_download_contents(url), sheet_name=sheet_name)
 
     @classmethod
     def read_excel(cls, reg_path=None, sheet_name='swr'):
