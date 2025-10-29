@@ -119,17 +119,20 @@ class DataDict(DataFrameWrapper):
 
         return self.data[idx]
 
-    def items(self, *, pbar=None):
+    def items(self, col=None, *, pbar=None):
         """
         returns an iterator to go over each data object:
+        If 'col' is None, then the key will be the index.
+        If it is not, then the key will be the value of the corresponding column.
 
-            for k, data in dd.items(pbar=True):
+            for k, data in dd.items('exp_name', pbar=True):
                 pass
 
         """
         # Note we want to respect the order of the registry, not of the dict
         for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            yield k, self.data[k]
+            idx = k if col is None else self.loc[k, col]
+            yield idx, self.data[k]
 
     def sort_values(self, *args, **kwargs):
         reg = self.reg.sort_values(*args, **kwargs)
