@@ -236,7 +236,41 @@ class Events(DataFrameWrapper):
         if 'stop_time' not in wins.columns:
             wins['stop_time'] = wins['ref_time']
 
-        wins.rename(columns=dict(start_time='start', stop_time='stop', ref_time='ref'), inplace=True)
+        wins.rename(
+            columns=dict(
+                start_time='start',
+                stop_time='stop',
+                ref_time='ref',
+            ),
+            inplace=True
+        )
+
+        return timeslice.Windows(wins)
+
+    def to_wins_around(self, win_ms, col='ref_time'):
+        """
+        Creates fixed-sized windows around these events.
+        """
+        wins = self.reg.copy()
+
+        if 'start_time' in wins.columns:
+            logging.warning(f'Overwriting event column "start_time"')
+
+        wins['start_time'] = wins[col] + win_ms[0]
+
+        if 'stop_time' in wins.columns:
+            logging.warning(f'Overwriting event column "start_time"')
+
+        wins['stop_time'] = wins[col] + win_ms[1]
+
+        wins.rename(
+            columns=dict(
+                start_time='start',
+                stop_time='stop',
+                ref_time='ref',
+            ),
+            inplace=True
+        )
 
         return timeslice.Windows(wins)
 
