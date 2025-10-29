@@ -1078,7 +1078,7 @@ class Windows(DataFrameWrapper):
         }))
 
     @classmethod
-    def build_from_dict(cls, wins: dict, columns=('start', 'stop')):
+    def build_from_dict(cls, wins: dict, columns=('start', 'stop'), name='cat'):
         """
         build windows from dict of start and stop times. Example:
 
@@ -1095,7 +1095,7 @@ class Windows(DataFrameWrapper):
             wins, orient='index', columns=columns,
         )
 
-        df.rename_axis(index='cat', inplace=True)
+        df.rename_axis(index=name, inplace=True)
         df.reset_index(inplace=True)
 
         if 'ref' not in df.columns:
@@ -1644,14 +1644,18 @@ class Windows(DataFrameWrapper):
         for key, group in grouped:
             yield key, Windows(group)
 
-    def get(self, win_idx=None) -> Win:
-        """return a single window. If no index it's given, we assume there is only one"""
-        if win_idx is None:
+    def get(self, win_id=None) -> Win:
+        """return a single window by its id. If no index it's given, we assume there is only one"""
+        if win_id is None:
             assert len(self.reg.index) == 1
-            win_idx = self.index[0]
+            win_id = self.index[0]
 
-        start, stop = self.reg.loc[win_idx, ['start', 'stop']]
+        start, stop = self.reg.loc[win_id, ['start', 'stop']]
         return Win(start, stop)
+
+    def iget(self, win_idx=0) -> Win:
+        """return a single window by its relative idx. If no index it's given, we assume there is only one"""
+        return self.get(self.index[win_idx])
 
     def get_rel(self, win_idx=None) -> Win:
         """
