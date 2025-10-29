@@ -413,8 +413,6 @@ class DataLoader(common.DataLoader):
         # noinspection PyTypeChecker
         chan_idcs = self.channels.loc[channels, 'channel_idx']
 
-        print(f'Gonna load: {len(chan_idcs)} x {sample_idcs} samples', flush=True)
-
         section_raw = self.memmap[chan_idcs, sample_idcs]
 
         conversion_factor = np.array(self.meta['conversion_factor'])
