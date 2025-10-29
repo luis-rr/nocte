@@ -105,6 +105,8 @@ def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
         alpha=.125,
     )
 
+    intervals = intervals.dropna()
+
     ax.scatter(
         intervals,
         [beta_acorrs.tloc[i, k] for k, i in intervals.items()],
