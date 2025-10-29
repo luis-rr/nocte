@@ -963,8 +963,8 @@ def make_ax_with_marginals(figsize=(3, 2), constrained_layout=True, size_ratio=3
         'ymargin': f.add_subplot(gs[1, 1]),
     }
 
-    axs_dict['main'].get_shared_x_axes().join(axs_dict['main'], axs_dict['xmargin'])
-    axs_dict['main'].get_shared_y_axes().join(axs_dict['main'], axs_dict['ymargin'])
+    axs_dict['main'].sharex(axs_dict['xmargin'])
+    axs_dict['main'].sharey(axs_dict['ymargin'])
 
     axs_dict['ymargin'].tick_params(left=False, labelleft=False)
     axs_dict['xmargin'].tick_params(bottom=False, labelbottom=False)
