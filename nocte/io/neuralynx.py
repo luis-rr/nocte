@@ -374,7 +374,7 @@ class NCSLoader(common.DataLoader):
             all_num_samples = records['NumValidSamples'][:-1]
             num_samples_unique, num_samples_counts = np.unique(all_num_samples, return_counts=True)
             if not np.allclose(num_samples_unique, NCSLoader._SAMPLES_PER_RECORD):
-                logger.error(
+                logger.warning(
                     f'Around {time}ms. Expected all records with {NCSLoader._SAMPLES_PER_RECORD} samples. '
                     f'Got ' + ', '.join([
                         f'{c}x{le}'
