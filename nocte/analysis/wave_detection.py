@@ -33,6 +33,7 @@ import numba as nb
 import numpy as np
 import pandas as pd
 import scipy.signal
+import scipy.stats
 
 from tqdm.auto import tqdm
 
@@ -80,24 +81,35 @@ def extract_cdf_other_nb(this: np.ndarray, null: np.ndarray) -> np.ndarray:
 
 
 @nb.jit(parallel=True)
-def _slide_template_nb(signal: np.array, template: np.array):
-    """Slide a template calculating pearson's correlation. Fast."""
+def _slide_template_pearson_nb(signal: np.ndarray, template: np.ndarray) -> np.ndarray:
+    """
+    Slide a fixed template (average from multiple examples)
+    computing Pearson correlations.
 
+    For each sliding window, z-scores the signal segment (subtracts
+    its mean and divides by std), then averages the elementwise
+    product with the z-scored template.
+
+    The result is amplitude-insensitive due to std normalization.
+
+    :param signal: shape (T,)
+    :param template: shape (template_length,) the mean shape of all examples
+    :return: scores array of shape (T - template_length,)
+    """
     template_length = len(template)
     signal_length = len(signal)
 
-    template_std = np.std(template)
     template_mean = np.mean(template)
+    template_std = np.std(template)
     template_z = (template - template_mean) / template_std
 
-    scores = np.ones(signal_length - template_length)
+    scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
         section = signal[i:i + template_length]
 
         section_mean = np.mean(section)
         section_std = np.std(section)
-
         section_z = (section - section_mean) / section_std
 
         scores[i] = np.mean(section_z * template_z)
@@ -105,22 +117,201 @@ def _slide_template_nb(signal: np.array, template: np.array):
     return scores
 
 
-def slide_template(signal: pd.Series, template: pd.Series):
-    assert len(template) <= len(signal)
+@nb.jit(parallel=True)
+def _slide_template_corr_nb(signal: np.ndarray, template: np.ndarray) -> np.ndarray:
+    """
+    Slide a fixed template (average from multiple examples)
+    computing unnormalized correlations (matched filter).
 
-    scores = _slide_template_nb(
-        signal.values,
-        template.values,
-    )
+    For each sliding window, centers the signal segment (subtracts
+    its mean) and multiplies it with the centered template.
+    The mean product gives an amplitude-sensitive correlation score.
 
-    half_template_length = len(template) // 2
+    Higher amplitudes yield higher scores.
 
-    time = signal.index + template.index.min()  # align things to wherever "zero" is in the template time
+    :param signal: shape (T,)
+    :param template: shape (template_length,) the mean shape of all examples
+    :return: scores array of shape (T - template_length,)
+    """
+    template_length = len(template)
+    signal_length = len(signal)
+
+    template_mean = np.mean(template)
+    template_c = template - template_mean
+
+    scores = np.empty(signal_length - template_length)
+
+    for i in nb.prange(signal_length - template_length):
+        section = signal[i:i + template_length]
+        section_c = section - np.mean(section)
+        scores[i] = np.mean(section_c * template_c)
+
+    return scores
+
+
+@nb.jit(parallel=True)
+def _slide_template_wmse_nb(signal: np.ndarray, template: np.ndarray, examples_var:np.ndarray) -> np.ndarray:
+    """
+    Slide a probabilistic template (estimated from multiple examples)
+    over the signal, computing weighted Gaussian log-likelihood scores.
+
+    Each timepoint is weighted by the inverse of its across-example variance,
+    emphasizing consistent regions of the waveform.
+
+    The result is amplitude-sensitive: deviations that are too small or too large
+    yield lower scores. Equivalent to a heteroskedastic Gaussian log-likelihood
+    or a variance-weighted MSE.
+
+    :param signal: shape (T,)
+    :param template: shape (template_length,) the mean shape of all examples
+    :param examples_var: shape (template_length,) the variance per time point of all examples
+    :return: scores array of shape (T - template_length,)
+    """
+    template_length = len(template)
+    signal_length = len(signal)
+
+    template_c = template - np.mean(template)
+    scores = np.empty(signal_length - template_length)
+
+    for i in nb.prange(signal_length - template_length):
+        section = signal[i:i + template_length]
+        section_c = section - np.mean(section)
+
+        diff = section_c - template_c
+        weighted_sq = np.square(diff) / examples_var
+        # noinspection PyTypeChecker
+        scores[i] = -0.5 * np.mean(weighted_sq)
+
+    return scores
+
+
+@nb.jit(parallel=True)
+def _slide_template_wmse_l1_nb(signal: np.ndarray, template: np.ndarray, examples_var:np.ndarray) -> np.ndarray:
+    """
+    Slide a probabilistic template (estimated from multiple examples)
+    over the signal, computing weighted Gaussian log-likelihood scores.
+
+    Each timepoint is weighted by the inverse of its across-example variance,
+    emphasizing consistent regions of the waveform.
+
+    The result is amplitude-sensitive: deviations that are too small or too large
+    yield lower scores. Equivalent to a heteroskedastic Gaussian log-likelihood
+    or a variance-weighted MSE.
+
+    :param signal: shape (T,)
+    :param template: shape (template_length,) the mean shape of all examples
+    :param examples_var: shape (template_length,) the variance per time point of all examples
+    :return: scores array of shape (T - template_length,)
+    """
+    template_length = len(template)
+    signal_length = len(signal)
+
+    examples_std = np.sqrt(examples_var)
+
+    template_c = template - np.mean(template)
+    scores = np.empty(signal_length - template_length)
+
+    for i in nb.prange(signal_length - template_length):
+        section = signal[i:i + template_length]
+        section_c = section - np.mean(section)
+
+        abs_error = np.abs(section_c - template_c)
+        weighted_abs_error = abs_error / examples_std
+        scores[i] = -np.mean(weighted_abs_error)
+
+    return scores
+
+
+@nb.jit(parallel=True)
+def _slide_template_fullcov_nb(signal: np.ndarray, template: np.ndarray, examples_cov_inv:np.ndarray) -> np.ndarray:
+    """
+    Slide a probabilistic template (estimated from multiple examples)
+    over the signal using the full covariance matrix.
+
+    Computes Mahalanobis distances (full Gaussian log-likelihoods)
+    between each signal window and the distribution estimated from
+    the example waveforms.
+
+    This version accounts for temporal correlations across timepoints
+    (full Σ), unlike the weighted/diagonal version.
+
+    :param signal: shape (T,)
+    :param template: shape (template_length,) the mean shape of all examples
+    :param examples_cov_inv: shape (template_length, template_length) the inverse of the
+        full covariance of time points of all examples
+    :return: scores array of shape (T - template_length,)
+    """
+    template_length = len(template)
+    signal_length = len(signal)
+
+    template_c = template - np.mean(template)
+
+    scores = np.empty(signal_length - template_length)
+
+    for i in nb.prange(signal_length - template_length):
+        section = signal[i:i + template_length]
+        section_c = section - np.mean(section)
+        diff = section_c - template_c
+
+        # Mahalanobis distance / log-likelihood (larger = better)
+        scores[i] = -0.5 * diff @ examples_cov_inv @ diff
+
+    return scores
+
+
+def slide_template(
+        signal: pd.Series,
+        examples: pd.DataFrame,
+        method: str,
+        norm_score: bool,
+):
+    assert len(examples) <= len(signal)
+
+    # We transpose the examples because we typically
+    # load traces with shape
+    # (samples, features) = (time, entities)
+    # but in the follwing, we calculate properties per time point so
+    # (samples, features) = (examples, time)
+    examples_mat = examples.values.T
+
+    template = np.mean(examples_mat, axis=0)
+
+    if method == 'pearson':
+        scores = _slide_template_pearson_nb(signal.values, template)
+
+    elif method == 'corr':
+        scores = _slide_template_corr_nb(signal.values, template)
+
+    elif method == 'wmse':
+        examples_var = np.var(examples_mat, axis=0) + 1e-9  # avoid division by zero
+        scores = _slide_template_wmse_nb(signal.values, template, examples_var)
+
+    elif method == 'wmse_l1':
+        examples_var = np.var(examples_mat, axis=0) + 1e-9  # avoid division by zero
+        scores = _slide_template_wmse_l1_nb(signal.values, template, examples_var)
+
+    elif method == 'fullcov':
+        examples_cov = np.cov(examples_mat, rowvar=False) + np.eye(len(template)) * 1e-9
+        cov_inv = np.linalg.inv(examples_cov)
+        scores = _slide_template_fullcov_nb(signal.values, template, cov_inv)
+
+    else:
+        assert False, f'Method "{method}" not implemented'
+
+    half_template_length = len(examples) // 2
+
+    time = signal.index + examples.index.min()  # align things to wherever "zero" is in the template time
 
     scores = pd.Series(
         scores,
-        index=time[half_template_length:half_template_length - len(template)],
+        index=time[half_template_length:half_template_length - len(examples)],
     )
+
+    if norm_score:
+        med = np.median(scores)
+        mad = scipy.stats.median_abs_deviation(scores)
+
+        scores = (scores - med) / mad
 
     return scores
 
@@ -164,20 +355,26 @@ def find_closest_peak(peaks, times, col='time'):
 
 def find_template(
     signal: pd.Series,
-    template: pd.Series,
+    template_examples: pd.DataFrame,
+    method: str,
+    norm_score=False,
     height_range=(-np.inf, +np.inf),
     width_range=(-np.inf, +np.inf),
-    prominence_range=(-np.inf, +np.inf)
+    prominence_range=(-np.inf, +np.inf),
 ):
-    assert len(template) <= len(signal)
+    assert len(template_examples) <= len(signal)
     scores = slide_template(
         signal,
-        template,
+        template_examples,
+        method=method,
+        norm_score=norm_score,
     )
+
+    min_distance = len(template_examples) // 2
 
     peaks = look_up_peak_properties(
         scores,
-        find_peak_idcs(scores),
+        find_peak_idcs(scores, distance=min_distance),
     )
 
     peaks['valid'] = (
@@ -189,12 +386,14 @@ def find_template(
     # invert the signal to estimate the "noise" distributions
     scores_noise = slide_template(
         signal * -1,
-        template,
+        template_examples,
+        method=method,
+        norm_score=norm_score,
     )
 
     peaks_noise = look_up_peak_properties(
         scores_noise,
-        find_peak_idcs(scores_noise),
+        find_peak_idcs(scores_noise, distance=min_distance),
     )
 
     cdf_cols = ['height', 'width',  'prominence']
@@ -215,7 +414,8 @@ def extract_waves_from_recording(
         cut_out=timeslice.Win(-500, +1500),
         filter_hz=(0.25, 40),
         load_hz=1000,
-):
+) -> pd.DataFrame:
+
     load_wins = timeslice.Windows.build_around(times, cut_out)
 
     waves = tr.Traces.load_many(
@@ -226,32 +426,13 @@ def extract_waves_from_recording(
 
     waves = waves.filter_pass(filter_hz)
 
-    return waves
-
-
-def extract_template_from_recording(
-        loader,
-        times,
-        cut_out=timeslice.Win(-500, +1500),
-        filter_hz=(0.25, 40),
-        load_hz=1000,
-):
-    template_samples = extract_waves_from_recording(
-            loader,
-            times,
-            cut_out=cut_out,
-            filter_hz=filter_hz,
-            load_hz=load_hz,
-    )
-
-    template = template_samples.mean(axis=1)
-
-    return template
+    return waves.traces
 
 
 def find_waves_in_recording(
         loader,
-        template,
+        template_examples: pd.DataFrame,
+        method='pearson',
         filter_hz=(0.25, 40),
         load_win=None,
         load_hz=1000,
@@ -284,13 +465,13 @@ def find_waves_in_recording(
 
         signal = filt.get()
 
-        if len(signal) <= len(template):
+        if len(signal) <= len(template_examples):
             logging.warning(
-                f'Skipping chunk smaller than template ({len(template)} > {len(signal)}).'
+                f'Skipping chunk smaller than template ({len(template_examples)} > {len(signal)}).'
             )
 
         else:
-            peaks = find_template(signal, template, **kwargs)
+            peaks = find_template(signal, template_examples, method=method, **kwargs)
 
             peaks['time'] = peaks['time']  + t0
 
