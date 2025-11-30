@@ -52,6 +52,12 @@ def _ms_scale(scale) -> float:
     return scale_to
 
 
+def ms_round(value, scale='milliseconds', decimals=0):
+    """Round to a given timescale"""
+    scale_to: float = _ms_scale(scale)
+    return np.round(value / scale_to, decimals=decimals) * scale_to
+
+
 def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
     """
     Pretty-format a float value representing milliseconds into
@@ -596,8 +602,8 @@ class Win(tuple):
         scale_to = _ms_scale(scale)
 
         return self.__class__(
-            np.round(self.start / scale_to, decimals=decimals) * scale_to if start else self.start,
-            np.round(self.stop / scale_to, decimals=decimals) * scale_to if stop else self.stop,
+            ms_round(self.start, scale=scale, decimals=decimals) if start else self.start,
+            ms_round(self.stop, scale=scale, decimals=decimals) if stop else self.stop,
         )
 
     def floor(self, start=True, stop=True, scale='milliseconds'):
