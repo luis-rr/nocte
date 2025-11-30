@@ -1588,7 +1588,8 @@ def savefig(f, name, base_path=''):
 
 
 def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwargs):
-    """Plots a line in segments to allow alpha stacking on overlap.
+    """
+    Plots a line in segments to allow alpha stacking on overlap.
     """
     idcs = np.sort(np.unique(np.linspace(0, len(x) - 1, num_segments).astype(int)))
 
@@ -1599,6 +1600,54 @@ def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwa
             solid_capstyle=solid_capstyle,  # Ensures clean segment stacking
             **kwargs
         )
+
+def plot_segmented_line_cmap(
+        ax,
+        x, y, c,
+        cmap='viridis',
+        norm=None,
+        num_segments=12,
+        **plot_kwargs,
+) -> list:
+    """
+    Plots a line in segments to produce a color gradient.
+    """
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+    c = np.asarray(c)
+
+    n = len(x)
+
+    assert n == len(y)
+    assert n == len(c)
+
+    assert num_segments >= 1
+
+    if norm is None:
+        norm = matplotlib.colors.Normalize(vmin=np.nanmin(c), vmax=np.nanmax(c))
+
+    if isinstance(cmap, str):
+        cmap = matplotlib.colormaps[cmap]
+
+    lines = []
+
+    idx_segments = np.array_split(np.arange(n), num_segments)
+
+    for idx in idx_segments:
+        i0, i1 = idx[0], idx[-1]
+
+        x_segment = x[i0:i1 + 1]
+        y_segment = y[i0:i1 + 1]
+        c_segment = c[i0:i1 + 1]
+
+        c_mean = np.nanmean(c_segment)
+        color = cmap(norm(c_mean))
+
+        line, = ax.plot(x_segment, y_segment, color=color, **plot_kwargs)
+        lines.append(line)
+
+    return lines
 
 
 def _get_index_extent(index) -> tuple:
