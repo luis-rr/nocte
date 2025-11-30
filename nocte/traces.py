@@ -1030,6 +1030,9 @@ class Traces(DataFrameWrapper):
     def square(self):
         return self.apply(np.square)
 
+    def sqrt(self):
+        return self.apply(np.sqrt)
+
     def unwrap(self, period=1, axis=0):
         if np.any(np.isnan(self.traces)):
             logging.warning(f'Unwrapping does not support nans')
@@ -1298,7 +1301,7 @@ class Traces(DataFrameWrapper):
 
         return acorrs
 
-    def auto_corr(self, pearson=True):
+    def auto_corr(self, pearson=True, mode='same'):
 
         def _single_acorr(trace):
 
@@ -1314,13 +1317,25 @@ class Traces(DataFrameWrapper):
             if pearson:
                 trace = trace - trace.mean()
 
-            lags = trace.index - trace.index[len(trace.index) // 2]
+            t = trace.index - trace.index.min()
+
+            if mode == 'same':
+                lags = t - t[len(t) // 2]
+
+            elif mode == 'full':
+                lags = np.concatenate([
+                    t[::-1] * -1,
+                    t[1:],
+                ])
+            else:
+                assert mode == 'valid'
+                lags = [0]
 
             # noinspection PyUnresolvedReferences
             acorr = scipy.signal.correlate(
                 trace,
                 trace,
-                mode='same',
+                mode=mode,
             )
 
             acorr = pd.Series(acorr, index=lags)
