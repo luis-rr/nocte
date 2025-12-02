@@ -637,8 +637,8 @@ class Win(tuple):
     def ceil(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
         return self.__class__(
-            ceil(self.start, scale=scale) if start else self.start,
-            ceil(self.start, scale=scale) if stop else self.stop,
+            ms_ceil(self.start, scale=scale) if start else self.start,
+            ms_ceil(self.start, scale=scale) if stop else self.stop,
         )
 
     def floor_ceil(self, scale='milliseconds'):
