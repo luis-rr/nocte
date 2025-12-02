@@ -52,10 +52,33 @@ def _ms_scale(scale) -> float:
     return scale_to
 
 
-def ms_round(value, scale='milliseconds', decimals=0):
+def ms_round(value: float, scale='milliseconds', decimals=0) -> float:
     """Round to a given timescale"""
-    scale_to: float = _ms_scale(scale)
-    return np.round(value / scale_to, decimals=decimals) * scale_to
+    scale_to = _ms_scale(scale)
+    rounded = float(np.round(value / scale_to, decimals=decimals))
+    return rounded * scale_to
+
+
+def ms_floor(value: float, scale='milliseconds'):
+    """Floor to a given timescale"""
+    scale_to = _ms_scale(scale)
+    return np.floor(value / scale_to) * scale_to
+
+
+def ms_ceil(value: float, scale='milliseconds'):
+    """Ceil to a given timescale"""
+    scale_to = _ms_scale(scale)
+    return np.ceil(value / scale_to) * scale_to
+
+
+def ms_remainder(value: float, scale='days'):
+    """
+    Return the remainder of `value` (in ms) after removing full multiples of `scale`.
+
+    For example, ms_remainder(ms(days=8, hours=7), scale='days') returns the leftover ms(hours=7).
+    """
+    offset = ms_floor(value, scale=scale)
+    return value - offset
 
 
 def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
@@ -599,8 +622,6 @@ class Win(tuple):
 
     def round(self, decimals=0, start=True, stop=True, scale='milliseconds'):
         """round this window """
-        scale_to = _ms_scale(scale)
-
         return self.__class__(
             ms_round(self.start, scale=scale, decimals=decimals) if start else self.start,
             ms_round(self.stop, scale=scale, decimals=decimals) if stop else self.stop,
@@ -608,20 +629,16 @@ class Win(tuple):
 
     def floor(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
-        scale_to = _ms_scale(scale)
-
         return self.__class__(
-            np.floor(self.start / scale_to) * scale_to if start else self.start,
-            np.floor(self.stop / scale_to) * scale_to if stop else self.stop,
+            ms_floor(self.start, scale=scale) if start else self.start,
+            ms_floor(self.stop, scale=scale) if stop else self.stop,
         )
 
     def ceil(self, start=True, stop=True, scale='milliseconds'):
         """round down to the closest integer for the given scale"""
-        scale_to = _ms_scale(scale)
-
         return self.__class__(
-            np.ceil(self.start / scale_to) * scale_to if start else self.start,
-            np.ceil(self.stop / scale_to) * scale_to if stop else self.stop,
+            ceil(self.start, scale=scale) if start else self.start,
+            ceil(self.start, scale=scale) if stop else self.stop,
         )
 
     def floor_ceil(self, scale='milliseconds'):
@@ -882,7 +899,7 @@ class Windows(DataFrameWrapper):
         return split.join(desc)
 
     @classmethod
-    def from_str(cls, string):
+    def from_str(cls, string, name='cat'):
         """
         Serialize from human-readable text format.
         For proper saving look at store_hdf / load_hdf.
@@ -898,7 +915,7 @@ class Windows(DataFrameWrapper):
 
                 wins.append((cat, win.start, win.stop, ref))
 
-            df = pd.DataFrame(wins, columns=['cat', 'start', 'stop', 'ref'])
+            df = pd.DataFrame(wins, columns=[name, 'start', 'stop', 'ref'])
 
             return cls(df)
 
