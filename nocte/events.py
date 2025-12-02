@@ -136,6 +136,46 @@ def _count_rolling_nb(
     return result
 
 
+def _rate_gauss_kernel_nb(
+        time: np.ndarray,
+        new_time: np.ndarray,
+        sigma: float,
+        width: float = 5.0,
+) -> np.ndarray:
+    """
+    Estimate instantaneous rate using a Gaussian kernel.
+
+    time : sorted event times
+    new_time : where to evaluate the rate
+    sigma : std of kernel
+    width : half-width of kernel support in units of sigma
+    """
+    idx_sort = np.argsort(time)
+    time = time[idx_sort]
+
+    result = np.empty(new_time.shape[0])
+
+    norm = 1.0 / (np.sqrt(2.0 * np.pi) * sigma)
+
+    h = width * sigma
+
+    for i in nb.prange(new_time.shape[0]):
+        center = new_time[i]
+        start = center - h
+        stop = center + h
+
+        left_idx = np.searchsorted(time, start, side='left')
+        right_idx = np.searchsorted(time, stop, side='right')
+
+        acc = 0.0
+        for j in range(left_idx, right_idx):
+            u = center - time[j]
+            acc += norm * np.exp(-0.5 * (u / sigma) ** 2)
+
+        result[i] = acc
+
+    return result
+
 
 def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
 
@@ -443,24 +483,6 @@ class Events(DataFrameWrapper):
 
         return hists
 
-    @staticmethod
-    def _get_rate_from_counts(counts, rolling_win=100, win_type='hamming'):
-        # noinspection PyTypeChecker
-        index: pd.IntervalIndex = counts.index
-
-        rates = counts.values * S_TO_MS / index.length
-
-        rates = pd.Series(rates, index=index.mid)
-
-        if rolling_win is not None:
-            rates = rates.rolling(window=rolling_win, center=True, win_type=win_type).mean()
-
-        return rates
-
-    def get_rate(self, load_win, step=1, rolling_win=100, win_type='hamming') -> pd.Series:
-        counts = self.get_counts(load_win, step=step)
-        return self.__class__._get_rate_from_counts(counts, rolling_win=rolling_win, win_type=win_type)
-
     def shift_time(self, shift, cols=None, copy=True):
         cols = self._time_cols_param(cols)
 
@@ -496,15 +518,38 @@ class Events(DataFrameWrapper):
 
         return pd.Series(res, index=new_time)
 
-    def rate_rolling(
+    def rate_rolling_gauss(
+            self,
+            sigma: float,
+            valid_win: timeslice.Win = None,
+            by='ref_time',
+            step=1_000,
+        ) -> pd.Series:
+        """Estaimate instantaneous rate by convolving with a gaussian kernel. Better for low rates than counting."""
+
+        valid_win = self.get_global_win(by) if valid_win is None else valid_win
+
+        sampling_t = valid_win.arange(step)
+
+        rate = _rate_gauss_kernel_nb(
+            time=self[by].values,
+            new_time=sampling_t,
+            sigma=sigma,
+        )
+
+        return pd.Series(
+            rate * timeslice.ms(seconds=1),
+            index=sampling_t,
+        )
+
+    def rate_rolling_box(
             self,
             valid_win: timeslice.Win = None,
             by='ref_time',
             sliding_win=10_000,
             step=1_000,
         ) -> pd.Series:
-        """Calculate how many items are in a sliding window over time (by)"""
-        # TODO replace "get_rate"
+        """Estaimate instantaneous rate by counting in a sliding window"""
 
         counts = self.count_rolling(valid_win=valid_win, by=by, sliding_win=sliding_win, step=step)
         return counts / (sliding_win / timeslice.ms(seconds=1))
@@ -613,6 +658,14 @@ class Events(DataFrameWrapper):
         s: pd.Series = pd.concat(cats)
 
         return s.reindex(self.index)
+
+    def sel_time(events, win: timeslice.Win, on='ref_time', reset=None):
+        sel = events.sel_between(**{on: win})
+
+        if reset is not None:
+            sel = sel.shift_time(-win.relative_time('start'))
+
+        return sel
 
     def get_global_win(self, by='ref_time') -> timeslice.Win:
         return timeslice.Win(self.reg[by].min(), self.reg[by].max())
