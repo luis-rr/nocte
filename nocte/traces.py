@@ -111,9 +111,6 @@ def _cross_corr_shifted_pearsons_nb(
         section0 = (section0 - np.mean(section0)) / np.std(section0)
         section1 = (section1 - np.mean(section1)) / np.std(section1)
 
-        # print(np.min(section0), np.max(section0))
-        # print(np.min(section1), np.max(section1))
-
         corr[i] = np.mean(section0 * section1)
 
     return corr
@@ -427,7 +424,6 @@ class Traces(DataFrameWrapper):
         elif isinstance(start, str):
             vmin = min(trace.index.min() for k, trace in d.items())
             round_to = timeslice.ms(**{start: 1})
-            print(vmin, round_to)
             start = np.floor(vmin / round_to) * round_to
 
         if stop is None:
