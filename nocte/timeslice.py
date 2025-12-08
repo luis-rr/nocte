@@ -880,7 +880,7 @@ class Windows(DataFrameWrapper):
         wins: pd.DataFrame = pd.read_hdf(path, key)
         return cls(wins)
 
-    def to_str(self, split='\n', strip=False, plus_sign=False, show_days=True):
+    def to_str(self, split='\n', strip=False, plus_sign=False, show_days=True, col='cat'):
         """
         Serialize to human-readable text format.
         This drops most of the properties of the windows.
@@ -888,7 +888,7 @@ class Windows(DataFrameWrapper):
         """
         desc = []
 
-        for _, start, stop, cat in self.reg[['start', 'stop', 'cat']].itertuples():
+        for _, start, stop, cat in self.reg[['start', 'stop', col]].itertuples():
             start = ms_to_str(start, plus_sign=plus_sign, strip=strip, show_days=show_days)
             stop = ms_to_str(stop, plus_sign=plus_sign, strip=strip, show_days=show_days)
 
@@ -908,7 +908,7 @@ class Windows(DataFrameWrapper):
             wins = []
 
             for line in string.strip().replace(';', '\n').split('\n'):
-                cat = line[:line.find(':')]
+                cat = line[:line.find(':')].strip()
                 win_str = line[line.find(':') + 1:]
                 win = Win.from_str(win_str)
                 ref = win.start
