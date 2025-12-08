@@ -551,6 +551,7 @@ def make_axs_long_experiment(
         suptitle=None,
         ylim=None,
         leftspine=True,
+        show_days=False,
 ) -> dict:
     """
     Prepare axes to plot a ful experiment chopped up in sequential chunks as rows.
@@ -593,8 +594,8 @@ def make_axs_long_experiment(
 
             if tstart_timestamp is None:
                 timestamp = (
-                    f'{timeslice.ms_to_str(tbin.start, plus_sign=False)}'
-                    f'-{timeslice.ms_to_str(tbin.stop, plus_sign=False)}'
+                    f'{timeslice.ms_to_str(tbin.start, plus_sign=False, show_days=show_days)}'
+                    f'-{timeslice.ms_to_str(tbin.stop, plus_sign=False, show_days=show_days)}'
                 )
 
             else:
@@ -660,12 +661,18 @@ def plot_wrapped_lines(
 
             trace = tbin.crop_df(trace, reset=True)
 
+            plot_kwargs = {
+                **dict(
+                    color=colors.get(name, f'C{j}'),
+                    label=str(name).replace('_', ' '),
+                    linewidth=linewidth,
+                ),
+                **kwargs,
+            }
+
             ax.plot(
                 trace.index,
                 trace.values,
-                color=colors.get(name, f'C{j}'),
-                label=str(name).replace('_', ' '),
-                linewidth=linewidth,
                 **kwargs,
             )
 
