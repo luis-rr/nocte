@@ -1,3 +1,5 @@
+from tqdm.auto import tqdm
+
 import h5py
 import numpy as np
 import pandas as pd
@@ -200,3 +202,26 @@ class DataDict(DataFrameWrapper):
         merged_reg = merged_reg.reset_index().drop(columns='local_id')
 
         return cls(merged_reg, merged_data)
+
+    @classmethod
+    def combine(cls, left, right, func, how='inner', left_idx_name='left_idx', right_idx_name='right_idx'):
+
+        left_reg: pd.DataFrame = left.reg.rename_axis(index=left_idx_name).reset_index()
+
+        right_reg: pd.DataFrame = right.reg.rename_axis(index=right_idx_name).reset_index()
+
+        # noinspection PyTypeChecker
+        merged: pd.DataFrame = pd.merge(left_reg, right_reg, how=how)
+
+        indices = merged[[left_idx_name, right_idx_name]].values
+
+        results = {}
+
+        for k, (a, b) in zip(tqdm(merged.index.values), indices):
+            res = func(
+                left.get(a),
+                right.get(b),
+            )
+            results[k] = res
+
+        return cls(merged, results)
