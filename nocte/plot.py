@@ -216,15 +216,16 @@ def _auto_select_tick_steps(ax, which='x') -> tuple[float, float]:
     return sections[np.inf]
 
 
-def set_ticks_solar_time(ax, which='x', skip_zero=False):
-    assert which in ('x', 'y')
-    axis = ax.yaxis if which == 'y' else ax.xaxis
-
+def set_ticks_solar_time(ax, which='x', skip_zero=False, offset=ms(hours=0)):
     def solar_ticks(x, _):
+        x = x - offset
         days = np.floor(x / ms(hours=1) / 24)
         hours = (x / ms(hours=1)) % 24
 
         return f'{hours:g}' + (f'\n{days:g}d' if (days > 0 or not skip_zero) else '')
+
+    assert which in ('x', 'y')
+    axis = ax.yaxis if which == 'y' else ax.xaxis
 
     axis.set_major_formatter(
         matplotlib.ticker.FuncFormatter(solar_ticks)
