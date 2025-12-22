@@ -136,6 +136,7 @@ def _count_rolling_nb(
     return result
 
 
+@nb.njit(parallel=True)
 def _rate_gauss_kernel_nb(
         time: np.ndarray,
         new_time: np.ndarray,
