@@ -1126,6 +1126,13 @@ class Windows(DataFrameWrapper):
 
         return cls(df)
 
+    def to_dict(analysis_wins: timeslice.Windows, col='exp_name') -> dict:
+        """
+        Returns a version of these windows that looks like:
+        {col_value: (start, stop)}
+        """
+        return dict(analysis_wins.iter_wins(col=col))
+
     @classmethod
     def build_sliding(
             cls,
