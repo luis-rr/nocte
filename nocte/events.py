@@ -12,7 +12,7 @@ import pandas as pd
 from nocte import plot as splot
 from nocte import timeslice, stacks
 from nocte.df_wrapper import DataFrameWrapper
-from nocte.timeslice import S_TO_MS
+from nocte import datadict as dd
 
 
 @nb.njit(parallel=True)
@@ -216,6 +216,27 @@ class Events(DataFrameWrapper):
         reg = reg.rename_axis(index='event_id')
         assert reg.index.is_unique
         super().__init__(reg)
+
+    @classmethod
+    def from_data_dict(cls, data: dd.DataDict):
+        """
+        Flatten a DataDict[Events] into a single Events object.
+        """
+        joint_reg = []
+
+        for k, events in data.items():
+            reg = events.reg.copy()
+
+            row = data.reg.loc[k]
+
+            for col, value in row.items():
+                reg[col] = value
+
+            joint_reg.append(reg)
+
+        joint_reg = pd.concat(joint_reg, axis=0, ignore_index=True)
+
+        return cls(joint_reg)
 
     @property
     def loc(self):
@@ -693,3 +714,4 @@ class Events(DataFrameWrapper):
             trace = traces.sel(channel=ch).to_series()
 
             splot.plot_trace_highlighted(ax, trace, wins, styles)
+
