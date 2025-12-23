@@ -204,10 +204,12 @@ class DataDict(DataFrameWrapper):
         return cls(merged_reg, merged_data)
 
     @classmethod
-    def combine(cls, left, right, func, how='inner', left_idx_name='left_idx', right_idx_name='right_idx'):
+    def combine_idcs(cls, left, right, how='inner', left_idx_name=None, right_idx_name=None):
 
+        left_idx_name = left_idx_name or left.reg.index.name or 'left_idx'
         left_reg: pd.DataFrame = left.reg.rename_axis(index=left_idx_name).reset_index()
 
+        right_idx_name = right_idx_name or right.reg.index.name or 'right_idx'
         right_reg: pd.DataFrame = right.reg.rename_axis(index=right_idx_name).reset_index()
 
         # noinspection PyTypeChecker
@@ -215,13 +217,22 @@ class DataDict(DataFrameWrapper):
 
         indices = merged[[left_idx_name, right_idx_name]].values
 
-        results = {}
-
-        for k, (a, b) in zip(tqdm(merged.index.values), indices):
-            res = func(
-                left.get(a),
-                right.get(b),
-            )
-            results[k] = res
+        results = dict(zip(merged.index.values, indices))
 
         return cls(merged, results)
+
+    @classmethod
+    def combine(cls, left, right, func, how='inner', left_idx_name='left_idx', right_idx_name='right_idx'):
+
+        result = cls.combine_idcs(
+            left=left, right=right,
+            how=how,
+            left_idx_name=left_idx_name, right_idx_name=right_idx_name,
+        )
+
+        return result.apply(
+            lambda pair: func(
+                left.get(pair[0]),
+                right.get(pair[1]),
+            )
+        )
