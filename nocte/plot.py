@@ -283,6 +283,103 @@ def drop_spines_grid(
                 ax.set(ylabel='')
 
 
+def set_ax_spine_color(ax, side, color):
+    """
+    Color the spine, ticks, tick labels, and axis label on a given side.
+
+    side: 'left', 'right', 'bottom', 'top'
+    color: any Matplotlib color
+    """
+    assert side in ('left', 'right', 'bottom', 'top')
+
+    ax.spines[side].set_color(color)
+
+    axis = {
+        'left': ax.yaxis, 'right': ax.yaxis,
+        'bottom': ax.xaxis, 'top': ax.xaxis
+    }[side]
+
+    axis.label.set_color(color)
+    axis.set_label_position(side)
+
+    axis_name = {'left': 'y', 'right': 'y', 'bottom': 'x', 'top': 'x'}[side]
+    ax.tick_params(axis=axis_name, colors=color, **{side: True})
+
+    ticks = ax.get_yticklabels() if axis_name == 'y' else ax.get_xticklabels()
+    for label in ticks:
+        label.set_color(color)
+
+
+def set_ax_spine_side(ax, side):
+    """
+    Move an existing axis to a given side ('left', 'right', 'top', 'bottom').
+
+    Makes the chosen side visible (spine, ticks, ticklabels, label)
+    and hides the opposite side.
+    """
+
+    assert side in ('left', 'right', 'bottom', 'top')
+
+    axis = {
+        'left': ax.yaxis, 'right': ax.yaxis,
+        'bottom': ax.xaxis, 'top': ax.xaxis
+    }[side]
+
+    opposite = {
+        'left': 'right', 'right': 'left',
+        'bottom': 'top', 'top': 'bottom'
+    }[side]
+
+    axis_name = {
+        'left': 'y', 'right': 'y',
+        'bottom': 'x', 'top': 'x'
+    }[side]
+
+    ax.spines[opposite].set_visible(False)
+
+    ax.tick_params(
+        axis=axis_name,
+        **{opposite: False},
+        **{f'label{opposite}': False}
+    )
+
+    ax.spines[side].set_visible(True)
+
+    ax.tick_params(
+        axis=axis_name,
+        **{side: True},
+        **{f'label{side}': True}
+    )
+
+    axis.set_label_position(side)
+
+
+def set_ax_ticks_si(ax, axis='y', fmt_str='.0f'):
+    """
+    Format x or y ticks using SI prefixes (k, M).
+
+    axis: 'x' or 'y'
+    fmt_str: format string applied inside the f-string (e.g., '.0f', '.1f', '.2f')
+    """
+
+    assert axis in ('x', 'y')
+
+    def _fmt(x, pos):
+        ax_val = abs(x)
+
+        if ax_val >= 1_000_000:
+            return f"{x / 1_000_000:{fmt_str}}M"
+        elif ax_val >= 1_000:
+            return f"{x / 1_000:{fmt_str}}k"
+        else:
+            return f"{x:{fmt_str}}"
+
+    formatter = matplotlib.ticker.FuncFormatter(_fmt)
+
+    axis_obj = {'x': ax.xaxis, 'y': ax.yaxis}[axis]
+    axis_obj.set_major_formatter(formatter)
+
+
 def plot_wins_fill(
         ax,
         windows: timeslice.Windows,
@@ -1286,8 +1383,8 @@ def add_scale_bar(
             f'{desc}',
             clip_on=clip_on,
             rotation=90 if which == 'y' else None,
-            ha='center' if which == 'x' else ['right', 'left'][pos],
-            va='center' if which == 'y' else ['bottom', 'top'][pos],
+            ha='center' if which == 'x' else ['right', 'left'][int(pos > 0.5)],
+            va='center' if which == 'y' else ['bottom', 'top'][int(pos > 0.5)],
             fontsize=fontsize,
             transform=transform,
             color=color,
