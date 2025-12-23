@@ -1509,7 +1509,7 @@ class Windows(DataFrameWrapper):
 
         index = np.arange(start, stop, sampling_period)
 
-        mode = pd.Series(fillna, index=index)
+        mode = pd.Series(fillna, index=index, dtype=self.reg.dtypes[dim])
 
         slicing = self.reg[['start', 'stop', dim]].itertuples()
 
