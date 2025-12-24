@@ -482,18 +482,18 @@ class Traces(DataFrameWrapper):
 
         return traces
 
-    def store_hdf(self, path):
+    def store_hdf(self, path, key='traces'):
         path = str(path)
-        self.reg.to_hdf(path, key='reg')
-        self.traces.to_hdf(path, key='traces')
+        self.reg.to_hdf(path, key=f'{key}_reg')
+        self.traces.to_hdf(path, key=f'{key}_data')
 
     @classmethod
-    def load_hdf(cls, path):
+    def load_hdf(cls, path, key='traces'):
         path = str(path)
         # noinspection PyTypeChecker
         return cls(
-            reg=pd.read_hdf(path, key='reg'),
-            traces=pd.read_hdf(path, key='traces'),
+            reg=pd.read_hdf(path, key=f'{key}_reg'),
+            traces=pd.read_hdf(path, key=f'{key}_data'),
             copy=False,
         )
 

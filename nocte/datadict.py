@@ -50,54 +50,50 @@ class DataDict(DataFrameWrapper):
         data_mapped = {uid: data[tuple(k)] for uid, *k in reg.itertuples()}
         return cls(reg, data_mapped)
 
-    def to_hdf(self, filename, desc='data', pbar=None):
+    def to_hdf(self, filename, key='dd', item_key_fmt='{k}', pbar=None):
         """
         Store data and registry to HDF5.
-        Data must implement "to_hdf" (e.g. pd.DataFrame)
+        Data must implement "to_hdf" or "store_hdf" (e.g. pd.DataFrame)
         """
-        self.reg.to_hdf(filename, key='reg')
+        self.reg.to_hdf(filename, key=f'{key}_reg')
 
-        for k, v in self.items(pbar=pbar):
+        index = _optional_pbar(self.index, total=len(self.index), desc='storing', pbar=pbar)
+
+        for k in index:
+
+            v = self.get(k)
+
+            item_key = item_key_fmt.format(k=k)
+            item_key = f'{key}_{item_key}'
+
             if hasattr(v, 'to_hdf'):
-                key = f'{desc}_{k:06d}'
-                v.store_hdf(filename, key=key)
+                v.to_hdf(filename, key=item_key)
 
             elif hasattr(v, 'store_hdf'):
-                key = f'{desc}_{k:06d}'
-                v.store_hdf(filename, key=key)
+                v.store_hdf(filename, key=item_key)
 
             else:
-                raise NotImplementedError()
+                raise TypeError(
+                    f'Object of type {type(v)} does not support '
+                    f'HDF5 storage (missing to_hdf or store_hdf)'
+                )
 
     @classmethod
-    def from_hdf(cls, filename, desc='data', pbar=True):
+    def from_hdf(cls, filename, key='dd', loader=pd.read_hdf, item_key_fmt='{k}', pbar=True):
         """
         Load data and registry from HDF5.
         """
         # noinspection PyTypeChecker
-        reg: pd.DataFrame = pd.read_hdf(filename, key='reg')
-
-        with h5py.File(str(filename), mode='r') as f:
-            file_keys = list(f.keys())
+        reg: pd.DataFrame = pd.read_hdf(filename, key=f'{key}_reg')
 
         data = {}
         index = _optional_pbar(reg.index, total=len(reg.index), desc='loading', pbar=pbar)
 
         for k in index:
+            item_key = item_key_fmt.format(k=k)
+            item_key = f'{key}_{item_key}'
 
-            key = f'{desc}_{k:06d}'
-            if key in file_keys:
-                data[k] = pd.read_hdf(filename, key=key)
-                continue
-
-            # fmt = 'stack'
-            # key = f'{fmt}_{k:06d}'
-            #
-            # if f'{key}_values' in file_keys:
-            #     data[k] = Stack.load_hdf(filename, key=key)
-            #     continue
-
-            raise KeyError(f'Missing data for {key}. Found: {file_keys}')
+            data[k] = loader(filename, key=item_key)
 
         return cls(reg, data)
 
@@ -113,7 +109,7 @@ class DataDict(DataFrameWrapper):
             self.data,
         )
 
-    def get(self, idx=None) -> pd.Series:
+    def get(self, idx=None):
         """return a single item. If no index it's given, we assume there is only one"""
         if idx is None:
             assert len(self.index) == 1, f'Found too many traces:\n{self.reg}'
