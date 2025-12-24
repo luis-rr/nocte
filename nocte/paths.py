@@ -496,7 +496,7 @@ class Registry(DataFrameWrapper):
             reg_path = get_root() / 'spikes/registry_merged.xlsx'
 
         # noinspection PyTypeChecker
-        reg = pd.read_excel(reg_path, index_col='name', sheet_name=sheet_name)
+        reg = pd.read_excel(str(reg_path), index_col='name', sheet_name=sheet_name)
 
         df = reg.dropna(how='all')
 
@@ -1029,3 +1029,10 @@ class Registry(DataFrameWrapper):
             offsets[exp_name] = timeslice.TimeRef(first_timestamp).solar_offset
 
         return pd.Series(offsets)
+
+    def drop_empty_columns(self):
+        not_empty = self.reg.notna().any()
+
+        return self.__class__(
+            self.reg.loc[:, not_empty].copy()
+        )
