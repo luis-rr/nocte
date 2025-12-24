@@ -496,7 +496,7 @@ class Registry(DataFrameWrapper):
             reg_path = get_root() / 'spikes/registry_merged.xlsx'
 
         # noinspection PyTypeChecker
-        reg = pd.read_excel(str(reg_path), index_col='name', sheet_name=sheet_name)
+        reg = pd.read_excel(reg_path, index_col='name', sheet_name=sheet_name)
 
         df = reg.dropna(how='all')
 
