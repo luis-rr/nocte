@@ -1311,10 +1311,11 @@ def add_scale_bar(
         vmax=1,
         nospine=True,
         color='k',
-        linewidth=4,
+        linewidth=3,
         zorder=1e6,
         fontsize=None,
         unit='',
+        offset_pts=None,
         **kwargs
 ):
     if fontsize is None:
@@ -1348,12 +1349,34 @@ def add_scale_bar(
             ax.spines['bottom'].set_visible(False)
             ax.spines['top'].set_visible(False)
 
+
+    transform = kwargs.pop('transform', None)
+    if transform is None:
+        if which == 'y':
+            transform = ax.get_yaxis_transform()
+        else:
+            transform = ax.get_xaxis_transform()
+
+    if offset_pts != 0:
+        if offset_pts is None:
+            offset_pts = linewidth
+            if pos < 0.5:
+                offset_pts = offset_pts * -1
+
+        if isinstance(offset_pts, (int, float)):
+            offset_pts = np.array([offset_pts, 0] if which == 'y' else [0, offset_pts])
+
+        offset_trans = matplotlib.transforms.ScaledTranslation(
+            *(offset_pts / 72),
+            ax.figure.dpi_scale_trans,
+        )
+
+        transform = transform + offset_trans
+
     if which == 'y':
-        transform = ax.get_yaxis_transform()
         x = [pos, pos]
         y = [vmin, vmax]
     else:
-        transform = ax.get_xaxis_transform()
         y = [pos, pos]
         x = [vmin, vmax]
 
