@@ -1056,13 +1056,16 @@ class Traces(DataFrameWrapper):
 
     def shift_time(
             self,
-            ref_time: float,
+            ref_time: float | pd.Series | np.ndarray,
     ):
-        new = self.replace_traces(
-            self.traces.set_index(self.time + ref_time)
-        )
-
-        return new
+        if isinstance(ref_time, pd.Series, np.ndarray):
+            return self.shift_time_each(
+                ref_time
+            )
+        else:
+            return self.replace_traces(
+                self.traces.set_index(self.time + ref_time)
+            )
 
     def shift_time_each(
             self,
@@ -1457,7 +1460,7 @@ class Traces(DataFrameWrapper):
             reg=reg,
         )
 
-    def extract(self, windows, set_index=True, **kwargs):
+    def extract(self, windows, align=None, set_index=True, **kwargs):
         """
         Extract segments from traces using a `Windows` object.
 
@@ -1509,6 +1512,11 @@ class Traces(DataFrameWrapper):
 
         if set_index and result[windows.index.name].is_unique:
             result = result.set_index(windows.index.name)
+
+        if align is not None:
+            refs = windows.relative_time(align)
+            shifts = result.index.map(refs)
+            result = result.shift_time(shifts)
 
         return result
 
