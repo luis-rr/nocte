@@ -2058,7 +2058,7 @@ class Windows(DataFrameWrapper):
         if align is not None:
             refs = others.relative_time(align)
             shifts = extracted['cut_win_idx'].map(refs)
-            extracted = extracted.shift_time(shifts)
+            extracted = extracted.shift_time(-1 * shifts)
 
         return extracted
 
@@ -2072,11 +2072,7 @@ class Windows(DataFrameWrapper):
             outer_group = outer.sel(**{by: by_val})
 
             for outer_idx, outer_win in outer_group.iter_wins():
-
-                outer_win_ref = outer.loc[outer_idx, 'ref']
-
                 cropped = inner_group.crop_to_main(outer_win)
-                cropped = cropped.shift(-outer_win_ref)
                 cropped = cropped.drop_empty()
 
                 for col in copy:
