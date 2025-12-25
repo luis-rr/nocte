@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 
-import timeslice
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 import nocte.timeslice
 
@@ -255,7 +254,7 @@ class DataDict(DataFrameWrapper):
         return result
 
     @staticmethod
-    def _crop_item(item, window: timeslice.Win):
+    def _crop_item(item, window: nocte.timeslice.Win):
         if hasattr(item, 'crop'):
             return item.crop(window)
 
