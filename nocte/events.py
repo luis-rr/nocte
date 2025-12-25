@@ -506,7 +506,16 @@ class Events(DataFrameWrapper):
 
         return hists
 
-    def shift_time(self, shift, cols=None, copy=True):
+    def shift_time(self, ts: float | pd.Series | np.ndarray, cols=None, copy=True):
+
+        if isinstance(ts, (float, int, np.ndarray)):
+            ts = pd.Series(ts, index=self.index)
+
+        if not ts.index.equals(self.index):
+            raise ValueError("shift_time Series must be indexed like self")
+
+        ts = ts.reindex(self.index).values
+
         cols = self._time_cols_param(cols)
 
         if copy:
@@ -515,7 +524,7 @@ class Events(DataFrameWrapper):
             reg = self.reg
 
         cols = list(cols)
-        reg[cols] = reg[cols] + shift
+        reg[cols] = reg[cols] + ts[:, np.newaxis]
         return self.__class__(reg)
 
     def count_rolling(
@@ -714,12 +723,14 @@ class Events(DataFrameWrapper):
 
         reg['win_idx'] = locs['win_idx'].astype(wins.index.dtype)
 
-        if align is not None:
-            refs = locs['win_idx'].map(wins['ref']).values
-            time_cols = self._time_cols_param(None)
-            reg[time_cols] = reg[time_cols] - refs[:, np.newaxis]
+        extracted = self.__class__(reg)
 
-        return self.__class__(reg)
+        if align is not None:
+            refs = wins.relative_time(align)
+            shifts = extracted['win_idx'].map(refs).values
+            extracted = extracted.shift_time(-1 * shifts)
+
+        return extracted
 
     def sel_time(self, win: timeslice.Win, on='ref_time', reset=None):  # TODO deprecate
         sel = self.crop(win, on=on)

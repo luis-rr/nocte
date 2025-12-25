@@ -1516,7 +1516,7 @@ class Traces(DataFrameWrapper):
         if align is not None:
             refs = windows.relative_time(align)
             shifts = result.index.map(refs)
-            result = result.shift_time(shifts)
+            result = result.shift_time(-1 * shifts)
 
         return result
 
