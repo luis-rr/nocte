@@ -291,7 +291,7 @@ class DataDict(DataFrameWrapper):
 
         if isinstance(item, pd.DataFrame):
             out = item.copy()
-            out.index = out.index - dt
+            out.index = out.index + dt
             return out
 
         raise TypeError(
