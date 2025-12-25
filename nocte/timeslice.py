@@ -1956,7 +1956,10 @@ class Windows(DataFrameWrapper):
     def is_empty(self) -> bool:
         return self['stop'] <= self['start']
 
-    def crop_to_main(self, win_ms, reset=False):
+    def crop_to_main(self, win_ms, reset=False):  # TODO drop
+        return self.crop(win_ms, reset=reset)
+
+    def crop(self, win_ms: Win, reset=False):
         """
         Crop windows to only contain time inside win_ms.
         Windows outside will be dropped, windows at the edge will be cut and windows inside will be left intact.
@@ -1979,7 +1982,7 @@ class Windows(DataFrameWrapper):
 
         return new
 
-    def crop_to_multiple(self, others, pbar=None, drop=False):
+    def crop_to_multiple(self, others, pbar=None, drop=False):  # TODO drop
         """
         Crop all of these windows so they only cover periods covered in 'others'.
         Note that this may drop original windows, reduce their size or even
@@ -2042,6 +2045,48 @@ class Windows(DataFrameWrapper):
         assert len(new.lengths().drop_duplicates()) <= 1
 
         return new
+
+    def extract(self, others, align=None, by='exp_name', copy=None):
+        """
+        Crop all of these windows so they only cover periods covered in 'others'.
+        Note that this may drop original windows, reduce their size or even
+        fragment them into multiple smaller ones.
+        Original index is kept as a column "original_win_idx".
+        """
+        extracted: Windows = self._extract(others, by=by, copy=copy)
+
+        if align is not None:
+            refs = others.relative_time(align)
+            shifts = extracted['cut_win_idx'].map(refs)
+            extracted = extracted.shift_time(shifts)
+
+        return extracted
+
+    def _extract(self, outer, by='exp_name', copy=None):
+        copy = copy or []
+
+        wins_cut = []
+
+        for by_val, inner_group in self.iter_groupby(by):
+
+            outer_group = outer.sel(**{by: by_val})
+
+            for outer_idx, outer_win in outer_group.iter_wins():
+
+                outer_win_ref = outer.loc[outer_idx, 'ref']
+
+                cropped = inner_group.crop_to_main(outer_win)
+                cropped = cropped.shift(-outer_win_ref)
+                cropped = cropped.drop_empty()
+
+                for col in copy:
+                    cropped[col] = outer.loc[outer_idx, col]
+
+                cropped['cut_win_idx'] = outer_idx
+
+                wins_cut.append(cropped)
+
+        return Windows.concat_list(wins_cut)
 
     def __len__(self):
         """number of windows"""
@@ -2244,7 +2289,7 @@ class Windows(DataFrameWrapper):
         else:
             return self.__class__(pd.DataFrame(columns=['start', 'stop', 'ref']))
 
-    def shift(self, shifts, dropmissing=True):
+    def shift_time(self, shifts, dropmissing=True):
         """apply a shift to every window"""
 
         if np.issubdtype(type(shifts), np.number):
@@ -2266,6 +2311,9 @@ class Windows(DataFrameWrapper):
 
         # note that we can no longer expect them to be exclusive
         return Windows(new)
+
+    def shift(self, shifts, dropmissing=True):  # TODO drop
+        return self.shift_time(shifts, dropmissing=dropmissing)
 
     def defrag(self, start=0):
         """
