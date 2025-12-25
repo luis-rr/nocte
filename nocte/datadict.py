@@ -1,10 +1,9 @@
-from tqdm.auto import tqdm
-
-import h5py
 import numpy as np
 import pandas as pd
 
+import timeslice
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
+import nocte.timeslice
 
 
 class DataDict(DataFrameWrapper):
@@ -200,24 +199,6 @@ class DataDict(DataFrameWrapper):
         return cls(merged_reg, merged_data)
 
     @classmethod
-    def combine_idcs(cls, left, right, how='inner', left_idx_name=None, right_idx_name=None):
-
-        left_idx_name = left_idx_name or left.reg.index.name or 'left_idx'
-        left_reg: pd.DataFrame = left.reg.rename_axis(index=left_idx_name).reset_index()
-
-        right_idx_name = right_idx_name or right.reg.index.name or 'right_idx'
-        right_reg: pd.DataFrame = right.reg.rename_axis(index=right_idx_name).reset_index()
-
-        # noinspection PyTypeChecker
-        merged: pd.DataFrame = pd.merge(left_reg, right_reg, how=how)
-
-        indices = merged[[left_idx_name, right_idx_name]].values
-
-        results = dict(zip(merged.index.values, indices))
-
-        return cls(merged, results)
-
-    @classmethod
     def combine(cls, left, right, func, how='inner', left_idx_name='left_idx', right_idx_name='right_idx'):
 
         result = cls.combine_idcs(
@@ -232,3 +213,99 @@ class DataDict(DataFrameWrapper):
                 right.get(pair[1]),
             )
         )
+
+    @classmethod
+    def combine_idcs(cls, left, right, how='inner', left_idx_name=None, right_idx_name=None, **merge_kwargs):
+
+        left_idx_name = left_idx_name or left.reg.index.name or 'left_idx'
+        left_reg: pd.DataFrame = left.reg.rename_axis(index=left_idx_name).reset_index()
+
+        right_idx_name = right_idx_name or right.reg.index.name or 'right_idx'
+        right_reg: pd.DataFrame = right.reg.rename_axis(index=right_idx_name).reset_index()
+
+        # noinspection PyTypeChecker
+        merged: pd.DataFrame = pd.merge(left_reg, right_reg, how=how, **merge_kwargs)
+
+        indices = merged[[left_idx_name, right_idx_name]].values
+
+        results = dict(zip(merged.index.values, indices))
+
+        return cls(merged, results)
+
+    def crop(self, wins: nocte.timeslice.Windows):
+        paired = self.combine_idcs(
+            self, wins,
+            left_idx_name='dd_idx',
+            right_idx_name='win_idx',
+        )
+
+        result = {
+            k: DataDict._crop_item(
+                self.get(data_idx),
+                wins.get(win_idx),
+            )
+            for k, (data_idx, win_idx) in paired.items()
+        }
+
+        result = self.__class__(
+            paired.reg,
+            result,
+        )
+
+        return result
+
+    @staticmethod
+    def _crop_item(item, window: timeslice.Win):
+        if hasattr(item, 'crop'):
+            return item.crop(window)
+
+        if isinstance(item, pd.DataFrame):
+            idx = item.index
+            mask = (idx >= window.start) & (idx <= window.stop)
+            return item.loc[mask]
+
+        raise TypeError(
+            f"Object of type {type(item)} cannot be cropped"
+        )
+
+    def shift_time(self, ts: pd.Series | np.ndarray | int | float):
+        if isinstance(ts, (int, float, np.ndarray)):
+            ts = pd.Series(ts, index=self.index)
+
+        if not ts.index.equals(self.index):
+            raise ValueError("shift_time Series must be indexed like DataDict")
+
+        result = {
+            k: DataDict._shift_time_item(
+                item,
+                ts.loc[k],
+            )
+            for k, item in self.items()
+        }
+
+        return self.__class__(self.reg, result)
+
+    @staticmethod
+    def _shift_time_item(item, dt):
+        if hasattr(item, "shift_time"):
+            return item.shift_time(dt)
+
+        if isinstance(item, pd.DataFrame):
+            out = item.copy()
+            out.index = out.index - dt
+            return out
+
+        raise TypeError(
+            f"Object of type {type(item)} cannot be time-shifted"
+        )
+
+    def extract(self, wins: nocte.timeslice.Windows, align=None):
+
+        extracted = self.crop(wins)
+
+        if align is not None:
+            refs = wins.relative_time(align)
+            shifts = extracted['win_idx'].map(refs)
+            extracted = extracted.shift_time(shifts)
+
+        return extracted
