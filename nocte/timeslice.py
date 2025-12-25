@@ -120,7 +120,7 @@ def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
     if show_days:
         desc = f'{days:g}d '
 
-    desc = desc + f'{sign}{int(hours):02d}:{int(minutes):02d}'
+    desc = f'{sign}{desc}{int(hours):02d}:{int(minutes):02d}'
 
     if seconds > 0 or decimals > 0 or not strip:
         desc += f':{seconds:02.0f}'
