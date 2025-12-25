@@ -1635,13 +1635,13 @@ class Windows(DataFrameWrapper):
         return wins_ms
 
     def iter_wins(self, col=None, *, pbar=None):
-        for idx, ref, win in self.iter_wins_ref(pbar=pbar):
+        for idx, win, props in self.iter_wins_items(pbar=pbar):
             if col is None:
                 yield idx, win
             else:
-                yield self.loc[idx, col], win
+                yield self.loc[idx, col], win  # TODO simplify
 
-    def iter_wins_ref(self, *, pbar=None):
+    def iter_wins_ref(self, *, pbar=None):  # TODO drop
         for idx, win, props in self.iter_wins_items(pbar=pbar):
             yield idx, props['ref'], win
 
@@ -2155,6 +2155,20 @@ class Windows(DataFrameWrapper):
         start = self.reg[['start', 'stop']].values.min()
         stop = self.reg[['start', 'stop']].values.max()
         return Win(start, stop)
+
+    def get_global_win_grouped(self, by):
+        """
+        For each group of windows, get the minimum window that includes them
+        :return:
+        """
+        global_wins = []
+
+        for by_vals, wins in self.iter_groupby(by):
+            global_wins.append(tuple(by_vals) + wins.get_global_win())
+
+        reg = pd.DataFrame(global_wins, columns=by + ['start', 'stop'])
+
+        return self.__class__(reg)
 
     def add_cols(self, extra: pd.DataFrame):
         """add extra columns describing properties of these windows"""
