@@ -178,7 +178,7 @@ def _rate_gauss_kernel_nb(
     return result
 
 
-def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
+def interpolate_trace(data: pd.Series, times: np.ndarray) -> pd.Series:
 
     values = np.interp(
         times,
@@ -191,7 +191,7 @@ def interpolate_trace(data: pd.Series, times: np.array) -> pd.Series:
     return pd.Series(values, index=times)
 
 
-def interpolate_traces(data: pd.DataFrame, times: np.array) -> pd.DataFrame:
+def interpolate_traces(data: pd.DataFrame, times: np.ndarray) -> pd.DataFrame:
     df = {
         i: interpolate_trace(trace, times)
         for i, (col, trace) in enumerate(data.items())
@@ -213,7 +213,7 @@ class Events(DataFrameWrapper):
     """
 
     def __init__(self, reg: pd.DataFrame):
-        reg = reg.rename_axis(index='event_id')
+        reg: pd.DataFrame = reg.rename_axis(index='event_id')
         assert reg.index.is_unique
         super().__init__(reg)
 
@@ -337,7 +337,7 @@ class Events(DataFrameWrapper):
         return timeslice.Windows(wins)
 
     def _repr_html_(self):
-        # noinspection PyProtectedMember
+        # noinspection PyProtectedMember,PyCallingNonCallable
         return self.reg._repr_html_()
 
     def sample_uniformly(self, on, count=10, jitter=0):
@@ -403,7 +403,8 @@ class Events(DataFrameWrapper):
 
     def get_time_to_closest(self, stop='stop', start='start', sortby='ref') -> pd.Series:
 
-        evs = self.sort_values(f'{sortby}_time')
+        # noinspection PyTypeChecker,PyNoneFunctionAssignment,PyArgumentList
+        evs: Events = self.sort_values(f'{sortby}_time')
 
         to_next = evs.get_inter_event_intervals(stop, start, sortby=sortby)
 
@@ -666,23 +667,62 @@ class Events(DataFrameWrapper):
 
         return pd.Series(res, index=xvals)
 
+    def locate_within(self, wins: timeslice.Windows, by='exp_name', on='ref_time') -> pd.DataFrame:
+        """calculate the relative time of the events within windows after matching them by a column"""
+        result = []
+
+        for by_val, wins_sel in wins.iter_groupby(by):
+            events_sel = self.sel(**{by: by_val})
+
+            if len(events_sel) > 0:
+                classified: pd.DataFrame = wins_sel.classify_events(events_sel[on])
+
+                result.append(classified)
+
+        if len(result) > 0:
+            result = pd.concat(result)
+
+        else:
+            result = pd.DataFrame(dict(
+                win_idx=pd.Series(dtype='int'),
+                delay=pd.Series(dtype='float'),
+                cat=pd.Series(dtype='str'),
+            ))
+
+        result = result.reindex(self.index)
+
+        return result
+
     def classify_by(self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat') -> pd.Series:
-        """classify each event by the category of selected windows after matching them by a common value"""
-        cats = []
-        for k, injs in self.reg.groupby(by):
-            swins = wins.sel(**{by: k})
-            assert swins.are_exclusive()
-            cats.append(
-                swins.classify_events(injs[on])[col]
-            )
+        """classify each event by the category of selected windows after matching them by a column"""
+        return self.locate_within(wins, by=by, on=on)[col]
 
-        # noinspection PyTypeChecker
-        s: pd.Series = pd.concat(cats)
+    def crop(self, win: timeslice.Win, on='ref_time'):
+        """
+        Extract the events within windows after matching them by a column.
+        Events in no window are dropped.
+        """
+        return self.sel_between(**{on: win})
 
-        return s.reindex(self.index)
+    def extract(self, wins: timeslice.Windows, by='exp_name', on='ref_time', align=None):
 
-    def sel_time(events, win: timeslice.Win, on='ref_time', reset=None):
-        sel = events.sel_between(**{on: win})
+        locs = self.locate_within(wins, by=by, on=on)
+
+        locs = locs.dropna()
+
+        reg = self.reg.loc[locs.index].copy()
+
+        reg['win_idx'] = locs['win_idx'].astype(wins.index.dtype)
+
+        if align is not None:
+            refs = locs['win_idx'].map(wins['ref']).values
+            time_cols = self._time_cols_param(None)
+            reg[time_cols] = reg[time_cols] - refs[:, np.newaxis]
+
+        return self.__class__(reg)
+
+    def sel_time(self, win: timeslice.Win, on='ref_time', reset=None):  # TODO deprecate
+        sel = self.crop(win, on=on)
 
         if reset is not None:
             sel = sel.shift_time(-win.relative_time('start'))
