@@ -305,6 +305,6 @@ class DataDict(DataFrameWrapper):
         if align is not None:
             refs = wins.relative_time(align)
             shifts = extracted['win_idx'].map(refs)
-            extracted = extracted.shift_time(shifts)
+            extracted = extracted.shift_time(-1 * shifts)
 
         return extracted
