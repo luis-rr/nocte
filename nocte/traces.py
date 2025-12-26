@@ -774,6 +774,7 @@ class Traces(DataFrameWrapper):
             assert len(self.traces.columns) == 1, f'Found too many traces:\n{self.reg}'
             idx = self.index[0]
 
+        # noinspection PyTypeChecker
         return self.traces.loc[:, idx]
 
     def get_df(self, col, expect_unique=True) -> pd.DataFrame:
@@ -787,11 +788,6 @@ class Traces(DataFrameWrapper):
         traces = traces.T.set_index(new_col).T
 
         return traces
-
-    def _repr_html_(self):
-        """pretty print on notebooks"""
-        # noinspection PyProtectedMember
-        return self.reg._repr_html_()
 
     def groupby_mix(self, by, how):
 
@@ -1058,7 +1054,7 @@ class Traces(DataFrameWrapper):
             self,
             ref_time: float | pd.Series | np.ndarray,
     ):
-        if isinstance(ref_time, pd.Series, np.ndarray):
+        if isinstance(ref_time, (pd.Series, np.ndarray)):
             return self.shift_time_each(
                 ref_time
             )
@@ -1515,7 +1511,7 @@ class Traces(DataFrameWrapper):
 
         if align is not None:
             refs = windows.relative_time(align)
-            shifts = result.index.map(refs)
+            shifts: np.ndarray = result.index.map(refs).values
             result = result.shift_time(-1 * shifts)
 
         return result
@@ -1630,7 +1626,7 @@ class Traces(DataFrameWrapper):
 
         return self.replace_traces(mapped)
 
-    def replace_traces(self, others: [dict, np.ndarray, pd.DataFrame]):
+    def replace_traces(self, others: dict | np.ndarray | pd.DataFrame):
 
         if isinstance(others, dict):
             others: pd.DataFrame = pd.DataFrame(others)
