@@ -276,6 +276,16 @@ class Events(DataFrameWrapper):
 
         return cols
 
+    def set_index(self, idx, sort=True):
+        reg = self.reg.set_index(idx)
+        if sort:
+            reg = reg.sort_index()
+
+        if not reg.index.is_unique:
+            logging.warning(f'New index is not unique')
+
+        return self.__class__(reg)
+
     def round(self, cols=None, decimals=0):
         cols = self._time_cols_param(cols)
 
