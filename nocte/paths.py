@@ -4,7 +4,6 @@ All information is in an excel sheet that we process here (the Registry).
 All partial results and processed data are stored in HDF5 files within a folder next to the data.
 """
 import datetime
-import functools
 import itertools
 import logging
 import os
@@ -444,6 +443,7 @@ class Registry(DataFrameWrapper):
 
             if not file_name.exists():
                 logger.warning(f'{k}: {file_name} does not exist')
+                # noinspection PyTypeChecker
                 safe.loc[k] = np.nan
 
         return safe
@@ -729,22 +729,11 @@ class Registry(DataFrameWrapper):
 
         return probe_idcs
 
-    # noinspection PyTypeChecker
-    @property
-    @functools.wraps(pd.DataFrame.loc)
-    def loc(self):
-        return self.reg.loc
-
     @property
     def experiment_names(self):
         return self.reg.index
 
-    def _repr_html_(self):
-        """pretty print on notebooks"""
-        # noinspection PyProtectedMember
-        return self.reg._repr_html_()
-
-    def group_exps(self, names=None, by=('state', 'lesion'), count_label=True) -> (pd.Series, pd.DataFrame):
+    def group_exps(self, names=None, by=('state', 'lesion'), count_label=True) -> pd.Series | pd.DataFrame:
         """
         Groups experiments by multiple columns and creates a unique style for each group.
         Style includes "color" and "label".
