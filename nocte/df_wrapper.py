@@ -1,3 +1,5 @@
+from typing import Self
+
 import functools
 
 import numpy as np
@@ -51,9 +53,10 @@ class DataFrameWrapper:
     def iloc(self):
         return self.reg.iloc
 
-    # noinspection PyProtectedMember
+    # noinspection PyProtectedMember,PyTypeChecker
     @functools.wraps(pd.DataFrame._repr_html_)
     def _repr_html_(self):
+        # noinspection PyCallingNonCallable
         return self.reg._repr_html_()
 
     @property
@@ -73,7 +76,7 @@ class DataFrameWrapper:
     def sort_index(self, *args, **kwargs):
         return self.__class__(self.reg.sort_index(*args, **kwargs))
 
-    def sel(self, rows=None, /, invert=False, **kwargs):
+    def sel(self, rows=None, /, invert=False, **kwargs) -> Self:
         """
         Select rows either by index or by matching column values.
         """
@@ -91,7 +94,7 @@ class DataFrameWrapper:
 
         raise ValueError("Must provide either row indices or keyword arguments.")
 
-    def _apply_mask(self, mask):
+    def _apply_mask(self, mask) -> Self:
         """
         Final method for applying a mask to `reg`. Subclasses override this.
         """
@@ -116,7 +119,7 @@ class DataFrameWrapper:
 
         return mask
 
-    def sel_mask(self, mask, /, invert=False):
+    def sel_mask(self, mask, /, invert=False) -> Self:
         """
         Select using a boolean mask
         """
@@ -125,7 +128,7 @@ class DataFrameWrapper:
 
         return self._apply_mask(mask)
 
-    def is_match(self, *, how='all', invert=False, **col_values):
+    def is_match(self, *, how='all', invert=False, **col_values) -> pd.Series:
         """
         Return a mask of direct comparison of some column.
 
@@ -141,7 +144,7 @@ class DataFrameWrapper:
 
         return self._masks(criterias, how=how, invert=invert)
 
-    def sel_match(self, *, how='all', invert=False, **col_values):
+    def sel_match(self, *, how='all', invert=False, **col_values) -> Self:
         """
         Select by direct comparison of some column.
 
@@ -153,7 +156,7 @@ class DataFrameWrapper:
         mask = self.is_match(how=how, invert=invert, **col_values)
         return self.sel_mask(mask)
 
-    def is_between(self, *, how='all', invert=False, **col_ranges):
+    def is_between(self, *, how='all', invert=False, **col_ranges) -> pd.Series:
         """
         Return a mask that checks that some columns are within the given range.
         For example:
@@ -166,7 +169,7 @@ class DataFrameWrapper:
 
         return self._masks(criterias, how=how, invert=invert)
 
-    def sel_between(self, *, invert=False, how='all', **col_ranges):
+    def sel_between(self, *, invert=False, how='all', **col_ranges) -> Self:
         """
         Select by direct comparison of some column where values in a range are acceptable.
         For example:
@@ -175,7 +178,7 @@ class DataFrameWrapper:
         mask = self.is_between(how=how, invert=invert, **col_ranges)
         return self.sel_mask(mask)
 
-    def is_in(self, *, how='all', invert=False, **col_values):
+    def is_in(self, *, how='all', invert=False, **col_values) -> pd.Series:
         """
         Return a mask of direct comparison of some column where any of the values are acceptable.
         For example:
@@ -188,7 +191,7 @@ class DataFrameWrapper:
 
         return self._masks(criterias, how=how, invert=invert)
 
-    def sel_in(self, *, invert=False, how='all', **col_values):
+    def sel_in(self, *, invert=False, how='all', **col_values) -> Self:
         """
         Select by direct comparison of some column where any of the values are acceptable.
         For example:
