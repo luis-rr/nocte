@@ -1372,20 +1372,7 @@ class Traces(DataFrameWrapper):
 
         return merged, reg_index_name
 
-    @staticmethod
-    def _extract(
-            traces,
-            wins: timeslice.Windows,
-            upsampling_ms=100,
-    ):
-        traces = wins.interp_df(
-            traces,
-            step=upsampling_ms,
-        )
-
-        return pd.concat(traces, axis=1, names=['pulse_idx'])
-
-    def extract_all(
+    def extract_all(  #TODO rewrite
             self,
             windows: timeslice.Windows,
             upsampling_ms=None,
@@ -1456,7 +1443,7 @@ class Traces(DataFrameWrapper):
             reg=reg,
         )
 
-    def extract(self, windows, align=None, set_index=True, **kwargs):
+    def extract(self, wins, align=None, upsampling_ms=None):
         """
         Extract segments from traces using a `Windows` object.
 
@@ -1466,7 +1453,7 @@ class Traces(DataFrameWrapper):
 
         Parameters:
         -----------
-        windows : Windows
+        wins : Windows
             A `Windows` object defining the start and stop times for extraction.
 
         **kwargs :
@@ -1478,41 +1465,34 @@ class Traces(DataFrameWrapper):
             A new `Traces` object containing only the extracted segments.
         """
 
-        matched_reg, reg_index_name = Traces._match_traces_wins(
-            self.reg,
-            windows,
-            **kwargs,
-        )
+        upsampling_ms = upsampling_ms or self.sampling_period * 2
+
+        matched_reg = Traces.match(self, wins, left_ref='tr_idx', right_ref='win_idx')
 
         multi_cut = []
 
-        for k, sel_wins in matched_reg.groupby(reg_index_name, sort=False):
-            sel_wins = timeslice.Windows(sel_wins)
+        for win_idx, sel in matched_reg.groupby('win_idx', sort=False):
 
-            traces_idcs = sel_wins[reg_index_name].unique()
-            sel_traces = self.traces.loc[:, traces_idcs]
+            sel_traces = self.traces.loc[:, sel['tr_idx'].values]
 
-            cut_traces = Traces._extract(
-                sel_traces,
-                wins=sel_wins,
-            )
+            win: timeslice.Win = wins.get(win_idx)
 
-            cut_traces.columns = sel_wins.index
+            cut_traces = win.interp_df(sel_traces, step=upsampling_ms)
+            cut_traces.columns = sel.index
+
+            if align is not None:
+                ref = wins.relative_time(align).loc[win_idx]
+                cut_traces.index = cut_traces.index - ref
 
             multi_cut.append(cut_traces)
 
-        result = self.from_df(
-            reg=matched_reg.sort_index(axis=0),
-            traces=pd.concat(multi_cut, axis=1).rename_axis(columns=matched_reg.index.name).sort_index(axis=1),
-        )
+        multi_cut_traces = pd.concat(multi_cut, axis=1)
 
-        if set_index and result[windows.index.name].is_unique:
-            result = result.set_index(windows.index.name)
+        # need to resort because the group-by above may process traces out of order
+        matched_reg.sort_index(inplace=True)
+        multi_cut_traces.sort_index(axis=1, inplace=True)
 
-        if align is not None:
-            refs = windows.relative_time(align)
-            shifts: np.ndarray = result.index.map(refs).values
-            result = result.shift_time(-1 * shifts)
+        result = Traces.from_df(reg=matched_reg, traces=multi_cut_traces)
 
         return result
 
@@ -1682,6 +1662,23 @@ class Traces(DataFrameWrapper):
         # noinspection PyTypeChecker
         traces = self.traces.dropna(axis=1, how=how)
         return self.replace_traces(traces)
+
+    def drop_tight(self):
+        """
+        Drop leading and trailing rows that are entirely NaN.
+        Interior all-NaN rows are preserved.
+        """
+        mask = self.traces.notna().any(axis=1)
+
+        if not mask.any():
+            sel = self.traces.iloc[0:0]
+            return self.replace_traces(sel)
+
+        first = mask.idxmax()
+        last = mask[::-1].idxmax()
+
+        sel = self.traces.loc[first:last]
+        return self.replace_traces(sel)
 
     def get_global_win(self) -> timeslice.Win:
         return timeslice.Win(

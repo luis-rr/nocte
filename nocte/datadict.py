@@ -166,16 +166,16 @@ class DataDict(DataFrameWrapper):
 
         return df
 
-    def iterby(self, by, pbar=None):
+    def iterby(self, by, pbar=None):  # TODO homogenize names
         groups = self.reg.groupby(by).groups.items()
 
-        for k, uids in _optional_pbar(groups, total=len(groups), desc=by, pbar=pbar):
+        for k, uids in _optional_pbar(groups, total=len(groups), desc=str(by), pbar=pbar):
             subset = self.sel_mask(uids)
             subset.reg.drop(by, axis=1, inplace=True)
             yield k, subset
 
     @classmethod
-    def concat_dict(cls, stackset_dict, names):
+    def concat_dict(cls, stackset_dict, names):  # TODO homogenize names
 
         merged_reg = {}
 
@@ -198,12 +198,12 @@ class DataDict(DataFrameWrapper):
         return cls(merged_reg, merged_data)
 
     @classmethod
-    def combine(cls, left, right, func, how='inner', left_idx_name='left_idx', right_idx_name='right_idx'):
+    def combine(cls, left, right, func, *, left_ref, right_ref):  # TODO deprecate
 
-        result = cls.combine_idcs(
+        result = cls._combine_idcs(
             left=left, right=right,
-            how=how,
-            left_idx_name=left_idx_name, right_idx_name=right_idx_name,
+            left_ref=left_ref,
+            right_ref=right_ref,
         )
 
         return result.apply(
@@ -214,42 +214,53 @@ class DataDict(DataFrameWrapper):
         )
 
     @classmethod
-    def combine_idcs(cls, left, right, how='inner', left_idx_name=None, right_idx_name=None, **merge_kwargs):
+    def _combine_idcs(cls, left, right, *, left_ref, right_ref, **merge_kwargs):
 
-        left_idx_name = left_idx_name or left.reg.index.name or 'left_idx'
-        left_reg: pd.DataFrame = left.reg.rename_axis(index=left_idx_name).reset_index()
+        merged = cls.match(
+            left, right,
+            left_ref=left_ref,
+            right_ref=right_ref,
+            **merge_kwargs,
+        )
 
-        right_idx_name = right_idx_name or right.reg.index.name or 'right_idx'
-        right_reg: pd.DataFrame = right.reg.rename_axis(index=right_idx_name).reset_index()
-
-        # noinspection PyTypeChecker
-        merged: pd.DataFrame = pd.merge(left_reg, right_reg, how=how, **merge_kwargs)
-
-        indices = merged[[left_idx_name, right_idx_name]].values
+        indices = merged[[left_ref, right_ref]].values
 
         results = dict(zip(merged.index.values, indices))
 
         return cls(merged, results)
 
-    def crop(self, wins: nocte.timeslice.Windows):
-        paired = self.combine_idcs(
+    def _extract(self, wins: nocte.timeslice.Windows):
+        paired = self._combine_idcs(
             self, wins,
-            left_idx_name='dd_idx',
-            right_idx_name='win_idx',
+            left_ref='dd_idx',
+            right_ref='win_idx',
         )
 
         result = {
             k: DataDict._crop_item(
-                self.get(data_idx),
+                self.get(dd_idx),
                 wins.get(win_idx),
             )
-            for k, (data_idx, win_idx) in paired.items()
+            for k, (dd_idx, win_idx) in paired.items()
         }
 
         result = self.__class__(
             paired.reg,
             result,
         )
+
+        return result
+
+    def crop(self, win: nocte.timeslice.Win):
+        result = {
+            k: DataDict._crop_item(
+                data,
+                win,
+            )
+            for k, data in self.items()
+        }
+
+        result = self.__class__(self.reg, result)
 
         return result
 
@@ -300,11 +311,12 @@ class DataDict(DataFrameWrapper):
 
     def extract(self, wins: nocte.timeslice.Windows, align=None):
 
-        extracted = self.crop(wins)
+        extracted = self._extract(wins)
 
         if align is not None:
             refs = wins.relative_time(align)
-            shifts = extracted['win_idx'].map(refs)
+            shifts: np.ndarray = extracted['win_idx'].map(refs).values
+            assert not np.isnan(shifts).any()
             extracted = extracted.shift_time(-1 * shifts)
 
         return extracted

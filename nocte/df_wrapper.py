@@ -1,3 +1,4 @@
+import logging
 from typing import Self
 
 import functools
@@ -208,6 +209,45 @@ class DataFrameWrapper:
     def shuffle(self):
         """Return a shuffled version of reg."""
         return self.sample(frac=1, replace=False)
+
+    @classmethod
+    def match(
+            cls,
+            left,
+            right,
+            *,
+            left_ref: str,
+            right_ref: str,
+            how='inner',
+            on=None,
+            **merge_kwargs,
+    ) -> pd.DataFrame:
+        """
+        Produce a merged registry matching left and right registries.
+
+        The returned DataFrame index uniquely identifies each match.
+        Columns contain references into the left and right registries.
+        """
+
+        left_reg = left.reg.copy()
+        if left_ref in left_reg.columns:
+            logging.warning(f'Overriding existing col "{left_ref}" on left reg.')
+            left_reg = left_reg.drop(left_ref, axis=1)
+        left_reg = left_reg.rename_axis(index=left_ref).reset_index()
+
+        right_reg = right.reg.copy()
+        if right_ref in right_reg.columns:
+            logging.warning(f'Overriding existing col "{right_ref}" on right reg.')
+            right_reg = right_reg.drop(right_ref, axis=1)
+        right_reg = right_reg.rename_axis(index=right_ref).reset_index()
+
+        if on is not None:
+            merge_kwargs = dict(left_on=on, right_on=on, **merge_kwargs)
+
+        # noinspection PyTypeChecker
+        matched = pd.merge(left_reg, right_reg, how=how, **merge_kwargs)
+
+        return matched
 
 
 def _optional_pbar(iterator, total, pbar, desc=None, many=100):
