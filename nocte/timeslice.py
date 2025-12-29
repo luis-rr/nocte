@@ -904,23 +904,37 @@ class Windows(DataFrameWrapper):
         Serialize from human-readable text format.
         For proper saving look at store_hdf / load_hdf.
         """
-        try:
-            wins = []
+        if isinstance(name, str):
+            name = [name]
 
-            for line in string.strip().replace(';', '\n').split('\n'):
-                cat = line[:line.find(':')].strip()
-                win_str = line[line.find(':') + 1:]
-                win = Win.from_str(win_str)
-                ref = win.start
+        wins = []
 
-                wins.append((cat, win.start, win.stop, ref))
+        for line in string.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
 
-            df = pd.DataFrame(wins, columns=[name, 'start', 'stop', 'ref'])
+            split = line.find(':')
+            if split < 0:
+                raise ValueError(f'Missing ":" in line: "{line}"')
 
-            return cls(df)
+            metadata_str = line[:split]
+            metadata = tuple(s.strip() for s in metadata_str.split(';'))
 
-        except ValueError:
-            raise ValueError(f'Expected format "description: Xd HH:MM:SS.MS - Xd HH:MM:SS.MS". Got: "{string}"')
+            if len(name) != len(metadata):
+                raise ValueError(
+                    f'Expected {len(name)} metadata fields {name}, '
+                    f'found {len(metadata)} in line: "{line}"'
+                )
+
+            win_str = line[split + 1:].strip()
+            win = Win.from_str(win_str)
+
+            wins.append(metadata + (win.start, win.stop, win.start))
+
+        df = pd.DataFrame(wins, columns=list(name) + ['start', 'stop', 'ref'])
+
+        return cls(df)
 
     @classmethod
     def build_around_df(cls, df, win=(0., 0.), col='time'):
