@@ -723,7 +723,7 @@ class Events(DataFrameWrapper):
         """
         return self.sel_between(**{on: win})
 
-    def extract(self, wins: timeslice.Windows, by='exp_name', on='ref_time', align=None):
+    def extract(self, wins: timeslice.Windows, by='exp_name', on='ref_time', copy=None, align=None):
 
         locs = self.locate_within(wins, by=by, on=on)
 
@@ -739,6 +739,10 @@ class Events(DataFrameWrapper):
             refs = wins.relative_time(align)
             shifts = extracted['win_idx'].map(refs).values
             extracted = extracted.shift_time(-1 * shifts)
+
+        if copy is not None:
+            for col in copy:
+                extracted[col] = extracted['win_idx'].map(wins[col])
 
         return extracted
 
