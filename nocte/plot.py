@@ -88,6 +88,10 @@ COLORS = {
     'pulse': '#F9DB00',
 }
 
+DEFAULTS = {
+    'scalebar.linewidth': 2,
+}
+
 XCORR_CMAP = matplotlib.colormaps['RdGy_r']
 
 XCORR_CMAP_SOFT = matplotlib.colors.LinearSegmentedColormap.from_list(
@@ -118,8 +122,6 @@ def set_time_ticks(
         major=None,
         minor=None,
         which='x',
-        minor_length=2,
-        major_length=3,
         scale=None,
         label=None,
         tight=True,
@@ -138,9 +140,6 @@ def set_time_ticks(
 
     if tight is not None and lim is None:
         ax.autoscale(enable=True, axis=which, tight=tight)
-
-    ax.tick_params(which='minor', length=minor_length)
-    ax.tick_params(which='major', length=major_length)
 
     auto_major, auto_minor = _auto_select_tick_steps(ax, which=which)
 
@@ -1311,15 +1310,20 @@ def add_scale_bar(
         vmax=1,
         nospine=True,
         color='k',
-        linewidth=3,
+        linewidth=None,
         zorder=1e6,
         fontsize=None,
         unit='',
         offset_pts=None,
+        va=None,
+        ha=None,
         **kwargs
 ):
     if fontsize is None:
         fontsize = plt.rcParams['axes.labelsize']
+
+    if linewidth is None:
+        linewidth = DEFAULTS['scalebar.linewidth']
 
     if isinstance(pos, str):
         pos = {
@@ -1393,6 +1397,12 @@ def add_scale_bar(
 
     if desc is not None:
 
+        if ha is None:
+            ha = 'center' if which == 'x' else ['right', 'left'][int(pos > 0.5)]
+
+        if va is None:
+            va = 'center' if which == 'y' else ['bottom', 'top'][int(pos > 0.5)]
+
         coord = [pos, np.mean([vmin, vmax])]
 
         if which == 'x':
@@ -1406,8 +1416,8 @@ def add_scale_bar(
             f'{desc}',
             clip_on=clip_on,
             rotation=90 if which == 'y' else None,
-            ha='center' if which == 'x' else ['right', 'left'][int(pos > 0.5)],
-            va='center' if which == 'y' else ['bottom', 'top'][int(pos > 0.5)],
+            ha=ha,
+            va=va,
             fontsize=fontsize,
             transform=transform,
             color=color,
@@ -1500,7 +1510,6 @@ def plot_light_protocol_bar(
         divisor=None,
         transform=None,
         edgecolor='k',
-        linewidth=.5,
         clip_on=False,
 ):
     if transform is None:
@@ -1514,7 +1523,7 @@ def plot_light_protocol_bar(
         clip_on=clip_on,
         colors=COLORS,
         edgecolor=edgecolor,
-        linewidth=linewidth,
+        linewidth=plt.rcParams.get('axes.linewidth', 0.5),
         transform=transform,
     )
 
