@@ -2155,6 +2155,38 @@ class Windows(DataFrameWrapper):
 
             return (~start_late) & (~stop_early)
 
+    def contained_in_others(self, outer, by='exp_name', fully=True, how='any'):
+        """
+        check, for each window, if its contained in ANY of the given ones, after matching them by some property.
+        """
+
+        assert how in ('any', 'all')
+
+        valid = []
+
+        for by_val, inner_group in self.iter_groupby(by):
+
+            outer_group = outer.sel(**{by: by_val})
+
+            masks = []
+
+            for outer_idx, outer_win in outer_group.iter_wins():
+                mask = inner_group.contained_in(outer_win, fully=fully)
+
+                masks.append(mask)
+
+            if how == 'any':
+                joint = np.any(masks, axis=0)
+            else:
+                joint = np.all(masks, axis=0)
+
+            valid.append(joint)
+
+        return pd.Series(
+            np.concatenate(valid),
+            index=self.index,
+        )
+
     def quantile_time(self, q: float) -> pd.Series:
         """
         Select a reference time for each window as a quantile of the duration.
