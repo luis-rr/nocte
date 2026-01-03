@@ -822,16 +822,23 @@ class Registry(DataFrameWrapper):
 
         return nocte.events.Events(events_reg)
 
-    def load_wins(self, col, name='cat') -> nocte.timeslice.Windows:
-        lights_desc = self[col].dropna()
+    def load_wins(self, col, name='cat', copy=None) -> nocte.timeslice.Windows:
+
+        copy = copy or []
+
+        all_wins_txt = self[col].dropna()
 
         name = name or col
 
         exp_wins = []
 
-        for exp_name, lights_str in lights_desc.items():
-            wins = timeslice.Windows.from_str(lights_str, name=name)
+        for exp_name, wins_txt in all_wins_txt.items():
+            wins = timeslice.Windows.from_str(wins_txt, name=name)
             wins['exp_name'] = exp_name
+
+            for c in copy:
+                wins[c] = self.loc[exp_name, c]
+
             exp_wins.append(wins)
 
         return timeslice.Windows.concat_list(exp_wins)
