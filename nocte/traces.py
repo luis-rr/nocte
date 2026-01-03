@@ -511,8 +511,6 @@ class Traces(DataFrameWrapper):
 
     def to_wins(self, ref='ref', tight=True) -> timeslice.Windows:
 
-        assert ref in self.columns
-
         reg = self.reg.copy()
         if tight:
             start = self.first_valid_index()
@@ -521,7 +519,11 @@ class Traces(DataFrameWrapper):
             rel_win = self.get_global_win()
             start, stop = rel_win.start, rel_win.stop
 
-        refs = reg[ref]
+
+        if ref in self.columns:
+            refs = reg[ref]
+        else:
+            refs = 0
 
         reg['start'] = refs + start
         reg['stop'] = refs + stop
