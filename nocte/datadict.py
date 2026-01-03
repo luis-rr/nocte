@@ -1,3 +1,4 @@
+import functools
 import numpy as np
 import pandas as pd
 
@@ -228,6 +229,34 @@ class DataDict(DataFrameWrapper):
         results = dict(zip(merged.index.values, indices))
 
         return cls(merged, results)
+
+    @functools.wraps(pd.DataFrame.reset_index)
+    def reset_index(self, *args, drop=True, **kwargs):
+
+        reg = self.reg.reset_index(*args, drop=drop, **kwargs)
+
+        mapping = pd.Series(reg.index, index=self.reg.index)
+
+        data = {
+            mapping[k]: d
+            for k, d in self.data.items()
+        }
+
+        return self.__class__(reg, data)
+
+    @functools.wraps(pd.DataFrame.set_index)
+    def set_index(self, *args, **kwargs):
+
+        reg = self.reg.set_index(*args, **kwargs)
+
+        mapping = pd.Series(reg.index, index=self.reg.index)
+
+        data = {
+            mapping[k]: d
+            for k, d in self.data.items()
+        }
+
+        return self.__class__(reg, data)
 
     def _extract(self, wins: nocte.timeslice.Windows):
         paired = self._combine_idcs(
