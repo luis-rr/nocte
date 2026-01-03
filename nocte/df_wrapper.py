@@ -253,6 +253,10 @@ class DataFrameWrapper:
 def _optional_pbar(iterator, total, pbar, desc=None, many=100):
     """sensible defaults for iterating with an optional progress bar"""
 
+    if isinstance(pbar, str):
+        desc = pbar
+        pbar = True
+
     if pbar is None:
         pbar = total > many
 
