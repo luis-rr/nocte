@@ -1599,24 +1599,31 @@ def plot_test(
         ticks=None,
         desc=None,
         tick_height=.025,
-):
+        detailed=True,
+        fontsize=None,
+        ha=None,
+        va='bottom',
+) -> str:
+
+    fontsize = fontsize or plt.rcParams['axes.labelsize']
+
     if transform is None:
         transform = ax.get_xaxis_transform()
 
-    text = ''
 
-    p_text = format_p_value(p)
+    text_star = p_value_stars(p)
 
-    text += p_value_stars(p)
-    text += f'\n{stat_name}={stat} p={p_text}'
+    text_detailed = ''
+
+    text_detailed += f'{stat_name}={stat} p={format_p_value(p)}'
 
     if len(ns) > 1:
-        text += f'\n' + ', '.join([f'n{i}={n:,g}' for i, n in enumerate(ns)])
+        text_detailed += f'\n' + ', '.join([f'n{i}={n:,g}' for i, n in enumerate(ns)])
     else:
-        text += f'\n' + f'n={ns[0]:,g}'
+        text_detailed += f'\n' + f'n={ns[0]:,g}'
 
     if desc is not None:
-        text += f'{desc}'
+        text_detailed += f'{desc}'
 
     color = 'k'
 
@@ -1631,13 +1638,25 @@ def plot_test(
         color=color,
     )
 
+    text_full = f'{text_star}\n{text_detailed}'
+
+    if ha is None:
+        ha = 'left' if detailed else 'center'
+
+    if ha == 'left':
+        x = baseline_x
+    elif ha == 'right':
+        x = effect_x
+    else:
+        x = np.mean([baseline_x, effect_x])
+
     ax.text(
-        baseline_x,
+        x,
         y,
-        text,
-        ha='left',
-        va='bottom',
-        fontsize=5,
+        text_full if detailed else text_star,
+        ha=ha,
+        va=va,
+        fontsize=fontsize,
         transform=transform,
         color=color,
     )
@@ -1648,6 +1667,8 @@ def plot_test(
             xticklabels=ticks,
         )
 
+    return text_full
+
 
 def wilcoxon_test(
         ax,
@@ -1655,7 +1676,7 @@ def wilcoxon_test(
         alternative='two-sided',
         effect_size=False,
         **kwargs,
-):
+) -> str:
     assert len(baseline) == len(effect)
 
     # noinspection PyTypeChecker
@@ -1665,7 +1686,7 @@ def wilcoxon_test(
     w_z = (stat - (n * (n + 1) / 4)) / np.sqrt(n * (n + 1) * (2 * n + 1) / 24)
     r = w_z / np.sqrt(n)
 
-    plot_test(
+    return plot_test(
         ax,
         p,
         'W', stat,
@@ -1680,11 +1701,11 @@ def mannwhitneyu_test(
         baseline, effect,
         alternative='two-sided',
         **kwargs,
-):
+) -> str:
     # noinspection PyTypeChecker
     u, p = scipy.stats.mannwhitneyu(baseline, effect, alternative=alternative)
 
-    plot_test(
+    return plot_test(
         ax,
         p,
         'U', u,
