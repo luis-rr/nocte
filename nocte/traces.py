@@ -1742,6 +1742,19 @@ class Traces(DataFrameWrapper):
             rolling.mean(),
         )
 
+    def mean_rolling_gaussian(self, std_ms, center=True, min_periods=None):  # TODO inconsistent window def
+
+        std_idcs = std_ms / self.sampling_period
+
+        traces = self.traces.rolling(
+            int(std_idcs * 4),
+            win_type='gaussian',
+            center=center,
+            min_periods=min_periods,
+        ).mean(std=std_idcs)
+
+        return self.replace_traces(traces)
+
     def sum_rolling(self, *args, center=True, min_periods=1, **kwargs):
         rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
 
