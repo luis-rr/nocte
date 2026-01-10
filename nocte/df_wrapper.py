@@ -97,10 +97,18 @@ class DataFrameWrapper:
 
     def _apply_mask(self, mask) -> Self:
         """
-        Final method for applying a mask to `reg`. Subclasses override this.
+        Final method for applying an index mask to `reg`. Subclasses override this.
         """
         return self.__class__(
             self.reg.loc[mask]
+        )
+
+    def _replace_reg(self, reg) -> Self:
+        """
+        Method for replacing the reg without masking the index. Subclasses override this.
+        """
+        return self.__class__(
+            reg
         )
 
     @staticmethod
