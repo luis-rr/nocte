@@ -250,7 +250,7 @@ class Events(DataFrameWrapper):
 
     @functools.wraps(pd.DataFrame.drop)
     def drop(self, *args, **kwargs):
-        return self.__class__(self.reg.drop(*args, **kwargs))
+        return self._replace_reg(self.reg.drop(*args, **kwargs))
 
     @classmethod
     def from_hdf(cls, path, desc=None):
@@ -284,7 +284,7 @@ class Events(DataFrameWrapper):
         if not reg.index.is_unique:
             logging.warning(f'New index is not unique')
 
-        return self.__class__(reg)
+        return self._replace_reg(reg)
 
     def round(self, cols=None, decimals=0):
         cols = self._time_cols_param(cols)
@@ -294,7 +294,7 @@ class Events(DataFrameWrapper):
         for col in cols:
             reg[col] = np.round(reg[col], decimals=decimals)
 
-        return self.__class__(reg)
+        return self._replace_reg(reg)
 
     def __len__(self):
         return len(self.reg)
@@ -402,7 +402,7 @@ class Events(DataFrameWrapper):
         joint = pd.concat([self.reg, new_cols], axis=1)
         assert joint.columns.is_unique
 
-        return self.__class__(
+        return self._replace_reg(
             joint
         )
 
@@ -535,7 +535,7 @@ class Events(DataFrameWrapper):
 
         cols = list(cols)
         reg[cols] = reg[cols] + ts[:, np.newaxis]
-        return self.__class__(reg)
+        return self._replace_reg(reg)
 
     def count_rolling(
             self,
