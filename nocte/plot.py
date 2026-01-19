@@ -1753,9 +1753,15 @@ def mannwhitneyu_test(
 
 
 @contextmanager
-def hide_plots():
+def hide_plots(off=True):
     was_interactive = plt.isinteractive()
-    plt.ioff()
+
+    if off:
+        plt.ioff()
+
+    if not off:
+        plt.ion()
+
     try:
         yield
     finally:
