@@ -11,6 +11,7 @@ from nocte import datadict as dd
 from nocte import timeslice
 from nocte.analysis import sleep
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
+from typing import Self
 
 
 # @nb.njit(parallel=True)
@@ -1111,11 +1112,89 @@ class Traces(DataFrameWrapper):
             shifted_traces
         )
 
+    def cross_corr(self, pairs, pearson=True, mode="same"):
+        """
+        Compute cross-correlations between selected pairs of traces.
+
+        Parameters
+        ----------
+        pairs : iterable of tuple[int, int]
+            List of (i, j) index pairs referring to traces in `self`.
+        pearson : bool, default True
+            If True, compute Pearson-normalized cross-correlation.
+        mode : {'same', 'full', 'valid'}
+            Correlation mode, passed to scipy.signal.correlate.
+
+        Returns
+        -------
+        dict[tuple[int, int], pd.Series]
+            Mapping (i, j) -> cross-correlation series indexed by lag.
+        """
+
+        def _single_xcorr(trace_i, trace_j):
+            # drop NaNs independently, then align on common time index
+            ti = trace_i.dropna()
+            tj = trace_j.dropna()
+
+            if len(ti) == 0 or len(tj) == 0:
+                return pd.Series(dtype=float)
+
+            # align on common index
+            ti, tj = ti.align(tj, join="inner")
+
+            if len(ti) == 0:
+                return pd.Series(dtype=float)
+
+            if pearson:
+                ti = ti - ti.mean()
+                tj = tj - tj.mean()
+
+            t = ti.index - ti.index.min()
+
+            if mode == "same":
+                lags = t - t[len(t) // 2]
+            elif mode == "full":
+                lags = np.concatenate([
+                    t[::-1] * -1,
+                    t[1:],
+                ])
+            else:
+                assert mode == "valid"
+                lags = [0]
+
+            xcorr = scipy.signal.correlate(
+                ti.values,
+                tj.values,
+                mode=mode,
+            )
+
+            xcorr = pd.Series(xcorr, index=lags)
+
+            if pearson:
+                denom = np.sqrt(ti.var() * tj.var()) * len(ti)
+                if denom != 0:
+                    xcorr = xcorr / denom
+                else:
+                    xcorr[:] = np.nan
+
+            return xcorr
+
+        out = {}
+        for k, i, j in pairs[['first', 'second']].itertuples():
+            trace_i = self.traces[i]
+            trace_j = self.traces[j]
+            out[k] = _single_xcorr(trace_i, trace_j)
+
+        return self.__class__(
+            pairs,
+            pd.DataFrame(out),
+        )
+
     def cross_corr_rolling_by(
-            self,
-            pair_by,
-            sort_by=None,
-            **kwargs,
+        self,
+        pair_by,
+        sort_by=None,
+        **kwargs,
     ):
         if sort_by is None:
             sort_by = pair_by
@@ -1471,11 +1550,16 @@ class Traces(DataFrameWrapper):
 
         matched_reg = Traces.match(self, wins, left_ref='tr_idx', right_ref='win_idx')
 
+        if len(matched_reg) == 0:
+            logging.error('No matches found')
+
         multi_cut = []
 
         for win_idx, sel in matched_reg.groupby('win_idx', sort=False):
 
             sel_traces = self.traces.loc[:, sel['tr_idx'].values]
+
+            assert not np.any(np.isnan(sel_traces.index))
 
             win: timeslice.Win = wins.get(win_idx)
 
@@ -1485,6 +1569,8 @@ class Traces(DataFrameWrapper):
             if align is not None:
                 ref = wins.relative_time(align).loc[win_idx]
                 cut_traces.index = cut_traces.index - ref
+
+            assert not np.any(np.isnan(cut_traces.index))
 
             multi_cut.append(cut_traces)
 
@@ -1538,10 +1624,16 @@ class Traces(DataFrameWrapper):
             self.traces,
         )
 
-    def _apply_mask(self, mask):
+    def _apply_mask(self, mask) -> Self:
         return self.__class__(
             reg=self.reg.loc[mask],
             traces=self.traces.loc[:, mask],
+        )
+
+    def _replace_reg(self, reg) -> Self:
+        return self.__class__(
+            reg=reg,
+            traces=self.traces,
         )
 
     @property

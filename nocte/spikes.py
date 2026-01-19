@@ -278,6 +278,13 @@ class Spikes(Events):
         )
 
     @classmethod
+    def from_hdf(cls, path, key='sp'):  # TODO Deprecate in base class
+        return cls.load_hdf(path, key=key)
+
+    def to_hdf(self, path, key='sp'):  # TODO Deprecate in base class
+        return self.store_hdf(path, key=key)
+
+    @classmethod
     def load_hdf(cls, path, key='sp'):
         return cls(
             reg=pd.read_hdf(path, key=f'{key}_spikes'),
@@ -287,7 +294,7 @@ class Spikes(Events):
 
     def store_hdf(self, path, key='sp'):
         self.reg.to_hdf(path, key=f'{key}_spikes')
-        self.units.reg.to_hdf(path, key=f'{key}_units')
+        self.units.to_hdf(path, key=f'{key}_units')
         pd.Series(self.win_ms).to_hdf(path, key=f'{key}_win_ms')
 
     @property
@@ -308,3 +315,37 @@ class Spikes(Events):
             units=self.units,
             win_ms=self.win_ms,
         )
+
+    def describe(self, quiet=False) -> str:
+        """
+        Short, human-readable description.
+        :param quiet: if False the description is printed
+        """
+        desc = (
+            f'{len(self.index):,g} spikes from '
+            f'{len(self.units.index):,g} units in '
+            f'{timeslice.ms_to_str(self.win_ms.length)}'
+        )
+
+        if not quiet:
+            print(desc)
+
+        return desc
+
+    def crop(self, win: timeslice.Win, on='ref_time') -> Self:
+        """
+        Extract the events within windows after matching them by a column.
+        Events in no window are dropped.
+        """
+
+        if win.start < self.win_ms.start or self.win_ms.stop < win.stop:
+            logger.warning(f'Cropping window ({win}) is wider than event extraction window {self.win_ms}')
+            v = timeslice.Win(
+                max(self.win_ms.start, win.start),
+                min(self.win_ms.stop, ),
+            )
+
+        cropped = self.sel_between(**{on: win})
+        self.win_ms = win
+
+        return cropped

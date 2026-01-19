@@ -865,11 +865,11 @@ class Windows(DataFrameWrapper):
     def wins(self):
         return self.reg
 
-    def store_hdf(self, path: str, key):
+    def store_hdf(self, path: str, key='wins'):
         """
         save these windows in an HDF5 file
         """
-        self.reg.to_hdf(path, key)
+        self.reg.to_hdf(path, key=key)
 
     @classmethod
     def load_hdf(cls, path: str, key):

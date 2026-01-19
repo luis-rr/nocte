@@ -302,7 +302,7 @@ def set_ax_spine_color(ax, side, color):
     axis.set_label_position(side)
 
     axis_name = {'left': 'y', 'right': 'y', 'bottom': 'x', 'top': 'x'}[side]
-    ax.tick_params(axis=axis_name, colors=color, **{side: True})
+    ax.tick_params(axis=axis_name, colors=color, **{side: True}, which='both')
 
     ticks = ax.get_yticklabels() if axis_name == 'y' else ax.get_xticklabels()
     for label in ticks:
@@ -1478,6 +1478,7 @@ def plot_df_as_im(
         norm=None,
         aspect='auto',
         interpolation='none',
+        origin='lower',
         **kwargs
 ):
     """
@@ -1493,7 +1494,7 @@ def plot_df_as_im(
         interpolation=interpolation,
         cmap=cmap,
         norm=norm,
-        origin='lower',
+        origin=origin,
         **kwargs,
     )
 
@@ -1504,6 +1505,40 @@ def plot_df_as_im(
 
     return im
 
+def plot_df_as_im_sym(
+        ax,
+        df,
+        cmap='seismic',
+        norm=None,
+        aspect='auto',
+        interpolation='none',
+        yscale=None,
+        xscale=None,
+        **kwargs
+):
+    if norm is None:
+        vmax = max(abs(np.nanmin(df.values)), abs(np.nanmax(df.values)))
+        norm = matplotlib.colors.Normalize(vmin=-vmax, vmax=vmax)
+
+    # noinspection PyTypeChecker
+    im = plot_df_as_im(
+        ax,
+        df,
+        aspect=aspect,
+        interpolation=interpolation,
+        cmap=cmap,
+        norm=norm,
+        **kwargs,
+    )
+
+    if xscale is not None:
+        set_time_ticks(ax, scale=xscale, which='x')
+
+    if yscale is not None:
+        set_time_ticks(ax, scale=yscale, which='y')
+
+    return im
+
 
 def plot_light_protocol_bar(
         ax, light_wins, y0=1, y1=1.05,
@@ -1511,7 +1546,9 @@ def plot_light_protocol_bar(
         transform=None,
         edgecolor='k',
         clip_on=False,
+        colors=None,
 ):
+    colors = colors or COLORS
     if transform is None:
         transform = ax.get_xaxis_transform()
 
@@ -1521,7 +1558,7 @@ def plot_light_protocol_bar(
         y0=y0,
         y1=y1,
         clip_on=clip_on,
-        colors=COLORS,
+        colors=colors,
         edgecolor=edgecolor,
         linewidth=plt.rcParams.get('axes.linewidth', 0.5),
         transform=transform,

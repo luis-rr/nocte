@@ -383,7 +383,19 @@ class Events(DataFrameWrapper):
         values = interpolate_trace(trace, self.reg[col].values).values
         return pd.Series(values, index=self.index)
 
-    def lookup_and_set(self, name, data: pd.Series, by, cols=None):
+    def lookup_traces(self, traces) -> pd.DataFrame:
+        values = {}
+
+        for k, trace in traces.items(pbar=True):
+            values[k] = self.lookup(trace)
+
+        values = pd.DataFrame(values)
+
+        values.columns = pd.MultiIndex.from_frame(traces.reg)
+
+        return values
+
+    def lookup_and_set(self, name, data: pd.Series, by, cols=None):  #TODO deprecate
         """Look up many values at once and return a copy of this object with those values set as new columns"""
         cols = self._time_cols_param(cols, strip=True)
 
@@ -518,7 +530,7 @@ class Events(DataFrameWrapper):
 
     def shift_time(self, ts: float | pd.Series | np.ndarray, cols=None, copy=True):
 
-        if isinstance(ts, (float, int, np.ndarray)):
+        if not isinstance(ts, pd.Series):
             ts = pd.Series(ts, index=self.index)
 
         if not ts.index.equals(self.index):

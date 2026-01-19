@@ -85,15 +85,18 @@ class DataFrameWrapper:
             raise ValueError("Provide either row indices or keyword arguments for filtering, not both.")
 
         if rows is not None:
-            if not isinstance(rows, (slice, tuple, list, np.ndarray, pd.Index)):
-                rows = [rows]
-
-            return self.sel_mask(rows, invert=invert)
+            return self.sel_rows(rows, invert=invert)
 
         if kwargs:
             return self.sel_match(**kwargs, invert=invert)
 
         raise ValueError("Must provide either row indices or keyword arguments.")
+
+    def sel_rows(self, rows, /, invert=False):
+        if not isinstance(rows, (slice, tuple, list, np.ndarray, pd.Index)):
+            rows = [rows]
+
+        return self.sel_mask(rows, invert=invert)
 
     def _apply_mask(self, mask) -> Self:
         """
@@ -153,7 +156,7 @@ class DataFrameWrapper:
 
         return self._masks(criterias, how=how, invert=invert)
 
-    def sel_match(self, *, how='all', invert=False, **col_values) -> Self:
+    def sel_match(self, *, how='all', invert=False, drop=False, **col_values) -> Self:
         """
         Select by direct comparison of some column.
 
@@ -163,7 +166,14 @@ class DataFrameWrapper:
             wins.sel(cat='baseline')
         """
         mask = self.is_match(how=how, invert=invert, **col_values)
-        return self.sel_mask(mask)
+        sel =  self.sel_mask(mask)
+
+        if drop:
+            sel = sel._replace_reg(
+                sel.reg.drop(list(col_values.keys()), axis=1)
+            )
+
+        return sel
 
     def is_between(self, *, how='all', invert=False, **col_ranges) -> pd.Series:
         """
@@ -256,6 +266,15 @@ class DataFrameWrapper:
         matched = pd.merge(left_reg, right_reg, how=how, **merge_kwargs)
 
         return matched
+
+    def iter_groupby(self, *args, pbar=None, **kwargs):
+        """Iterate after groupby on reg."""
+        grouped = self.reg.groupby(*args, **kwargs)
+
+        grouped = _optional_pbar(grouped, total=len(grouped), pbar=pbar)
+
+        for key, group in grouped:
+            yield key, self.sel_rows(group.index)
 
 
 def _optional_pbar(iterator, total, pbar, desc=None, many=100):
