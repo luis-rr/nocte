@@ -383,10 +383,10 @@ class Events(DataFrameWrapper):
         values = interpolate_trace(trace, self.reg[col].values).values
         return pd.Series(values, index=self.index)
 
-    def lookup_traces(self, traces) -> pd.DataFrame:
+    def lookup_traces(self, traces, pbar=None) -> pd.DataFrame:
         values = {}
 
-        for k, trace in traces.items(pbar=True):
+        for k, trace in traces.items(pbar=pbar):
             values[k] = self.lookup(trace)
 
         values = pd.DataFrame(values)

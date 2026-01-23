@@ -228,9 +228,20 @@ class Spikes(Events):
     Collection of spikes and associated units.
     """
     def __init__(self, reg: pd.DataFrame, units: pd.DataFrame, win_ms: Win | tuple):
+
+        win_ms = Win(*win_ms)
+
+        if win_ms.length < 0:
+            raise ValueError(f'Negative extaction window: {win_ms}')
+
         missing = set(reg['unit_id'].unique()) - set(units.index)
         if missing:
             raise ValueError(f'Spikes reference unknown unit_id(s): {missing}')
+
+        inside = reg['ref_time'].between(*win_ms)
+        if not inside.all():
+            actual_win = Win(reg['ref_time'].min(), reg['ref_time'].max())
+            logger.error(f'Events outside extraction window. Found: {actual_win} Expected: {win_ms}')
 
         self.units = units
         self.win_ms = Win(*win_ms)
@@ -339,13 +350,16 @@ class Spikes(Events):
         """
 
         if win.start < self.win_ms.start or self.win_ms.stop < win.stop:
-            logger.warning(f'Cropping window ({win}) is wider than event extraction window {self.win_ms}')
-            v = timeslice.Win(
+            logger.warning(f'Cropping window {win} is wider than event extraction window {self.win_ms}')
+            win = timeslice.Win(
                 max(self.win_ms.start, win.start),
-                min(self.win_ms.stop, ),
+                min(self.win_ms.stop, win.stop),
             )
 
         cropped = self.sel_between(**{on: win})
-        self.win_ms = win
 
-        return cropped
+        return self.__class__(
+            reg=cropped.reg,
+            units=cropped.units,
+            win_ms=self.win_ms,
+        )
