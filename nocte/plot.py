@@ -1583,12 +1583,12 @@ def p_value_stars_level(p_value: float) -> int:
         return 0
 
 
-def p_value_stars(p_value: float) -> str:
+def p_value_stars(p_value: float, star_char=r"$\text{*}$") -> str:
     level_string = [
         'n.s.',
-        '*',
-        '**',
-        '***',
+        star_char * 1,
+        star_char * 2,
+        star_char * 3,
     ]
 
     return level_string[p_value_stars_level(p_value)]
@@ -1640,9 +1640,13 @@ def plot_test(
         fontsize=None,
         ha=None,
         va='bottom',
+        zorder=1e6,
+        clip_on=False,
+        linewidth=None,
 ) -> str:
 
     fontsize = fontsize or plt.rcParams['axes.labelsize']
+    linewidth = linewidth or plt.rcParams.get('axes.linewidth', 0.5)
 
     if transform is None:
         transform = ax.get_xaxis_transform()
@@ -1671,8 +1675,10 @@ def plot_test(
         [baseline_x, baseline_x, effect_x, effect_x],
         [y - tick_height, y, y, y - tick_height],
         transform=transform,
-        linewidth=.5,
+        linewidth=linewidth,
         color=color,
+        zorder=zorder,
+        clip_on=clip_on,
     )
 
     text_full = f'{text_star}\n{text_detailed}'
@@ -1696,6 +1702,8 @@ def plot_test(
         fontsize=fontsize,
         transform=transform,
         color=color,
+        zorder=zorder,
+        clip_on=clip_on,
     )
 
     if ticks is not None:
@@ -1748,7 +1756,6 @@ def mannwhitneyu_test(
         'U', u,
         [len(baseline), len(effect)],
         **kwargs,
-
     )
 
 
@@ -1792,6 +1799,10 @@ def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwa
     """
     Plots a line in segments to allow alpha stacking on overlap.
     """
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+
     idcs = np.sort(np.unique(np.linspace(0, len(x) - 1, num_segments).astype(int)))
 
     for i0, i1 in zip(idcs[:-1], idcs[1:]):
