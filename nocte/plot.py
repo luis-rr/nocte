@@ -127,6 +127,7 @@ def set_time_ticks(
         tight=True,
         lim=None,
         offset=0,
+        ref=0,
 ):
     """set major xticks to mark every hour and minor every 10 minutes"""
     assert which in ('x', 'y')
@@ -161,7 +162,7 @@ def set_time_ticks(
             scale_factor = ms(**{scale_factor: 1})
 
         def scale_ticks(x, _):
-            return f'{x / scale_factor:g}'
+            return f'{(x - ref) / scale_factor:g}'
 
         axis.set_major_formatter(matplotlib.ticker.FuncFormatter(scale_ticks))
 
