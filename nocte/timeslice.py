@@ -722,7 +722,7 @@ class Win(tuple):
         """
         return slice(self.start, self.stop, step)
 
-    def crop_df(self, df: pd.DataFrame, reset=None, by=None) -> pd.DataFrame:
+    def crop_df(self, df: pd.DataFrame | pd.Series, reset=None, by=None) -> pd.DataFrame:
         """
         :param df:
         :param reset:
