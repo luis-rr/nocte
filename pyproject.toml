@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nocte"
-version = "0.1"
+version = "0.1.0"
 description = "Analysis of neuronal oscillations, cycles and time events in electrophysiological recordings"
 dependencies = [
     "numpy>=1.26",
