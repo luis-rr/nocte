@@ -482,7 +482,7 @@ def plot_wins_line(ax, wins, yval, by='cat', colors=None, solid_capstyle='butt',
     colors = get_colors_with_defaults(colors, wins[by])
 
     for cat in wins.wins[by].unique():
-        sel_wins = wins.sel(cat=cat)
+        sel_wins = wins.sel(**{by: cat})
 
         color = colors[cat]
 
