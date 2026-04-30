@@ -2110,13 +2110,13 @@ class Windows(DataFrameWrapper):
         """middle time of each window"""
         return self.quantile_time(0.5)
 
-    def contain(self, t, how='any'):
+    def contain(self, t, how='any', pbar=None):
         """
         check if any (or all) of these windows contain t
         :param t: single number, np.ndarray or pd.Series
         :param how:
         """
-        does_it = np.array([w.contains(t) for idx, w in self.iter_wins()])
+        does_it = np.array([w.contains(t) for idx, w in self.iter_wins(pbar=pbar)])
 
         if how == 'any':
             res = np.any(does_it, axis=0)
