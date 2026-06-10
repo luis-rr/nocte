@@ -82,7 +82,9 @@ class DataFrameWrapper:
         Select rows either by index or by matching column values.
         """
         if rows is not None and kwargs:
-            raise ValueError("Provide either row indices or keyword arguments for filtering, not both.")
+            raise ValueError(
+                'Provide either row indices or keyword arguments for filtering, not both.'
+            )
 
         if rows is not None:
             return self.sel_rows(rows, invert=invert)
@@ -90,7 +92,7 @@ class DataFrameWrapper:
         if kwargs:
             return self.sel_match(**kwargs, invert=invert)
 
-        raise ValueError("Must provide either row indices or keyword arguments.")
+        raise ValueError('Must provide either row indices or keyword arguments.')
 
     def sel_rows(self, rows, /, invert=False):
         if not isinstance(rows, (slice, tuple, list, np.ndarray, pd.Index)):
@@ -102,17 +104,13 @@ class DataFrameWrapper:
         """
         Final method for applying an index mask to `reg`. Subclasses override this.
         """
-        return self.__class__(
-            self.reg.loc[mask]
-        )
+        return self.__class__(self.reg.loc[mask])
 
     def _replace_reg(self, reg) -> Self:
         """
         Method for replacing the reg without masking the index. Subclasses override this.
         """
-        return self.__class__(
-            reg
-        )
+        return self.__class__(reg)
 
     @staticmethod
     def _masks(criterias, *, how='all', invert=False):
@@ -166,12 +164,10 @@ class DataFrameWrapper:
             wins.sel(cat='baseline')
         """
         mask = self.is_match(how=how, invert=invert, **col_values)
-        sel =  self.sel_mask(mask)
+        sel = self.sel_mask(mask)
 
         if drop:
-            sel = sel._replace_reg(
-                sel.reg.drop(list(col_values.keys()), axis=1)
-            )
+            sel = sel._replace_reg(sel.reg.drop(list(col_values.keys()), axis=1))
 
         return sel
 
@@ -182,8 +178,7 @@ class DataFrameWrapper:
             wins.between(duration=(0, 60_000))
         """
         criterias = [
-            self.reg[col].between(*vrange)
-            for col, vrange in col_ranges.items()
+            self.reg[col].between(*vrange) for col, vrange in col_ranges.items()
         ]
 
         return self._masks(criterias, how=how, invert=invert)
@@ -203,10 +198,7 @@ class DataFrameWrapper:
         For example:
             wins.isin(cat=['sws', 'rem'])
         """
-        criterias = [
-            self.reg[col].isin(values)
-            for col, values in col_values.items()
-        ]
+        criterias = [self.reg[col].isin(values) for col, values in col_values.items()]
 
         return self._masks(criterias, how=how, invert=invert)
 
@@ -230,15 +222,15 @@ class DataFrameWrapper:
 
     @classmethod
     def match(
-            cls,
-            left,
-            right,
-            *,
-            left_ref: str,
-            right_ref: str,
-            how='inner',
-            on=None,
-            **merge_kwargs,
+        cls,
+        left,
+        right,
+        *,
+        left_ref: str,
+        right_ref: str,
+        how='inner',
+        on=None,
+        **merge_kwargs,
     ) -> pd.DataFrame:
         """
         Produce a merged registry matching left and right registries.

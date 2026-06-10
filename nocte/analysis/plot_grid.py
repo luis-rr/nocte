@@ -22,12 +22,12 @@ def _edges_from_centers(values):
     values = np.asarray(values, dtype=float)
 
     if values.ndim != 1:
-        raise ValueError("values must be one-dimensional")
+        raise ValueError('values must be one-dimensional')
 
     n = len(values)
 
     if n == 0:
-        raise ValueError("cannot infer edges from an empty axis")
+        raise ValueError('cannot infer edges from an empty axis')
 
     if n == 1:
         return np.array([values[0] - 0.5, values[0] + 0.5])
@@ -50,24 +50,24 @@ def _axis_edges_and_ticks(index):
     if pd.api.types.is_datetime64_any_dtype(index):
         centers = mdates.date2num(pd.to_datetime(index).to_pydatetime())
         edges = _edges_from_centers(centers)
-        return edges, centers, index, "datetime"
+        return edges, centers, index, 'datetime'
 
     if pd.api.types.is_numeric_dtype(index):
         centers = index.to_numpy(dtype=float)
         edges = _edges_from_centers(centers)
-        return edges, centers, index, "numeric"
+        return edges, centers, index, 'numeric'
 
     centers = np.arange(len(index), dtype=float)
     edges = np.arange(len(index) + 1, dtype=float) - 0.5
-    return edges, centers, index, "categorical"
+    return edges, centers, index, 'categorical'
 
 
 def dataframe_heatmap(
     ax,
     df,
     *,
-    cmap="viridis",
-    shading="auto",
+    cmap='viridis',
+    shading='auto',
     colorbar=False,
     colorbar_kwargs=None,
     xtick_rotation=0,
@@ -113,10 +113,10 @@ def dataframe_heatmap(
         The heatmap artist.
     """
     if not isinstance(df, pd.DataFrame):
-        raise TypeError("df must be a pandas DataFrame")
+        raise TypeError('df must be a pandas DataFrame')
 
     if df.empty:
-        raise ValueError("df must not be empty")
+        raise ValueError('df must not be empty')
 
     x_edges, x_centers, x_labels, x_kind = _axis_edges_and_ticks(df.columns)
     y_edges, y_centers, y_labels, y_kind = _axis_edges_and_ticks(df.index)
@@ -138,13 +138,13 @@ def dataframe_heatmap(
     ax.set_xticks(x_centers)
     ax.set_yticks(y_centers)
 
-    if x_kind == "datetime":
+    if x_kind == 'datetime':
         ax.xaxis_date()
         ax.figure.autofmt_xdate()
     else:
         ax.set_xticklabels(x_labels, rotation=xtick_rotation)
 
-    if y_kind == "datetime":
+    if y_kind == 'datetime':
         ax.yaxis_date()
     else:
         ax.set_yticklabels(y_labels, rotation=ytick_rotation)
@@ -207,59 +207,59 @@ class Cell:
         ax = self.ax
 
         # x-axis spines
-        if self.x_edge == "inner":
-            ax.spines["bottom"].set_visible(inner)
+        if self.x_edge == 'inner':
+            ax.spines['bottom'].set_visible(inner)
 
-        elif self.x_edge == "bottom":
-            ax.spines["bottom"].set_visible(edge)
+        elif self.x_edge == 'bottom':
+            ax.spines['bottom'].set_visible(edge)
 
-        elif self.x_edge == "top":
-            ax.spines["bottom"].set_visible(inner)
+        elif self.x_edge == 'top':
+            ax.spines['bottom'].set_visible(inner)
 
         # y-axis spines
-        if self.y_edge == "inner":
-            ax.spines["left"].set_visible(inner)
+        if self.y_edge == 'inner':
+            ax.spines['left'].set_visible(inner)
 
-        elif self.y_edge == "left":
-            ax.spines["left"].set_visible(edge)
+        elif self.y_edge == 'left':
+            ax.spines['left'].set_visible(edge)
 
-        elif self.y_edge == "right":
-            ax.spines["left"].set_visible(inner)
+        elif self.y_edge == 'right':
+            ax.spines['left'].set_visible(inner)
 
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
     def set_ticks_visible(self, edge, inner):
         """Set tick visibility, with separate controls for edge and inner cells."""
         ax = self.ax
 
-        ax.yaxis.set_ticks_position("left")
-        ax.xaxis.set_ticks_position("bottom")
+        ax.yaxis.set_ticks_position('left')
+        ax.xaxis.set_ticks_position('bottom')
 
         # x-axis ticks
-        if self.x_edge == "inner":
+        if self.x_edge == 'inner':
             ax.tick_params(
-                axis="x",
-                which="both",
+                axis='x',
+                which='both',
                 labelbottom=inner,
                 bottom=inner,
                 labeltop=inner,
                 top=inner,
             )
-        elif self.x_edge == "bottom":
+        elif self.x_edge == 'bottom':
             ax.tick_params(
-                axis="x",
-                which="both",
+                axis='x',
+                which='both',
                 labelbottom=edge,
                 bottom=edge,
                 labeltop=inner,
                 top=inner,
             )
 
-        elif self.x_edge == "top":
+        elif self.x_edge == 'top':
             ax.tick_params(
-                axis="x",
-                which="both",
+                axis='x',
+                which='both',
                 labelbottom=inner,
                 bottom=inner,
                 labeltop=edge,
@@ -267,29 +267,29 @@ class Cell:
             )
 
         # y-axis ticks
-        if self.y_edge == "inner":
+        if self.y_edge == 'inner':
             ax.tick_params(
-                axis="y",
-                which="both",
+                axis='y',
+                which='both',
                 labelleft=inner,
                 left=inner,
                 labelright=inner,
                 right=inner,
             )
 
-        elif self.y_edge == "left":
+        elif self.y_edge == 'left':
             ax.tick_params(
-                axis="y",
-                which="both",
+                axis='y',
+                which='both',
                 labelleft=edge,
                 left=edge,
                 labelright=inner,
                 right=inner,
             )
-        elif self.y_edge == "right":
+        elif self.y_edge == 'right':
             ax.tick_params(
-                axis="y",
-                which="both",
+                axis='y',
+                which='both',
                 labelleft=inner,
                 left=inner,
                 labelright=edge,
@@ -301,30 +301,30 @@ class Cell:
         label_aliases = label_aliases or {}
         ax = self.ax
 
-        show_x = edge if self.x_edge != "inner" else inner
-        show_y = edge if self.y_edge != "inner" else inner
+        show_x = edge if self.x_edge != 'inner' else inner
+        show_y = edge if self.y_edge != 'inner' else inner
 
         if len(self.variables) >= 1 and show_x:
             x_var = self.variables[0]  # first variable is x
             ax.set_xlabel(label_aliases.get(x_var, x_var))
         else:
-            ax.set_xlabel("")
+            ax.set_xlabel('')
 
         if len(self.variables) >= 1 and show_y:
             y_var = self.variables[-1]  # last variable is y
             ax.set_ylabel(label_aliases.get(y_var, y_var))
         else:
-            ax.set_ylabel("")
+            ax.set_ylabel('')
 
-        if self.x_edge == "bottom":
-            ax.xaxis.set_label_position("bottom")
-        elif self.x_edge == "top":
-            ax.xaxis.set_label_position("top")
+        if self.x_edge == 'bottom':
+            ax.xaxis.set_label_position('bottom')
+        elif self.x_edge == 'top':
+            ax.xaxis.set_label_position('top')
 
-        if self.y_edge == "left":
-            ax.yaxis.set_label_position("left")
-        elif self.y_edge == "right":
-            ax.yaxis.set_label_position("right")
+        if self.y_edge == 'left':
+            ax.yaxis.set_label_position('left')
+        elif self.y_edge == 'right':
+            ax.yaxis.set_label_position('right')
 
 
 class Grid:
@@ -370,45 +370,45 @@ class Grid:
     def _keep_triangle(i, j, n, triangle):
         """Determine if cell (i,j) should be visible based on triangle."""
 
-        if triangle == "bottom left":
+        if triangle == 'bottom left':
             return i >= j
 
-        if triangle == "top right":
+        if triangle == 'top right':
             return i <= j
 
-        if triangle == "bottom right":
+        if triangle == 'bottom right':
             return i + j >= n - 1
 
-        if triangle == "top left":
+        if triangle == 'top left':
             return i + j <= n - 1
 
-        raise ValueError(f"Unknown triangle: {triangle}")
+        raise ValueError(f'Unknown triangle: {triangle}')
 
     @staticmethod
     def _compute_edge_position(i, j, n, xlabel_side, ylabel_side):
         """Compute where axis labels appear for cell (i,j)."""
-        x_edge = "inner"
-        y_edge = "inner"
+        x_edge = 'inner'
+        y_edge = 'inner'
 
         # x-axis at top or bottom
-        if xlabel_side == "top" and i == 0:
-            x_edge = "top"
-        elif xlabel_side == "bottom" and i == n - 1:
-            x_edge = "bottom"
+        if xlabel_side == 'top' and i == 0:
+            x_edge = 'top'
+        elif xlabel_side == 'bottom' and i == n - 1:
+            x_edge = 'bottom'
 
         # y-axis at left or right
-        if ylabel_side == "left" and j == 0:
-            y_edge = "left"
+        if ylabel_side == 'left' and j == 0:
+            y_edge = 'left'
 
-        elif ylabel_side == "right" and j == n - 1:
-            y_edge = "right"
+        elif ylabel_side == 'right' and j == n - 1:
+            y_edge = 'right'
 
         return x_edge, y_edge
 
     @staticmethod
     def _get_default_sides(triangle):
         """Compute default label sides from triangle name."""
-        top_bottom, left_right = triangle.split(" ")
+        top_bottom, left_right = triangle.split(' ')
         return top_bottom, left_right
 
     @staticmethod
@@ -450,7 +450,7 @@ class Grid:
         cls,
         labels: list[str],
         *,
-        triangle: str = "bottom left",
+        triangle: str = 'bottom left',
         xlabel_side: str | None = None,
         ylabel_side: str | None = None,
         figsize: tuple[float, float] | None = None,
@@ -538,7 +538,7 @@ class Grid:
         cls,
         labels: list[str],
         *,
-        triangle: str = "bottom left",
+        triangle: str = 'bottom left',
         xlabel_side: str | None = None,
         ylabel_side: str | None = None,
         figsize: tuple[float, float] | None = None,
@@ -599,7 +599,7 @@ class Grid:
                     # Diagonal: 3D axes (or 1D if var_triples says so)
                     variables = var_triples.get(labels[i], (labels[i],))
                     if len(variables) == 3:
-                        ax = fig.add_subplot(gs[i, j], projection="3d")
+                        ax = fig.add_subplot(gs[i, j], projection='3d')
                     else:
                         ax = fig.add_subplot(gs[i, j])
                 else:
@@ -658,7 +658,7 @@ class Grid:
         Default style: alpha=0.3, edgecolor='w', linewidth=0.3, facecolor='k', marker='.', s=20
         """
         defaults = dict(
-            alpha=0.3, edgecolor="w", linewidth=0.3, facecolor="k", marker=".", s=20
+            alpha=0.3, edgecolor='w', linewidth=0.3, facecolor='k', marker='.', s=20
         )
         styles = styles or {}
 
@@ -681,7 +681,7 @@ class Grid:
         Default style: alpha=0.3, edgecolor='none', linewidth=0.3, cmap='viridis', marker='.', s=20
         """
         defaults = dict(
-            alpha=0.3, edgecolor="none", linewidth=0.3, cmap="viridis", marker=".", s=20
+            alpha=0.3, edgecolor='none', linewidth=0.3, cmap='viridis', marker='.', s=20
         )
         styles = styles or {}
 
@@ -705,7 +705,7 @@ class Grid:
 
         Default style: alpha=0.3, linewidth=0.3, color='k'
         """
-        defaults = dict(alpha=0.3, linewidth=0.3, color="k")
+        defaults = dict(alpha=0.3, linewidth=0.3, color='k')
         styles = styles or {}
 
         for cell in self.iter_cells(dim=2):
@@ -714,7 +714,7 @@ class Grid:
             full_kwargs = {**defaults, **style, **kwargs}
             cell.ax.plot(df[x], df[y], **full_kwargs)
 
-    def plot_2d_heatmap(self, df, /, which, func="mean", styles=None, **kwargs):
+    def plot_2d_heatmap(self, df, /, which, func='mean', styles=None, **kwargs):
         """ """
         if isinstance(func, str):
             func = getattr(pd.api.typing.DataFrameGroupBy, func)
@@ -766,7 +766,7 @@ class Grid:
         Default style: facecolor='k'
         """
         styles = styles or {}
-        defaults = dict(facecolor="k")
+        defaults = dict(facecolor='k')
 
         if isinstance(which, str):
             which = df[which]
@@ -789,7 +789,7 @@ class Grid:
         Default style: facecolor='k'
         """
         styles = styles or {}
-        defaults = dict(facecolor="k")
+        defaults = dict(facecolor='k')
 
         for cell in self.iter_cells(dim=1):
             x = cell.variables[0]
@@ -808,7 +808,7 @@ class Grid:
 
         Default style: alpha=0.3, linewidth=0.3, color='k'
         """
-        defaults = dict(alpha=0.3, linewidth=0.3, color="k")
+        defaults = dict(alpha=0.3, linewidth=0.3, color='k')
         styles = styles or {}
 
         for cell in self.iter_cells(dim=2):
@@ -835,7 +835,7 @@ class Grid:
         Default style: alpha=0.3, edgecolor='w', linewidth=0.3, c='k', marker='.', s=20
         """
         defaults = dict(
-            alpha=0.3, edgecolor="w", linewidth=0.3, c="k", marker=".", s=20
+            alpha=0.3, edgecolor='w', linewidth=0.3, c='k', marker='.', s=20
         )
         styles = styles or {}
 
@@ -856,7 +856,7 @@ class Grid:
 
         Default style: alpha=0.3, linewidth=0.3, color='k'
         """
-        defaults = dict(alpha=0.3, linewidth=0.3, color="k")
+        defaults = dict(alpha=0.3, linewidth=0.3, color='k')
         styles = styles or {}
 
         for cell in self.iter_cells(dim=3):

@@ -1,6 +1,7 @@
 """
 Code to match pairs of Sharp Negative Events
 """
+
 import logging
 
 import matplotlib.colors
@@ -16,15 +17,15 @@ from nocte.timeslice import Win, Windows, ms
 
 
 def _extract_event_pairs_dag(
-        xcorr,
-        t0s: np.ndarray,
-        s0s: np.ndarray,
-        t1s: np.ndarray,
-        s1s: np.ndarray,
-        lag_win,
-        min_xcorr: float,
-        null_thresh: float,
-        pbar=True,
+    xcorr,
+    t0s: np.ndarray,
+    s0s: np.ndarray,
+    t1s: np.ndarray,
+    s1s: np.ndarray,
+    lag_win,
+    min_xcorr: float,
+    null_thresh: float,
+    pbar=True,
 ) -> np.ndarray:
     """
     Build a matrix representing which events can be matched together,
@@ -51,8 +52,8 @@ def _extract_event_pairs_dag(
     i1s = np.arange(len(t1s))
     nodes = np.array(np.meshgrid(i0s, i1s)).reshape(2, -1)
 
-    not_noise1 = (s1s[nodes[1]] < null_thresh)
-    not_noise0 = (s0s[nodes[0]] < null_thresh)
+    not_noise1 = s1s[nodes[1]] < null_thresh
+    not_noise0 = s0s[nodes[0]] < null_thresh
     valid_noise = not_noise0 | not_noise1
 
     lags = t1s[nodes[1]] - t0s[nodes[0]]
@@ -67,10 +68,12 @@ def _extract_event_pairs_dag(
     if pbar:
         iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
-    xcorr_values = np.array([
-        xcorr.sel(time=t0s[node[0]], lag=lags[i]).data.item()
-        for i, node in enumerate(iter_nodes)
-    ])
+    xcorr_values = np.array(
+        [
+            xcorr.sel(time=t0s[node[0]], lag=lags[i]).data.item()
+            for i, node in enumerate(iter_nodes)
+        ]
+    )
 
     valid = xcorr_values >= min_xcorr
     xcorr_values = xcorr_values[valid]
@@ -118,7 +121,9 @@ def _find_gradient_dagmat(dagmat, max_ahead, pbar=True):
         iter_nodes = tqdm(iter_nodes, desc='get nodes')
 
     for i, j in iter_nodes:
-        remaining_values = cumvalue_mat[i + 1:i + 1 + max_ahead, j + 1:j + 1 + max_ahead]
+        remaining_values = cumvalue_mat[
+            i + 1 : i + 1 + max_ahead, j + 1 : j + 1 + max_ahead
+        ]
 
         cumvalue_mat[i, j] = dagmat[i, j]
 
@@ -140,16 +145,16 @@ def _find_gradient_dagmat(dagmat, max_ahead, pbar=True):
 
 
 def find_highest_path_dag(
-        xcorr,
-        t0s: np.ndarray,
-        s0s: np.ndarray,
-        t1s: np.ndarray,
-        s1s: np.ndarray,
-        null_thresh: float,
-        lag_win=None,
-        min_xcorr=0,
-        max_ahead=None,
-        pbar=True,
+    xcorr,
+    t0s: np.ndarray,
+    s0s: np.ndarray,
+    t1s: np.ndarray,
+    s1s: np.ndarray,
+    null_thresh: float,
+    lag_win=None,
+    min_xcorr=0,
+    max_ahead=None,
+    pbar=True,
 ) -> np.array:
     """
 
@@ -174,8 +179,16 @@ def find_highest_path_dag(
 
     """
     dagmat = _extract_event_pairs_dag(
-        xcorr, t0s, s0s, t1s, s1s, lag_win, min_xcorr,
-        null_thresh=null_thresh, pbar=pbar)
+        xcorr,
+        t0s,
+        s0s,
+        t1s,
+        s1s,
+        lag_win,
+        min_xcorr,
+        null_thresh=null_thresh,
+        pbar=pbar,
+    )
 
     if max_ahead is None:
         max_ahead = max(*dagmat.shape)
@@ -196,20 +209,22 @@ def _trim_events_outside(xcorr, events):
     valid_events = events.sel_between(ref_time=valid_win)
 
     if len(valid_events) != len(events):
-        logging.warning(f'{len(events) - len(valid_events)}/{len(events)} events fall outside of xcorr window')
+        logging.warning(
+            f'{len(events) - len(valid_events)}/{len(events)} events fall outside of xcorr window'
+        )
         events = valid_events
 
     return events
 
 
 def _calculate_matching(
-        events: SharpNegativeEvents,
-        xcorr: Stack,
-        null_thresh: float,
-        ch0=0,
-        ch1=1,
-        max_ahead=1000,
-        pbar=True,
+    events: SharpNegativeEvents,
+    xcorr: Stack,
+    null_thresh: float,
+    ch0=0,
+    ch1=1,
+    max_ahead=1000,
+    pbar=True,
 ) -> np.ndarray:
     e0s = events.sel(channel=ch0).sort_values('ref_time')
     t0s = e0s.reg['ref_time'].values
@@ -222,26 +237,32 @@ def _calculate_matching(
     assert len(t1s) > 0, f'No SNs in ch{ch1}'
 
     matching = find_highest_path_dag(
-        xcorr, t0s, s0s, t1s, s1s,
+        xcorr,
+        t0s,
+        s0s,
+        t1s,
+        s1s,
         null_thresh=null_thresh,
         max_ahead=max_ahead,
         pbar=pbar,
     )
 
-    matching = np.stack([
-        e0s.reg.index[matching[:, 0]],
-        e1s.reg.index[matching[:, 1]],
-    ])
+    matching = np.stack(
+        [
+            e0s.reg.index[matching[:, 0]],
+            e1s.reg.index[matching[:, 1]],
+        ]
+    )
 
     return matching
 
 
 def calculate_matching(
-        sns: SharpNegativeEvents,
-        full_xcorr: Stack,
-        null_thresh=.05,
-        chunk_size=ms(minutes=30),
-        pbar=False,
+    sns: SharpNegativeEvents,
+    full_xcorr: Stack,
+    null_thresh=0.05,
+    chunk_size=ms(minutes=30),
+    pbar=False,
 ) -> pd.DataFrame:
     sns = _trim_events_outside(full_xcorr, sns)
 
@@ -254,14 +275,25 @@ def calculate_matching(
         ignore_remaining=False,
     )
 
-    missing_times = np.count_nonzero(~sns.reg['ref_time'].isin(full_xcorr.coords['time']))
+    missing_times = np.count_nonzero(
+        ~sns.reg['ref_time'].isin(full_xcorr.coords['time'])
+    )
     if missing_times > 0:
-        logging.warning(f'{missing_times}/{len(sns)} events misaligned with xcorr sampling rate. Interpolating xcorr')
-        full_xcorr = full_xcorr.interp(np.sort(sns.reg['ref_time'].unique()), pbar=tqdm if len(sns) > 1000 else None)
+        logging.warning(
+            f'{missing_times}/{len(sns)} events misaligned with xcorr sampling rate. Interpolating xcorr'
+        )
+        full_xcorr = full_xcorr.interp(
+            np.sort(sns.reg['ref_time'].unique()),
+            pbar=tqdm if len(sns) > 1000 else None,
+        )
 
     full_matching = []
 
-    for _, *win in tqdm(sections.wins[['start_ms', 'stop_ms']].itertuples(), desc='chunks', total=len(sections)):
+    for _, *win in tqdm(
+        sections.wins[['start_ms', 'stop_ms']].itertuples(),
+        desc='chunks',
+        total=len(sections),
+    ):
         win = Win(*win)
 
         sns_sel = sns.sel_between(ref_time=win)
@@ -269,7 +301,9 @@ def calculate_matching(
 
         if len(sns_sel.reg) > 0:
             full_matching.append(
-                _calculate_matching(sns_sel, xcorr_sel, null_thresh=null_thresh, pbar=pbar)
+                _calculate_matching(
+                    sns_sel, xcorr_sel, null_thresh=null_thresh, pbar=pbar
+                )
             )
 
     full_matching = np.concatenate(full_matching, axis=1)
@@ -284,7 +318,7 @@ def calculate_matching(
     return matching
 
 
-def plot_signal(ax, main, linewidth=.5, alpha=.3, orientation='horizontal'):
+def plot_signal(ax, main, linewidth=0.5, alpha=0.3, orientation='horizontal'):
     for chan in main.coords['channel']:
         x = main.coords['time']
         y = main.sel(channel=chan).values
@@ -302,19 +336,20 @@ def xcorr_to_diagmat(xcorr: Stack) -> Stack:
     Note this is memory intensive since we need to pad the matrix with nans for all
     unknown lags.
     """
-    new_mat = np.ones(
-        (len(xcorr.coords['time']) * 2 - 1,
-         len(xcorr.coords['time']))
-    ) * np.nan
+    new_mat = (
+        np.ones((len(xcorr.coords['time']) * 2 - 1, len(xcorr.coords['time']))) * np.nan
+    )
 
     idx = new_mat.shape[0] // 2 - len(xcorr.coords['lag']) // 2
-    new_mat[idx:idx + len(xcorr.coords['lag']), :] = xcorr.values
+    new_mat[idx : idx + len(xcorr.coords['lag']), :] = xcorr.values
 
     new_mat = Stack.from_array(
-        new_mat, {
+        new_mat,
+        {
             'time1': np.arange(new_mat.shape[0]),
             'time0': np.arange(new_mat.shape[1]),
-        })
+        },
+    )
 
     shifts = -(np.arange(new_mat.shape[1]) - (new_mat.shape[1] // 2))
     new_mat = new_mat.apply_shift(
@@ -323,20 +358,29 @@ def xcorr_to_diagmat(xcorr: Stack) -> Stack:
         on='time1',
     )
     new_mat = new_mat.replace_dim('time0', 'time0', xcorr.coords['time'].values)
-    new_mat = new_mat.replace_dim('time1', 'time1', xcorr.coords['time'].values[:new_mat.shape[1]])
+    new_mat = new_mat.replace_dim(
+        'time1', 'time1', xcorr.coords['time'].values[: new_mat.shape[1]]
+    )
 
     return new_mat
 
 
-def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=True, y_offset=0):
+def plot_xcorr_diag(
+    main, xcorr, events, zoom_win, show_nodes=True, show_grid=True, y_offset=0
+):
     xcorr = xcorr.sel_between(time=zoom_win)
     main = main.sel_between(time=zoom_win)
     events = events.sel_between(ref_time=zoom_win)
     diagmat = xcorr_to_diagmat(xcorr)
 
     f, axs = plt.subplots(
-        nrows=2, ncols=1, sharex='col', sharey='row', constrained_layout=True, figsize=(5, 4),
-        gridspec_kw=dict(height_ratios=[1, 5])
+        nrows=2,
+        ncols=1,
+        sharex='col',
+        sharey='row',
+        constrained_layout=True,
+        figsize=(5, 4),
+        gridspec_kw=dict(height_ratios=[1, 5]),
     )
     #     ax = axs[0, 0]
     #     ax.axis('off')
@@ -358,7 +402,7 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
         extent=(
             *diagmat.get_global_win('time0'),
             *diagmat.get_global_win('time1'),
-        )
+        ),
     )
 
     t0 = events.sel(channel=0).reg['ref_time']
@@ -369,7 +413,9 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
     mesh_t0 = mesh_t0.ravel()
     mesh_t1 = mesh_t1.ravel()
     lag = mesh_t1 - mesh_t0
-    valid_lag = (xcorr.get_global_win('lag')[0] <= lag) & (lag <= xcorr.get_global_win('lag')[1])
+    valid_lag = (xcorr.get_global_win('lag')[0] <= lag) & (
+        lag <= xcorr.get_global_win('lag')[1]
+    )
 
     mesh_t0 = mesh_t0[valid_lag]
     mesh_t1 = mesh_t1[valid_lag]
@@ -378,7 +424,7 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
         xcorr.get_global_win('time'),
         xcorr.get_global_win('time'),
         color='k',
-        linewidth=.5,
+        linewidth=0.5,
     )
 
     if show_nodes:
@@ -389,7 +435,7 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
             marker='o',
             facecolor='none',
             edgecolor='k',
-            linewidth=.25,
+            linewidth=0.25,
         )
 
     ax.set_xlim(*zoom_win)
@@ -403,13 +449,25 @@ def plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=Tr
         for name in ['main']:
             ax = axs_dict[name]
             ax.vlines(
-                events.sel(channel=0).reg['ref_time'], 0, 1,
-                color=splot.COLORS['ch0'], transform=ax.get_xaxis_transform(), linewidth=.25, alpha=.25)
+                events.sel(channel=0).reg['ref_time'],
+                0,
+                1,
+                color=splot.COLORS['ch0'],
+                transform=ax.get_xaxis_transform(),
+                linewidth=0.25,
+                alpha=0.25,
+            )
 
         for name in ['main']:
             ax = axs_dict[name]
             ax.hlines(
-                events.sel(channel=1).reg['ref_time'], 0, 1,
-                color=splot.COLORS['ch1'], transform=ax.get_yaxis_transform(), linewidth=.25, alpha=.25)
+                events.sel(channel=1).reg['ref_time'],
+                0,
+                1,
+                color=splot.COLORS['ch1'],
+                transform=ax.get_yaxis_transform(),
+                linewidth=0.25,
+                alpha=0.25,
+            )
 
     return axs_dict

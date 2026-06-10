@@ -6,6 +6,7 @@ the sampling rates differ in a few decimals, which accumulate over several hours
 The recorded square signal is common to everyone and is assumed here to be exactly 30kHz.
 The times of this reference are extracted in "extract_onsets" and stored as a csv.
 """
+
 import logging
 from pathlib import Path
 
@@ -22,8 +23,9 @@ SYS_CHANNEL = 768
 
 
 def extract_onsets(
-        raw: neuropixel.DataLoader,
-        load_win_ms=None, chunk_length_ms=timeslice.ms(minutes=15)
+    raw: neuropixel.DataLoader,
+    load_win_ms=None,
+    chunk_length_ms=timeslice.ms(minutes=15),
 ) -> pd.Series:
     stored_hz = timeslice.SamplingRate(raw.sampling_rate)
 
@@ -37,7 +39,9 @@ def extract_onsets(
         stored_hz.ms_to_idcs(load_win_ms[1]),
     )
 
-    breaks = np.sort(np.unique(np.append(np.arange(*load_win_idcs, chunk_length), load_win_idcs[-1])))
+    breaks = np.sort(
+        np.unique(np.append(np.arange(*load_win_idcs, chunk_length), load_win_idcs[-1]))
+    )
 
     chunks = zip(breaks[:-1], breaks[1:])
 
@@ -58,10 +62,12 @@ def extract_onsets(
 
 
 def extract_onsets_multiprobe(all_raw, load_win_ms):
-    all_onset_idcs = pd.DataFrame.from_dict({
-        probe: extract_onsets(raw, load_win_ms=load_win_ms)
-        for probe, raw in tqdm(all_raw.items(), desc='probes')
-    })
+    all_onset_idcs = pd.DataFrame.from_dict(
+        {
+            probe: extract_onsets(raw, load_win_ms=load_win_ms)
+            for probe, raw in tqdm(all_raw.items(), desc='probes')
+        }
+    )
 
     all_onset_idcs.sort_index(axis=1, inplace=True)
 
@@ -94,7 +100,9 @@ def _make_simple_meta(original, channels, target_hz):
     return fake_meta
 
 
-def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, target_hz=30000):
+def interpolate_data(
+    meta_path_out, bin_path_out, raw, channels, ref_times, target_hz=30000
+):
     """
     :param meta_path_out:
     :param bin_path_out:
@@ -114,7 +122,8 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
     fake_meta.to_json(meta_path_out)
 
     memmap = neuropixel.make_memmap_raw(
-        bin_path_out, fake_meta['channel_count'], fake_meta['sample_count'], mode='w+')
+        bin_path_out, fake_meta['channel_count'], fake_meta['sample_count'], mode='w+'
+    )
 
     chunks = zip(ref_times.index[:-1], ref_times.index[1:])
 
@@ -141,7 +150,7 @@ def interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, targ
         resampled_data = resampled_data.astype(true_samples.dtype)
 
         idcs = target_hz.ms_to_idcs(np.array([t0, t1]))
-        memmap[:, idcs[0]:idcs[1]] = resampled_data
+        memmap[:, idcs[0] : idcs[1]] = resampled_data
 
         memmap.flush()
 
@@ -151,7 +160,6 @@ def multi_npix_from_folder(folder_path, clean=True, quiet=False):
 
     all_raw = {}
     for probe_idx, (meta_path, bin_path) in probe_paths.items():
-
         if clean:
             raw = neuropixel.DataLoaderBaseline.from_spikegl(meta_path, bin_path)
 
@@ -186,10 +194,14 @@ def get_all_onsets(onsets_filename, all_raw, load_win_ms):
 
 
 def onset_idcs_to_ms(all_raw, all_onset_idcs):
-    all_onset_ms = pd.DataFrame.from_dict({
-        probe: timeslice.SamplingRate(raw.sampling_rate).idcs_to_ms(all_onset_idcs[probe])
-        for probe, raw in all_raw.items()
-    })
+    all_onset_ms = pd.DataFrame.from_dict(
+        {
+            probe: timeslice.SamplingRate(raw.sampling_rate).idcs_to_ms(
+                all_onset_idcs[probe]
+            )
+            for probe, raw in all_raw.items()
+        }
+    )
 
     return all_onset_ms
 
@@ -209,8 +221,12 @@ def estimate_onset_actual_time(all_raw, all_onset_idcs):
             index=actual_time.index,
         )
 
-        desc = ', '.join([
-            f'{count} onsets at {val}ms' for val, count in actual_time_bad.dropna().diff().value_counts().items()])
+        desc = ', '.join(
+            [
+                f'{count} onsets at {val}ms'
+                for val, count in actual_time_bad.dropna().diff().value_counts().items()
+            ]
+        )
 
         logging.warning(
             f'Expected onsets to be exactly 1 second apart, but got: {desc}\n'
@@ -227,7 +243,7 @@ def get_common_onset_times(folder_path, folder_path_out, load_win_ms):
     all_onset_idcs = get_all_onsets(
         onsets_filename=folder_path_out / 'onsets.csv',
         all_raw=all_raw_dirt,
-        load_win_ms=load_win_ms
+        load_win_ms=load_win_ms,
     )
 
     actual_time = estimate_onset_actual_time(all_raw_dirt, all_onset_idcs)
@@ -238,13 +254,13 @@ def get_common_onset_times(folder_path, folder_path_out, load_win_ms):
 
 
 def main(
-        raw_path: Path,
-        channels_per_probe: dict,
-        target_hz=30_000,
-        output_name='interp',
-        load_win_ms=None,
-        clean=True,
-        overwrite=False,
+    raw_path: Path,
+    channels_per_probe: dict,
+    target_hz=30_000,
+    output_name='interp',
+    load_win_ms=None,
+    clean=True,
+    overwrite=False,
 ):
     """
     param channels_per_probe: dict specifying what channels of what probes to interpolate. For example:
@@ -266,7 +282,6 @@ def main(
     all_raw = multi_npix_from_folder(raw_path, clean=clean, quiet=True)
 
     for probe, channels in tqdm(channels_per_probe.items(), desc='probes'):
-
         target_file = folder_path_out / f'interp_imec_{probe}.bin'
 
         if not target_file.exists() or overwrite:

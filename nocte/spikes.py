@@ -1,6 +1,7 @@
 """
 Container for spike trains of multiple cells.
 """
+
 from tqdm.auto import tqdm
 from nocte import timeslice
 
@@ -22,19 +23,19 @@ logger = logging.getLogger(__name__)
 
 def _get_sampling_rate(ks_path):
     # from SpikeGLX metadata
-    meta_files = list(ks_path.glob("*.ap.meta"))
+    meta_files = list(ks_path.glob('*.ap.meta'))
     assert len(meta_files) == 1
 
     meta_path = meta_files[0]
 
     meta = {}
-    with open(meta_path, "r") as f:
+    with open(meta_path, 'r') as f:
         for line in f:
-            if "=" in line:
-                k, v = line.strip().split("=", 1)
+            if '=' in line:
+                k, v = line.strip().split('=', 1)
                 meta[k] = v
 
-    return float(meta["imSampRate"])
+    return float(meta['imSampRate'])
 
 
 def _load_kilosort4_folder(ks_path: str | Path):
@@ -54,17 +55,19 @@ def _load_kilosort4_folder(ks_path: str | Path):
     # ----------------------------------------------------
     # Spike times:
 
-    spike_times = np.load(ks_path / "spike_times.npy").squeeze()
-    spike_clusters = np.load(ks_path / "spike_clusters.npy").squeeze().astype(int)
+    spike_times = np.load(ks_path / 'spike_times.npy').squeeze()
+    spike_clusters = np.load(ks_path / 'spike_clusters.npy').squeeze().astype(int)
 
-    spikes = pd.DataFrame({
-        "ref_time": spike_times,
-        "unit_id": spike_clusters,
-    })
+    spikes = pd.DataFrame(
+        {
+            'ref_time': spike_times,
+            'unit_id': spike_clusters,
+        }
+    )
 
     # Optional, aligned spike-level fields
-    for name in ["amplitudes", "spike_templates"]:
-        f = ks_path / f"{name}.npy"
+    for name in ['amplitudes', 'spike_templates']:
+        f = ks_path / f'{name}.npy'
         if f.exists():
             spikes[name] = np.load(f).squeeze()
 
@@ -74,22 +77,22 @@ def _load_kilosort4_folder(ks_path: str | Path):
     # KS tables
     ks_table = []
     for fname in [
-        "cluster_group.tsv",
-        "cluster_KSLabel.tsv",
-        "cluster_Amplitude.tsv",
-        "cluster_ContamPct.tsv",
+        'cluster_group.tsv',
+        'cluster_KSLabel.tsv',
+        'cluster_Amplitude.tsv',
+        'cluster_ContamPct.tsv',
     ]:
         f = ks_path / fname
         if f.exists():
-            df = pd.read_csv(f, sep="\t").set_index("cluster_id")
+            df = pd.read_csv(f, sep='\t').set_index('cluster_id')
             ks_table.append(df)
 
     ks_table = pd.concat(ks_table, axis=1)
     ks_table.index = ks_table.index.astype(int)
 
     # Phy manual curation:
-    info_file = ks_path / "cluster_info.tsv"
-    phy_table = pd.read_csv(info_file, sep="\t").set_index("cluster_id")
+    info_file = ks_path / 'cluster_info.tsv'
+    phy_table = pd.read_csv(info_file, sep='\t').set_index('cluster_id')
     phy_table.index = phy_table.index.astype(int)
 
     # combine them safely
@@ -100,7 +103,6 @@ def _load_kilosort4_folder(ks_path: str | Path):
     units: pd.DataFrame = phy_table.copy()
 
     for col, vals in ks_table.items():
-
         if col not in units.columns:
             units[col] = vals
 
@@ -114,7 +116,7 @@ def _load_kilosort4_folder(ks_path: str | Path):
 
     missing = set(spikes.unit_id.unique()) - set(units.index)
     if missing:
-        raise RuntimeError(f"Spikes reference missing unit_ids: {missing}")
+        raise RuntimeError(f'Spikes reference missing unit_ids: {missing}')
 
     return spikes, units
 
@@ -168,7 +170,7 @@ class _UnitsView(DataFrameWrapper):
         new_spikes['unit_id'] = new_spikes['unit_id'].map(mapping)
 
         if new_spikes['unit_id'].isna().any():
-            raise ValueError("Unit ID remapping produced NaNs")
+            raise ValueError('Unit ID remapping produced NaNs')
 
         return self._spikes.__class__(
             reg=new_spikes,
@@ -177,15 +179,13 @@ class _UnitsView(DataFrameWrapper):
         )
 
     def reset_index(self):
-        return self.set_index(
-            np.arange(len(self.reg.index))
-        )
+        return self.set_index(np.arange(len(self.reg.index)))
 
     def rate_rolling_gauss(
         self,
         *,
         sigma: float,
-        by: str = "ref_time",
+        by: str = 'ref_time',
         step: int = 1_000,
         win_ms=None,
         pbar=None,
@@ -200,11 +200,10 @@ class _UnitsView(DataFrameWrapper):
         """
         win_ms = win_ms or self._spikes.win_ms
 
-        spikes_split = DataDict.from_split(self._spikes, by="unit_id")
+        spikes_split = DataDict.from_split(self._spikes, by='unit_id')
 
         dd_rates = spikes_split.apply(
-            lambda sp:
-                sp.rate_rolling_gauss(
+            lambda sp: sp.rate_rolling_gauss(
                 sigma=sigma,
                 valid_win=win_ms,
                 by=by,
@@ -227,6 +226,7 @@ class Spikes(Events):
     """
     Collection of spikes and associated units.
     """
+
     def __init__(self, reg: pd.DataFrame, units: pd.DataFrame, win_ms: Win | tuple):
 
         win_ms = Win(*win_ms)
@@ -241,7 +241,9 @@ class Spikes(Events):
         inside = reg['ref_time'].between(*win_ms)
         if not inside.all():
             actual_win = Win(reg['ref_time'].min(), reg['ref_time'].max())
-            logger.error(f'Events outside extraction window. Found: {actual_win} Expected: {win_ms}')
+            logger.error(
+                f'Events outside extraction window. Found: {actual_win} Expected: {win_ms}'
+            )
 
         self.units = units
         self.win_ms = Win(*win_ms)
@@ -259,11 +261,11 @@ class Spikes(Events):
 
     @classmethod
     def load_kilosort(
-            cls,
-            folder,
-            *,
-            sampling_rate,
-            sample_count,
+        cls,
+        folder,
+        *,
+        sampling_rate,
+        sample_count,
     ):
         spikes_df, units_df = _load_kilosort4_folder(folder)
         spikes_df: pd.DataFrame
@@ -277,10 +279,7 @@ class Spikes(Events):
 
         # convert times from sample idcs to ms
         spikes_df['ref_time'] = spikes_df['ref_time'] / sampling_rate * 1000
-        valid_win = Win(
-            0,
-            sample_count / sampling_rate * 1000
-        )
+        valid_win = Win(0, sample_count / sampling_rate * 1000)
 
         return cls(
             reg=spikes_df,
@@ -350,7 +349,9 @@ class Spikes(Events):
         """
 
         if win.start < self.win_ms.start or self.win_ms.stop < win.stop:
-            logger.warning(f'Cropping window {win} is wider than event extraction window {self.win_ms}')
+            logger.warning(
+                f'Cropping window {win} is wider than event extraction window {self.win_ms}'
+            )
             win = timeslice.Win(
                 max(self.win_ms.start, win.start),
                 min(self.win_ms.stop, win.stop),

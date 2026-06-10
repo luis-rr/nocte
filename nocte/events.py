@@ -2,6 +2,7 @@
 Data container for generic LFP events that have a start/stop/reference time.
 Internally stored as a simple pd.DataFrame.
 """
+
 import functools
 import logging
 
@@ -22,7 +23,7 @@ def _quantile_rolling_nb(
     new_time: np.ndarray,
     win: tuple,
     q: float,
-    nmin: int
+    nmin: int,
 ) -> np.ndarray:
     """
     Compute the rolling quantile over a time-based window, using a time-sorted array.
@@ -58,10 +59,10 @@ def _quantile_rolling_nb(
     for i in nb.prange(new_time.shape[0]):
         center = new_time[i]
         start = center + win[0]
-        stop  = center + win[1]
+        stop = center + win[1]
 
         # Find the left and right indices for this window
-        left_idx  = np.searchsorted(time, start, side='left')
+        left_idx = np.searchsorted(time, start, side='left')
         right_idx = np.searchsorted(time, stop, side='right')
 
         # Slice the relevant values
@@ -76,11 +77,7 @@ def _quantile_rolling_nb(
 
 @nb.njit(parallel=True)
 def _mean_rolling_nb(
-        time: np.ndarray,
-        values: np.ndarray,
-        new_time: np.ndarray,
-        win: tuple,
-        nmin: int
+    time: np.ndarray, values: np.ndarray, new_time: np.ndarray, win: tuple, nmin: int
 ) -> np.ndarray:
     """Same as _quantile_rolling_nb but for mean"""
     idx_sort = np.argsort(time)
@@ -111,9 +108,9 @@ def _mean_rolling_nb(
 
 @nb.njit(parallel=True)
 def _count_rolling_nb(
-        time: np.ndarray,
-        new_time: np.ndarray,
-        win: tuple,
+    time: np.ndarray,
+    new_time: np.ndarray,
+    win: tuple,
 ) -> np.ndarray:
     """Same as _quantile_rolling_nb but for counting"""
     idx_sort = np.argsort(time)
@@ -138,10 +135,10 @@ def _count_rolling_nb(
 
 @nb.njit(parallel=True)
 def _rate_gauss_kernel_nb(
-        time: np.ndarray,
-        new_time: np.ndarray,
-        sigma: float,
-        width: float = 5.0,
+    time: np.ndarray,
+    new_time: np.ndarray,
+    sigma: float,
+    width: float = 5.0,
 ) -> np.ndarray:
     """
     Estimate instantaneous rate using a Gaussian kernel.
@@ -314,7 +311,7 @@ class Events(DataFrameWrapper):
                 stop_time='stop',
                 ref_time='ref',
             ),
-            inplace=True
+            inplace=True,
         )
 
         return timeslice.Windows(wins)
@@ -341,7 +338,7 @@ class Events(DataFrameWrapper):
                 stop_time='stop',
                 ref_time='ref',
             ),
-            inplace=True
+            inplace=True,
         )
 
         return timeslice.Windows(wins)
@@ -355,7 +352,9 @@ class Events(DataFrameWrapper):
 
         refs = np.linspace(values.min(), values.max(), count)
 
-        indices = np.argmin(np.abs(values.values[:, np.newaxis] - refs[np.newaxis, :]), axis=0)
+        indices = np.argmin(
+            np.abs(values.values[:, np.newaxis] - refs[np.newaxis, :]), axis=0
+        )
 
         max_idx = len(self) - 1
 
@@ -395,7 +394,7 @@ class Events(DataFrameWrapper):
 
         return values
 
-    def lookup_and_set(self, name, data: pd.Series, by, cols=None):  #TODO deprecate
+    def lookup_and_set(self, name, data: pd.Series, by, cols=None):  # TODO deprecate
         """Look up many values at once and return a copy of this object with those values set as new columns"""
         cols = self._time_cols_param(cols, strip=True)
 
@@ -406,40 +405,47 @@ class Events(DataFrameWrapper):
             data = np.asarray(data)
             data = pd.Series(data, index=np.arange(len(data)))
 
-        new_cols = pd.DataFrame({
-            f'{col}_{name}': self.lookup(data, col=f'{col}_{by}').values
-            for col in cols
-        }, index=self.reg.index)
+        new_cols = pd.DataFrame(
+            {
+                f'{col}_{name}': self.lookup(data, col=f'{col}_{by}').values
+                for col in cols
+            },
+            index=self.reg.index,
+        )
 
         joint = pd.concat([self.reg, new_cols], axis=1)
         assert joint.columns.is_unique
 
-        return self._replace_reg(
-            joint
-        )
+        return self._replace_reg(joint)
 
     def combine(self, other):
         return self.__class__(
             pd.concat([self.reg, other.reg], axis=0, sort=True, ignore_index=True)
         )
 
-    def get_time_to_closest(self, stop='stop', start='start', sortby='ref') -> pd.Series:
+    def get_time_to_closest(
+        self, stop='stop', start='start', sortby='ref'
+    ) -> pd.Series:
 
         # noinspection PyTypeChecker,PyNoneFunctionAssignment,PyArgumentList
         evs: Events = self.sort_values(f'{sortby}_time')
 
         to_next = evs.get_inter_event_intervals(stop, start, sortby=sortby)
 
-        df = pd.DataFrame({
-            'next': to_next.abs(),
-            'prev': to_next.shift(1),
-        })
+        df = pd.DataFrame(
+            {
+                'next': to_next.abs(),
+                'prev': to_next.shift(1),
+            }
+        )
 
         times = df.min(axis=1).reindex(self.reg.index)
 
         bad = np.count_nonzero(times < 0)
         if bad > 0:
-            logging.warning(f'{bad:,g} events with negative times to next. Events overlap?')
+            logging.warning(
+                f'{bad:,g} events with negative times to next. Events overlap?'
+            )
 
         return times
 
@@ -456,7 +462,9 @@ class Events(DataFrameWrapper):
         # noinspection PyTypeChecker
         return ts.reindex(self.reg.index)
 
-    def get_inter_event_intervals(self, first='ref', second='ref', sortby='ref', ascending=True) -> pd.Series:
+    def get_inter_event_intervals(
+        self, first='ref', second='ref', sortby='ref', ascending=True
+    ) -> pd.Series:
 
         reg = self.reg.sort_values(f'{sortby}_time', ascending=ascending)
         td = reg[f'{second}_time'].values[1:] - reg[f'{first}_time'].values[:-1]
@@ -465,24 +473,24 @@ class Events(DataFrameWrapper):
         return td.reindex(self.reg.index)
 
     def get_inter_event_intervals_between_channels(
-            self,
-            first='ref', second='ref', sortby='ref',
-            first_ch=0, second_ch=1
+        self, first='ref', second='ref', sortby='ref', first_ch=0, second_ch=1
     ) -> pd.Series:
 
         reg = self.reg.sort_values(f'{sortby}_time')
         reg = reg.loc[reg['channel'].isin([first_ch, second_ch])]
 
-        consecutive = (
-                (reg['channel'].values[:-1] == first_ch) &
-                (reg['channel'].values[1:] == second_ch)
+        consecutive = (reg['channel'].values[:-1] == first_ch) & (
+            reg['channel'].values[1:] == second_ch
         )
         first_idcs = reg.index[:-1][consecutive]
         second_idcs = reg.index[1:][consecutive]
 
         assert len(first_idcs) == len(second_idcs)
 
-        td = reg.loc[second_idcs, f'{second}_time'].values - reg.loc[first_idcs, f'{first}_time'].values
+        td = (
+            reg.loc[second_idcs, f'{second}_time'].values
+            - reg.loc[first_idcs, f'{first}_time'].values
+        )
 
         return pd.Series(td, first_idcs)
 
@@ -534,7 +542,7 @@ class Events(DataFrameWrapper):
             ts = pd.Series(ts, index=self.index)
 
         if not ts.index.equals(self.index):
-            raise ValueError("shift_time Series must be indexed like self")
+            raise ValueError('shift_time Series must be indexed like self')
 
         ts = ts.reindex(self.index).values
 
@@ -550,12 +558,12 @@ class Events(DataFrameWrapper):
         return self._replace_reg(reg)
 
     def count_rolling(
-            self,
-            valid_win: timeslice.Win = None,
-            by='ref_time',
-            sliding_win=1_000,
-            step=10,
-        ) -> pd.Series:
+        self,
+        valid_win: timeslice.Win = None,
+        by='ref_time',
+        sliding_win=1_000,
+        step=10,
+    ) -> pd.Series:
         """Calculate how many items are in a sliding window over time (by)"""
         valid_win = self.get_global_win(by) if valid_win is None else valid_win
 
@@ -573,12 +581,12 @@ class Events(DataFrameWrapper):
         return pd.Series(res, index=new_time)
 
     def rate_rolling_gauss(
-            self,
-            sigma: float,
-            valid_win: timeslice.Win = None,
-            by='ref_time',
-            step=1_000,
-        ) -> pd.Series:
+        self,
+        sigma: float,
+        valid_win: timeslice.Win = None,
+        by='ref_time',
+        step=1_000,
+    ) -> pd.Series:
         """Estaimate instantaneous rate by convolving with a gaussian kernel. Better for low rates than counting."""
 
         valid_win = self.get_global_win(by) if valid_win is None else valid_win
@@ -597,26 +605,28 @@ class Events(DataFrameWrapper):
         )
 
     def rate_rolling_box(
-            self,
-            valid_win: timeslice.Win = None,
-            by='ref_time',
-            sliding_win=10_000,
-            step=1_000,
-        ) -> pd.Series:
+        self,
+        valid_win: timeslice.Win = None,
+        by='ref_time',
+        sliding_win=10_000,
+        step=1_000,
+    ) -> pd.Series:
         """Estaimate instantaneous rate by counting in a sliding window"""
 
-        counts = self.count_rolling(valid_win=valid_win, by=by, sliding_win=sliding_win, step=step)
+        counts = self.count_rolling(
+            valid_win=valid_win, by=by, sliding_win=sliding_win, step=step
+        )
         return counts / (sliding_win / timeslice.ms(seconds=1))
 
     def mean_rolling(
-            self,
-            valid_win: timeslice.Win = None,
-            on='amplitude',
-            by='ref_time',
-            sliding_win=1_000,
-            step=10,
-            nmin=1,
-        ) -> pd.Series:
+        self,
+        valid_win: timeslice.Win = None,
+        on='amplitude',
+        by='ref_time',
+        sliding_win=1_000,
+        step=10,
+        nmin=1,
+    ) -> pd.Series:
         """Calculate the mean of a property (on) in a sliding window over time (by)"""
         return self._rolling_nb(
             func=_mean_rolling_nb,
@@ -629,14 +639,14 @@ class Events(DataFrameWrapper):
         )
 
     def quantile_rolling(
-            self,
-            q,
-            valid_win: timeslice.Win = None,
-            on='amplitude',
-            by='ref_time',
-            sliding_win=1_000,
-            step=10,
-            nmin=1,
+        self,
+        q,
+        valid_win: timeslice.Win = None,
+        on='amplitude',
+        by='ref_time',
+        sliding_win=1_000,
+        step=10,
+        nmin=1,
     ) -> pd.Series:
         """Calculate the quantile of a property (on) in a sliding window over time (by)"""
         return self._rolling_nb(
@@ -651,28 +661,30 @@ class Events(DataFrameWrapper):
         )
 
     def iqr_rolling(
-            self,
-            low=0.25,
-            mid=0.5,
-            high=0.75,
-            **kwargs,
+        self,
+        low=0.25,
+        mid=0.5,
+        high=0.75,
+        **kwargs,
     ) -> pd.DataFrame:
         """Calculate the median and inter-quantile range of a property (on) in a sliding window over time (by)"""
-        return pd.DataFrame({
-            name: self.quantile_rolling(q=q, **kwargs)
-            for name, q in dict(low=low, mid=mid, high=high).items()
-        })
+        return pd.DataFrame(
+            {
+                name: self.quantile_rolling(q=q, **kwargs)
+                for name, q in dict(low=low, mid=mid, high=high).items()
+            }
+        )
 
     def _rolling_nb(
-            self,
-            func,
-            valid_win: timeslice.Win = None,
-            on='amplitude',
-            by='ref_time',
-            sliding_win=1_000,
-            step=10,
-            nmin=1,
-            **kwargs,
+        self,
+        func,
+        valid_win: timeslice.Win = None,
+        on='amplitude',
+        by='ref_time',
+        sliding_win=1_000,
+        step=10,
+        nmin=1,
+        **kwargs,
     ) -> pd.Series:
         """
         Wrapper for  numba implementation of rolling calculations.
@@ -698,7 +710,9 @@ class Events(DataFrameWrapper):
 
         return pd.Series(res, index=xvals)
 
-    def locate_within(self, wins: timeslice.Windows, by='exp_name', on='ref_time') -> pd.DataFrame:
+    def locate_within(
+        self, wins: timeslice.Windows, by='exp_name', on='ref_time'
+    ) -> pd.DataFrame:
         """calculate the relative time of the events within windows after matching them by a column"""
         result = []
 
@@ -714,17 +728,21 @@ class Events(DataFrameWrapper):
             result = pd.concat(result)
 
         else:
-            result = pd.DataFrame(dict(
-                win_idx=pd.Series(dtype='int'),
-                delay=pd.Series(dtype='float'),
-                cat=pd.Series(dtype='str'),
-            ))
+            result = pd.DataFrame(
+                dict(
+                    win_idx=pd.Series(dtype='int'),
+                    delay=pd.Series(dtype='float'),
+                    cat=pd.Series(dtype='str'),
+                )
+            )
 
         result = result.reindex(self.index)
 
         return result
 
-    def classify_by(self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat') -> pd.Series:
+    def classify_by(
+        self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat'
+    ) -> pd.Series:
         """classify each event by the category of selected windows after matching them by a column"""
         return self.locate_within(wins, by=by, on=on)[col]
 
@@ -735,7 +753,14 @@ class Events(DataFrameWrapper):
         """
         return self.sel_between(**{on: win})
 
-    def extract(self, wins: timeslice.Windows, by='exp_name', on='ref_time', copy=None, align=None):
+    def extract(
+        self,
+        wins: timeslice.Windows,
+        by='exp_name',
+        on='ref_time',
+        copy=None,
+        align=None,
+    ):
 
         locs = self.locate_within(wins, by=by, on=on)
 
@@ -781,14 +806,15 @@ class Events(DataFrameWrapper):
         for ch in traces.coords['channel']:
             styles = {
                 'event': dict(color=splot.COLORS[f'ch{ch}_dark'], linewidth=1, alpha=1),
-                'other': dict(color=splot.COLORS[f'ch{ch}'], linewidth=.4, alpha=1),
+                'other': dict(color=splot.COLORS[f'ch{ch}'], linewidth=0.4, alpha=1),
             }
 
             wins = self.sel(channel=ch).to_wins()
             wins['cat'] = 'event'
-            wins = wins.complement(cat='other', start=main_win.start, stop=main_win.stop)
+            wins = wins.complement(
+                cat='other', start=main_win.start, stop=main_win.stop
+            )
 
             trace = traces.sel(channel=ch).to_series()
 
             splot.plot_trace_highlighted(ax, trace, wins, styles)
-

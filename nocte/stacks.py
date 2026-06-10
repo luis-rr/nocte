@@ -18,7 +18,7 @@ or by extracting it from saved data:
     data = npix.DataLoader.load_spikegl(meta_path, bin_path)
 
     stack = Stack.extract_stack_ms(data, chan_idcs=[0, 1, 2, 3], times=[1000, 2000], win_ms=(-1000, +1000))
-    
+
 
 A stack can be extracted from a "raw" object via the "Stack.load*" methods.
 A "raw" object must implement:
@@ -29,6 +29,7 @@ A "raw" object must implement:
 The Stack class wraps a xarray.DataArray object to simplify the API and
 add a couple of methods. The underlying data can be accessed as stack.data.
 """
+
 import functools
 import itertools
 import logging
@@ -57,12 +58,13 @@ def _expose(parent_method):
     def function(self, *args, **kwargs):
 
         args = [a if not isinstance(a, Stack) else a.data for a in args]
-        kwargs = {k: a if not isinstance(a, Stack) else a.data for k, a in kwargs.items()}
+        kwargs = {
+            k: a if not isinstance(a, Stack) else a.data for k, a in kwargs.items()
+        }
 
         result = child_method(self.data, *args, **kwargs)
 
         if isinstance(result, xr.DataArray):
-
             # get rid of non-dimension coordinates because I don't
             # use datasets and they are confusing
             result = result.reset_coords(drop=True)
@@ -108,7 +110,9 @@ class Stack:
                 values = values.T
 
             else:
-                raise ValueError(f'Index shape "{coords_shape}" does not match values shape {values.shape}')
+                raise ValueError(
+                    f'Index shape "{coords_shape}" does not match values shape {values.shape}'
+                )
 
         return cls(xr.DataArray(values, coords=coords, dims=list(coords.keys())))
 
@@ -134,10 +138,13 @@ class Stack:
                 return idx
 
         # noinspection PyTypeChecker
-        return cls.from_array(df.values, coords={
-            df.index.name: take_mid_interval(df.index),
-            df.columns.name: take_mid_interval(df.columns),
-        })
+        return cls.from_array(
+            df.values,
+            coords={
+                df.index.name: take_mid_interval(df.index),
+                df.columns.name: take_mid_interval(df.columns),
+            },
+        )
 
     @classmethod
     def from_series(cls, s: pd.Series, index_name=None):
@@ -151,13 +158,17 @@ class Stack:
         return cls.from_array(s.values, coords={index_name: s.index})
 
     def __str__(self, time_dim='time'):
-        coords_desc = ' x '.join([f'{len(values):,d} {name}' for name, values in self.coords.items()])
+        coords_desc = ' x '.join(
+            [f'{len(values):,d} {name}' for name, values in self.coords.items()]
+        )
         coords_desc = '(' + coords_desc + ')'
 
         if time_dim in self.coords:
-            time_desc = f'; sampling: {self.estimate_sampling_rate(dim=time_dim)}hz ' \
-                        f'({self.estimate_sampling_period(dim=time_dim)}ms)' \
-                        f'; win: {self.get_global_win(dim=time_dim)}'
+            time_desc = (
+                f'; sampling: {self.estimate_sampling_rate(dim=time_dim)}hz '
+                f'({self.estimate_sampling_period(dim=time_dim)}ms)'
+                f'; win: {self.get_global_win(dim=time_dim)}'
+            )
 
             coords_desc += f'{time_desc}'
 
@@ -210,7 +221,7 @@ class Stack:
         return pd.DataFrame(
             self.values,
             index=self.coords[self.dims[0]],
-            columns=self.coords[self.dims[1]]
+            columns=self.coords[self.dims[1]],
         )
 
     @_expose
@@ -253,10 +264,7 @@ class Stack:
             axis=self.get_axis_num(dim),
         )
 
-        return self.__class__.from_array(
-            grad,
-            self.coords
-        )
+        return self.__class__.from_array(grad, self.coords)
 
     def apply(self, dim, func):
         """
@@ -282,8 +290,7 @@ class Stack:
 
         # noinspection PyTypeChecker
         result_transposed = Stack.from_array(
-            result_2d.reshape(transposed.values.shape),
-            transposed.coords
+            result_2d.reshape(transposed.values.shape), transposed.coords
         )
 
         return result_transposed.transpose(*self.coords.keys())
@@ -293,7 +300,7 @@ class Stack:
         Generates an iterator over the given dimensions.
         This can be used to process a stack in parts.
 
-        For example, if we want to process ever 2D slice over 
+        For example, if we want to process ever 2D slice over
         channel and time independently:
 
             for sel, substack in traces.iter_dims('channel', 'time'):
@@ -316,9 +323,9 @@ class Stack:
             yield comb, self.sel(**comb)
 
         else:
-            coord_value_combs = itertools.product(*[
-                self.coords[name].values for name in dims
-            ])
+            coord_value_combs = itertools.product(
+                *[self.coords[name].values for name in dims]
+            )
 
             if pbar is not None:
                 coord_value_combs = pbar(list(coord_value_combs))
@@ -379,7 +386,9 @@ class Stack:
 
         return all_df
 
-    def mean_rolling(self, window, dim='time', center=True, min_periods=1, win_type='hanning'):
+    def mean_rolling(
+        self, window, dim='time', center=True, min_periods=1, win_type='hanning'
+    ):
         """
         Apply a mean on a rolling window.
         Only supported for 2D stacks
@@ -388,7 +397,9 @@ class Stack:
         assert self.ndim == 2
         df = self.data.transpose(dim, ...).to_pandas()
         # noinspection PyTypeChecker
-        df = df.rolling(window, win_type=win_type, center=center, min_periods=min_periods).mean()
+        df = df.rolling(
+            window, win_type=win_type, center=center, min_periods=min_periods
+        ).mean()
         return Stack.from_dataframe(df).transpose(*self.dims)
 
     @_expose
@@ -564,8 +575,7 @@ class Stack:
 
         # make sure we keep the same order in the dictionary
         return Stack.from_array(
-            transposed.values,
-            {d: self.data.coords.indexes[d] for d in transposed.dims}
+            transposed.values, {d: self.data.coords.indexes[d] for d in transposed.dims}
         )
 
     @_expose
@@ -636,11 +646,7 @@ class Stack:
 
     def rename_dim(self, old_name, new_name):
         """change the name of a particular dimension"""
-        return self.replace_dim(
-            old_name,
-            new_name,
-            self.coords[old_name]
-        )
+        return self.replace_dim(old_name, new_name, self.coords[old_name])
 
     def reset_coord(self, dim='time', q=0):
         """
@@ -657,11 +663,7 @@ class Stack:
 
         new_vals = self.coords[dim] - np.quantile(self.coords[dim], q)
 
-        return self.replace_dim(
-            dim,
-            dim,
-            new_vals
-        )
+        return self.replace_dim(dim, dim, new_vals)
 
     def sel_between(self, *, reset=False, **kwargs):
         """
@@ -687,7 +689,7 @@ class Stack:
         stack = self.isel(**sel)
 
         if isinstance(reset, bool):
-            reset = None if not reset else 0.
+            reset = None if not reset else 0.0
 
         if reset is not None:
             # assert isinstance(reset, (float, int))
@@ -721,9 +723,7 @@ class Stack:
     def sel_centered(self, duration, dim='time', reset=False):
         """Cut a section in the temporal center of this stack"""
         return self.sel_between(
-            **{
-                dim: self.get_global_win().take_centered(duration)
-            },
+            **{dim: self.get_global_win().take_centered(duration)},
             reset=reset,
         )
 
@@ -750,10 +750,12 @@ class Stack:
             pairs = pd.Series(pairs)
 
         # noinspection PyUnresolvedReferences
-        res = self.data.sel({
-            dim_index: xr.DataArray(pairs.index.values, dims=[dim_index]),
-            dim_values: xr.DataArray(pairs.values, dims=[dim_index]),
-        })
+        res = self.data.sel(
+            {
+                dim_index: xr.DataArray(pairs.index.values, dims=[dim_index]),
+                dim_values: xr.DataArray(pairs.values, dims=[dim_index]),
+            }
+        )
 
         res = res.drop_vars(dim_values)
 
@@ -766,9 +768,7 @@ class Stack:
         save a stack in an HDF5 file
         """
         with h5py.File(path, mode='a') as f:
-
             for dim_idx, (dim_name, dim_values) in enumerate(self.coords.items()):
-
                 idx_key = f'{key}_index_{dim_idx:06d}'
                 if idx_key in f.keys() and overwrite:
                     del f[idx_key]
@@ -852,9 +852,14 @@ class Stack:
 
     @classmethod
     def load_idcs(
-            cls, raw, windows,
-            channels='all', load_hz=None, adjust_gain=True, pbar=True,
-            early_exit=False,
+        cls,
+        raw,
+        windows,
+        channels='all',
+        load_hz=None,
+        adjust_gain=True,
+        pbar=True,
+        early_exit=False,
     ):
         """
         Load one section per channel and window.
@@ -890,7 +895,7 @@ class Stack:
 
         stored_hz = timeslice.SamplingRate(stored_hz)
 
-        load_hz = stored_hz.match_load_hz(load_hz, thresh=.1)
+        load_hz = stored_hz.match_load_hz(load_hz, thresh=0.1)
         stored_hz.assert_stride(load_hz, 'stored_hz', 'load_hz')
         load_stride = stored_hz.get_stride(load_hz)
 
@@ -903,10 +908,11 @@ class Stack:
 
         traces = np.zeros((len(channels), len(windows), length), dtype=dtype)
 
-        combs = list(itertools.product(
-            enumerate(channels),
-            enumerate(windows[['start', 'stop']].itertuples())
-        ))
+        combs = list(
+            itertools.product(
+                enumerate(channels), enumerate(windows[['start', 'stop']].itertuples())
+            )
+        )
 
         if pbar:
             combs = tqdm(combs, desc='load trace')
@@ -948,9 +954,15 @@ class Stack:
 
     @classmethod
     def load_ms(
-            cls, raw, times, win_ms,
-            channels='all', load_hz=None, adjust_gain=True, pbar=True,
-            early_exit=False,
+        cls,
+        raw,
+        times,
+        win_ms,
+        channels='all',
+        load_hz=None,
+        adjust_gain=True,
+        pbar=True,
+        early_exit=False,
     ):
         """
         Extract one section per channel and window.
@@ -979,8 +991,12 @@ class Stack:
         wins_idcs = wins_idcs.crop_to_minimum_common()
 
         stack = cls.load_idcs(
-            raw, windows=wins_idcs, channels=channels,
-            load_hz=load_hz, adjust_gain=adjust_gain, pbar=pbar,
+            raw,
+            windows=wins_idcs,
+            channels=channels,
+            load_hz=load_hz,
+            adjust_gain=adjust_gain,
+            pbar=pbar,
             early_exit=early_exit,
         )
 
@@ -988,8 +1004,13 @@ class Stack:
 
     @classmethod
     def load_single_ms(
-            cls, raw, load_win=None, stored_hz=None, load_hz=None,
-            channels='all', adjust_gain=True
+        cls,
+        raw,
+        load_win=None,
+        stored_hz=None,
+        load_hz=None,
+        channels='all',
+        adjust_gain=True,
     ):
         """
         Extract a single section per channel.
@@ -1015,12 +1036,12 @@ class Stack:
         assert load_win[1] >= 0, f'Expected absolute time. Got: {load_win}'
 
         load_win = timeslice.Win(
-            stored_hz.ms_to_idcs(load_win[0]),
-            stored_hz.ms_to_idcs(load_win[1])
+            stored_hz.ms_to_idcs(load_win[0]), stored_hz.ms_to_idcs(load_win[1])
         )
 
         stack = cls.load_single_idcs(
-            raw, load_win,
+            raw,
+            load_win,
             stored_hz=stored_hz.rate,
             load_hz=load_hz,
             channels=channels,
@@ -1031,9 +1052,13 @@ class Stack:
 
     @classmethod
     def load_single_idcs(
-            cls, raw, load_win=None, stored_hz=None,
-            load_hz=None, channels='all',
-            adjust_gain=True
+        cls,
+        raw,
+        load_win=None,
+        stored_hz=None,
+        load_hz=None,
+        channels='all',
+        adjust_gain=True,
     ):
         """
         Extract a single section per channel.
@@ -1061,7 +1086,7 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=.1)
+        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=0.1)
         timeslice.SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
         stride_i = timeslice.SamplingRate(stored_hz).get_stride(load_hz)
 
@@ -1131,7 +1156,8 @@ class Stack:
         if (this_period % period) > 1e-6:
             logging.error(
                 f'Sampling period missalignment of {this_period % period} '
-                f'(stack: {this_period}; data: {period})')
+                f'(stack: {this_period}; data: {period})'
+            )
 
         samples = np.round(idcs / period).astype(int)
 
@@ -1144,16 +1170,19 @@ class Stack:
         return sampling period (ms)
         """
         tstep = np.diff(self.coords[dim].values)
-        assert np.allclose(tstep, tstep[0]), \
-            f'Expected regular {dim} steps. ' \
+        assert np.allclose(tstep, tstep[0]), (
+            f'Expected regular {dim} steps. '
             f'Got: {np.unique(np.round(tstep, decimals=9))}'
+        )
 
         tstep = tstep[0]
 
         # 'allclose' can let pass small rounding errors
         # remember time unit is milliseconds, so we are going
         # to round up to 1 pico second
-        tstep = timeslice.SamplingRate.from_period(tstep).adjust_sampling_period(quiet=True)
+        tstep = timeslice.SamplingRate.from_period(tstep).adjust_sampling_period(
+            quiet=True
+        )
 
         if float(tstep).is_integer():
             tstep = int(tstep)
@@ -1167,7 +1196,7 @@ class Stack:
         return sampling freq (Hz)
         """
         tstep = self.estimate_sampling_period(dim=dim)
-        sampling_rate = 1. / (tstep * MS_TO_S)
+        sampling_rate = 1.0 / (tstep * MS_TO_S)
 
         if sampling_rate.is_integer():
             sampling_rate = int(sampling_rate)
@@ -1207,8 +1236,9 @@ class Stack:
         assert self.ndim == 1
         assert ref.ndim == 1
 
-        assert self.estimate_sampling_period() == ref.estimate_sampling_period(), \
+        assert self.estimate_sampling_period() == ref.estimate_sampling_period(), (
             f'Sampling periods should match for template detection.'
+        )
 
         dim = self.get_coords_names()[0]
 
@@ -1222,7 +1252,7 @@ class Stack:
         scores = np.empty(len(idcs))
 
         for i in tqdm(idcs, desc='slide'):
-            candidate = self.values[i:i + slice_length]
+            candidate = self.values[i : i + slice_length]
 
             r, p_value = scipy.stats.pearsonr(candidate, ref.values)
 
@@ -1258,10 +1288,7 @@ class Stack:
         hz = self.estimate_sampling_rate()
         hz = timeslice.SamplingRate(hz)
 
-        win_idcs = timeslice.Win(
-            hz.ms_to_idcs(win_ms[0]),
-            hz.ms_to_idcs(win_ms[1])
-        )
+        win_idcs = timeslice.Win(hz.ms_to_idcs(win_ms[0]), hz.ms_to_idcs(win_ms[1]))
 
         starts = refs + win_idcs.start
         stops = refs + win_idcs.stop
@@ -1321,10 +1348,7 @@ class Stack:
         if pbar is not None:
             items = pbar(items, desc='pearsonr')
 
-        corr = np.array([
-            scipy.stats.pearsonr(a, ref)[0]
-            for a in items
-        ])
+        corr = np.array([scipy.stats.pearsonr(a, ref)[0] for a in items])
 
         # noinspection PyTypeChecker
         return Stack.from_array(
@@ -1381,7 +1405,7 @@ class Stack:
         nperseg = int(np.clip(nperseg, 1, np.inf))
 
         if overlap_ms is None:
-            overlap_ms = segment_ms * .95
+            overlap_ms = segment_ms * 0.95
         noverlap = int(overlap_ms / period)
         noverlap = int(np.clip(noverlap, 0, nperseg - 1))
 
@@ -1418,19 +1442,18 @@ class Stack:
         if not quiet:
             values = tqdm(values, desc=str(dim))
 
-        hs = np.array([
-            np.histogram(self.sel(**{dim: v}).values.ravel(), bins=bins)[0]
-            for v in values
-        ])
+        hs = np.array(
+            [
+                np.histogram(self.sel(**{dim: v}).values.ravel(), bins=bins)[0]
+                for v in values
+            ]
+        )
 
-        bin_centers = .5 * (bins[1:] + bins[:-1])
+        bin_centers = 0.5 * (bins[1:] + bins[:-1])
 
         hs = self.__class__.from_array(
-            hs,
-            coords={
-                dim: self.coords[dim],
-                new: bin_centers
-            })
+            hs, coords={dim: self.coords[dim], new: bin_centers}
+        )
 
         return hs
 
@@ -1458,7 +1481,7 @@ class Stack:
             mask = np.ones(len(self.coords[dim]), dtype=np.bool_)
 
             if dim in sel.keys():
-                mask[sel[dim]:] = False
+                mask[sel[dim] :] = False
                 np.random.shuffle(mask)
 
             masks[dim] = mask
@@ -1535,7 +1558,8 @@ class Stack:
                 dims=[dim],
                 coords={dim: self.data.coords[dim]},
                 name=new_name,
-            ))
+            )
+        )
 
     def groupby_mean(self, dim, new_name, values: np.ndarray):
         """
@@ -1629,7 +1653,9 @@ class Stack:
         assert len(shift_steps) == len(self.coords[by])
 
         if np.any(np.isnan(shift_steps)):
-            logging.warning(f'{np.sum(np.isnan(shift_steps))} nans in shift values. Not aligned to coords?')
+            logging.warning(
+                f'{np.sum(np.isnan(shift_steps))} nans in shift values. Not aligned to coords?'
+            )
             shift_steps[np.isnan(shift_steps)] = 0
 
         # noinspection PyTypeChecker
@@ -1656,7 +1682,7 @@ class Stack:
         shifted = np.take_along_axis(rearranged.values, main_idcs, axis=-1)
 
         coords = dict(rearranged.coords)
-        coords[on] = coords[on][crop_range[0]:crop_range[1]]
+        coords[on] = coords[on][crop_range[0] : crop_range[1]]
 
         return Stack.from_array(shifted, coords).transpose(*self.dims)
 
@@ -1719,7 +1745,7 @@ class Stack:
                     self.data.to_series().unstack(dim).T,
                     window=win_count,
                     center=True,
-                    min_periods=1
+                    min_periods=1,
                 ).T.stack()
             )
         )
@@ -1779,7 +1805,9 @@ class Stack:
 
         current_hz = self.estimate_sampling_rate(dim=dim)
         if upsample_hz < current_hz:
-            logging.warning(f'Downsampling signal instead of upsampling ({upsample_hz}hz < {current_hz}hz)')
+            logging.warning(
+                f'Downsampling signal instead of upsampling ({upsample_hz}hz < {current_hz}hz)'
+            )
 
         new_idcs = np.arange(*win, new_sampling_period)
 
@@ -1799,11 +1827,13 @@ class Stack:
         :param pbar:
         :return:
         """
-        assert (self.coords[dim].min() <= np.min(new_idcs)), \
+        assert self.coords[dim].min() <= np.min(new_idcs), (
             f'New {dim} starts at {np.min(new_idcs)} but first sample is at {self.coords[dim].min()}'
+        )
 
-        assert (np.max(new_idcs) <= self.coords[dim].max()), \
+        assert np.max(new_idcs) <= self.coords[dim].max(), (
             f'New {dim} stops at {np.max(new_idcs)} but last sample is at {self.coords[dim].max()}'
+        )
 
         current = self.coords[dim].values
 
@@ -1858,7 +1888,9 @@ class Stack:
 
         low, high = hz
         low_open = low is None or np.isclose(low, 0) or np.isinf(low) or np.isnan(low)
-        high_open = high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+        high_open = (
+            high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+        )
 
         if low_open and not high_open:
             return self.low_pass(high, dim=dim)
@@ -1885,7 +1917,9 @@ class Stack:
 
         # Filter signal
         # noinspection PyTypeChecker
-        filtered_data = scipy.signal.filtfilt(*params, self.values, axis=self.get_axis_num(dim))
+        filtered_data = scipy.signal.filtfilt(
+            *params, self.values, axis=self.get_axis_num(dim)
+        )
 
         # noinspection PyTypeChecker
         return Stack.from_array(
@@ -1905,13 +1939,12 @@ class Stack:
 
         # Filter signal
         # noinspection PyTypeChecker
-        filtered_data = scipy.signal.filtfilt(*params, self.values, axis=self.get_axis_num(dim))
+        filtered_data = scipy.signal.filtfilt(
+            *params, self.values, axis=self.get_axis_num(dim)
+        )
 
         # noinspection PyTypeChecker
-        return Stack.from_array(
-            filtered_data,
-            self.coords
-        )
+        return Stack.from_array(filtered_data, self.coords)
 
     def high_pass(self, low_hz, dim='time', *, order=2):
         sampling_hz = self.estimate_sampling_rate()
@@ -1925,7 +1958,9 @@ class Stack:
 
         # Filter signal
         # noinspection PyTypeChecker
-        filtered_data = scipy.signal.filtfilt(*params, self.values, axis=self.get_axis_num(dim))
+        filtered_data = scipy.signal.filtfilt(
+            *params, self.values, axis=self.get_axis_num(dim)
+        )
 
         # noinspection PyTypeChecker
         return Stack.from_array(
@@ -1946,17 +1981,25 @@ class Stack:
         peaks[dim] = self.coords[dim].values[peaks['sample_idx'].values]
 
         plural_cols = [
-            'peak_heights', 'prominences',
-            'left_bases', 'right_bases',
-            'widths', 'width_heights',
-            'left_ips', 'right_ips',
+            'peak_heights',
+            'prominences',
+            'left_bases',
+            'right_bases',
+            'widths',
+            'width_heights',
+            'left_ips',
+            'right_ips',
         ]
 
-        peaks.rename(columns={c: c[:-1] for c in plural_cols}, inplace=True, errors='ignore')
+        peaks.rename(
+            columns={c: c[:-1] for c in plural_cols}, inplace=True, errors='ignore'
+        )
 
         return peaks
 
-    def find_peaks(self, dim='time', width_ms=None, negative=False, **kwargs) -> pd.DataFrame:
+    def find_peaks(
+        self, dim='time', width_ms=None, negative=False, **kwargs
+    ) -> pd.DataFrame:
         """
         Find peaks in a signal along only one of the dimensions
 

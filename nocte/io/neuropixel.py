@@ -23,6 +23,7 @@ Following code adapted from example provided by supplier, downloaded from:
     https://billkarsh.github.io/SpikeGLX/
 
 """
+
 import logging
 import os
 from pathlib import Path
@@ -49,9 +50,11 @@ def read_meta(meta_path: Path):
         raw['fileSizeBytes'] = int(raw['fileSizeBytes'])
 
     else:
-        logger.warning(f'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.')
+        logger.warning(
+            f'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.'
+        )
         assert str(meta_path).endswith('.meta')
-        bin_path = str(meta_path)[:-len('meta')] + 'bin'
+        bin_path = str(meta_path)[: -len('meta')] + 'bin'
         raw['fileSizeBytes'] = os.stat(bin_path).st_size
 
     if raw['typeThis'] == 'imec':
@@ -65,18 +68,25 @@ def read_meta(meta_path: Path):
 
     processed['raw'] = raw
     processed['channel_count'] = raw['nSavedChans']
-    processed['sample_count'] = int(raw['fileSizeBytes'] / (2 * processed['channel_count']))
+    processed['sample_count'] = int(
+        raw['fileSizeBytes'] / (2 * processed['channel_count'])
+    )
 
-    processed['duration_ms'] = (processed['sample_count'] / processed['sampling_rate']) / MS_TO_S
+    processed['duration_ms'] = (
+        processed['sample_count'] / processed['sampling_rate']
+    ) / MS_TO_S
 
-    assert len(processed['all_channel_ids']) == sum(processed['chan_type_count'].values())
+    assert len(processed['all_channel_ids']) == sum(
+        processed['chan_type_count'].values()
+    )
 
     # A ShankMap locates acq channels geometrically on probe
     # Pattern: "shank:column:row:u" (default single shank, two columns)
     if 'snsShankMap' in raw:
-        processed['shank_map'] = pd.DataFrame([
-            s.split(':') for s in raw['snsShankMap'][1:-1].split(')(')[1:]],
-            columns=['shank', 'column', 'row', 'u']).astype(int)
+        processed['shank_map'] = pd.DataFrame(
+            [s.split(':') for s in raw['snsShankMap'][1:-1].split(')(')[1:]],
+            columns=['shank', 'column', 'row', 'u'],
+        ).astype(int)
 
     else:
         logger.warning(f'Missing "snsShankMap" in meta file.')
@@ -104,7 +114,7 @@ def _read_meta_raw(meta_path: Path):
         for m in dat_list:
             cs_list = m.split(sep='=')
             if cs_list[0][0] == '~':
-                curr_key = cs_list[0][1:len(cs_list[0])]
+                curr_key = cs_list[0][1 : len(cs_list[0])]
             else:
                 curr_key = cs_list[0]
             meta.update({curr_key: cs_list[1]})
@@ -219,22 +229,29 @@ def _process_meta_imec(meta, prefix='im'):
 
     processed['conversion_factor'] = np.array(conversion_factors) * PICO_TO_MICRO
 
-    stand_by_channels = np.array([
-        [int(s)] if ':' not in s else np.arange(int(s.split(':')[0]), int(s.split(':')[1]) + 1)
-        for s in meta[f'{prefix}Stdby'].split(',') if s
-    ])
+    stand_by_channels = np.array(
+        [
+            [int(s)]
+            if ':' not in s
+            else np.arange(int(s.split(':')[0]), int(s.split(':')[1]) + 1)
+            for s in meta[f'{prefix}Stdby'].split(',')
+            if s
+        ]
+    )
     if len(stand_by_channels) > 0:
         stand_by_channels = np.concatenate(stand_by_channels)
 
     processed['standby_channels'] = stand_by_channels
 
-    processed['valid_channels'] = np.array(list(
-        set(processed['all_channel_ids']) - set(processed['standby_channels'])))
+    processed['valid_channels'] = np.array(
+        list(set(processed['all_channel_ids']) - set(processed['standby_channels']))
+    )
 
     # drop SYS channels
     processed['valid_channels'] = processed['valid_channels'][
-        processed['valid_channels'] <= (processed['chan_type_count']['AP'] + processed['chan_type_count']['LF'])
-        ]
+        processed['valid_channels']
+        <= (processed['chan_type_count']['AP'] + processed['chan_type_count']['LF'])
+    ]
 
     return processed
 
@@ -244,7 +261,7 @@ def _process_meta_nidq(meta, prefix='ni'):
         'all_channel_ids': _process_meta_channelids(meta),
         'sampling_rate': float(meta[f'{prefix}SampRate']),
         'chan_type_count': {'AP': 1},
-        'conversion_factor': np.array([1])
+        'conversion_factor': np.array([1]),
     }
 
     return processed
@@ -295,12 +312,14 @@ def get_probe() -> pd.DataFrame:
     y_spacing = 20
     n_electrodes = 384
 
-    probe = pd.DataFrame({
-        'x_um': np.tile(x_spacing, int(n_electrodes / len(x_spacing))),
-        'y_um': y_spacing * np.repeat(np.arange(1, int(n_electrodes / 2) + 1), 2),
-        'channel_id': np.arange(1, n_electrodes + 1),
-        'is_ref': False,
-    })
+    probe = pd.DataFrame(
+        {
+            'x_um': np.tile(x_spacing, int(n_electrodes / len(x_spacing))),
+            'y_um': y_spacing * np.repeat(np.arange(1, int(n_electrodes / 2) + 1), 2),
+            'channel_id': np.arange(1, n_electrodes + 1),
+            'is_ref': False,
+        }
+    )
 
     probe.loc[probe['channel_id'] == ref_site_id, 'is_ref'] = True
 
@@ -325,9 +344,9 @@ class DataLoader(common.DataLoader):
         self._channels = pd.DataFrame(
             {
                 'channel_idx': np.arange(len(self.meta['all_channel_ids'])),
-                'is_sys': False
+                'is_sys': False,
             },
-            index=self.meta['all_channel_ids']
+            index=self.meta['all_channel_ids'],
         )
 
         # TODO: we should look up channel index by type. We are after SY0, which can be looked up in channel map.
@@ -335,8 +354,9 @@ class DataLoader(common.DataLoader):
         if 768 in self.meta['all_channel_ids']:
             self._channels.loc[768, 'is_sys'] = True
 
-        assert len(self.channels) == self.meta['channel_count'], \
+        assert len(self.channels) == self.meta['channel_count'], (
             f'Got {len(self.channels)} channels, expected {self.meta.channel_count}'
+        )
 
     @property
     def channels(self) -> pd.DataFrame:
@@ -363,21 +383,28 @@ class DataLoader(common.DataLoader):
         # Sometimes the sampling rate assumed by the spike sorting doesnt match
         # the one stored in the actual raw data file.
         # This allows us to force set it.
-        if expected_sampling_rate is not None and not np.isclose(meta['sampling_rate'],
-                                                                 expected_sampling_rate, rtol=1e-12):
+        if expected_sampling_rate is not None and not np.isclose(
+            meta['sampling_rate'], expected_sampling_rate, rtol=1e-12
+        ):
             original_duration = (meta['sample_count'] / meta['sampling_rate']) / MS_TO_S
-            adjusted_duration = (meta['sample_count'] / expected_sampling_rate) / MS_TO_S
+            adjusted_duration = (
+                meta['sample_count'] / expected_sampling_rate
+            ) / MS_TO_S
             logger.warning(
-                f"Adjusting sampling rate from {meta['sampling_rate']} to {expected_sampling_rate} "
+                f'Adjusting sampling rate from {meta["sampling_rate"]} to {expected_sampling_rate} '
                 f'which changes duration by {original_duration - adjusted_duration} ms'
             )
             meta['sampling_rate'] = expected_sampling_rate
 
-        meta['sampling_period'] = timeslice.SamplingRate(meta['sampling_rate']).adjust_sampling_period()
+        meta['sampling_period'] = timeslice.SamplingRate(
+            meta['sampling_rate']
+        ).adjust_sampling_period()
 
         bin_file_size = os.path.getsize(bin_path)
         if bin_file_size != meta.raw['fileSizeBytes']:
-            logger.warning(f'Expected {meta.raw["fileSizeBytes"]} but found {bin_file_size} in file')
+            logger.warning(
+                f'Expected {meta.raw["fileSizeBytes"]} but found {bin_file_size} in file'
+            )
 
         data = cls(meta, memmap)
 
@@ -391,20 +418,20 @@ class DataLoader(common.DataLoader):
             meta = pd.Series(json.load(f))
 
             if 'sampling_period' not in meta:
-                meta['sampling_period'] = timeslice.SamplingRate(meta['sampling_rate']).adjust_sampling_period()
+                meta['sampling_period'] = timeslice.SamplingRate(
+                    meta['sampling_rate']
+                ).adjust_sampling_period()
 
         return cls(
-            meta,
-            make_memmap_raw(
-                bin_path,
-                meta['channel_count'],
-                meta['sample_count'])
+            meta, make_memmap_raw(bin_path, meta['channel_count'], meta['sample_count'])
         )
 
-    def load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray:
+    def load(
+        self, sample_idcs: slice, channels: pd.Index, adjust_gain=True
+    ) -> np.ndarray:
         """
         :param channels: list of channel ids
-        :param sample_idcs: 
+        :param sample_idcs:
         :param adjust_gain:
 
         :return: a numpy array of shape <#channels, #samples>
@@ -428,7 +455,9 @@ class DataLoader(common.DataLoader):
 
             # TODO store a "unit"!
             if not len(unique_cf):
-                logger.warning(f'Gain adjustment not homogeneous accross channels: {unique_cf}')
+                logger.warning(
+                    f'Gain adjustment not homogeneous accross channels: {unique_cf}'
+                )
 
             return section_raw
 
@@ -442,10 +471,14 @@ class DataLoader(common.DataLoader):
                 logger.warning(f'Failed to find ap, trying lf')
                 meta_path = list(probe_path.glob('*.lf.meta'))
             else:
-                raise FileNotFoundError(f'Expected to find 1 *.ap.meta file. Found {len(meta_path)}.')
+                raise FileNotFoundError(
+                    f'Expected to find 1 *.ap.meta file. Found {len(meta_path)}.'
+                )
 
         if len(meta_path) != 1:
-            raise FileNotFoundError(f'Expected to find 1 meta file. Found {len(meta_path)}.')
+            raise FileNotFoundError(
+                f'Expected to find 1 meta file. Found {len(meta_path)}.'
+            )
 
         meta_path = meta_path[0]
 
@@ -455,10 +488,14 @@ class DataLoader(common.DataLoader):
                 logger.warning(f'Failed to find ap, trying lf')
                 bin_path = list(probe_path.glob('*.lf.bin'))
             else:
-                raise FileNotFoundError(f'Expected to find 1 *.ap.bin file. Found {len(bin_path)}.')
+                raise FileNotFoundError(
+                    f'Expected to find 1 *.ap.bin file. Found {len(bin_path)}.'
+                )
 
         if len(bin_path) != 1:
-            raise FileNotFoundError(f'Expected to find 1 bin file. Found {len(bin_path)}.')
+            raise FileNotFoundError(
+                f'Expected to find 1 bin file. Found {len(bin_path)}.'
+            )
 
         bin_path = bin_path[0]
 
@@ -466,7 +503,6 @@ class DataLoader(common.DataLoader):
 
 
 class MultiProbeLoader(common.MultiDataLoader):
-
     def __init__(self, loaders):
         for probe, loader in loaders.items():
             loader.channels['probe'] = probe
@@ -488,10 +524,7 @@ class MultiProbeLoader(common.MultiDataLoader):
             except FileNotFoundError as e:
                 logger.error(f'Incomplete folder ({base_path}): {e}')
 
-        return {
-            i: probe_paths[i]
-            for i in sorted(probe_paths.keys())
-        }
+        return {i: probe_paths[i] for i in sorted(probe_paths.keys())}
 
     @staticmethod
     def locate_probes_interp(folder_path: str, interp_name='interp') -> dict:
@@ -501,15 +534,12 @@ class MultiProbeLoader(common.MultiDataLoader):
         probe_paths = {}
 
         for meta_path in paths:
-            probe_number = int(str(meta_path)[:-len('.meta')][-1])
+            probe_number = int(str(meta_path)[: -len('.meta')][-1])
             bin_path = Path(str(meta_path).replace('.meta', '.bin'))
 
             probe_paths[probe_number] = (meta_path, bin_path)
 
-        return {
-            i: probe_paths[i]
-            for i in sorted(probe_paths.keys())
-        }
+        return {i: probe_paths[i] for i in sorted(probe_paths.keys())}
 
     @classmethod
     def multiprobe_spikeglx(cls, folder_path):
@@ -517,10 +547,12 @@ class MultiProbeLoader(common.MultiDataLoader):
 
         assert len(paths) > 0
 
-        return cls({
-            probe: DataLoader.from_spikegl(meta_path, bin_path)
-            for probe, (meta_path, bin_path) in paths.items()
-        })
+        return cls(
+            {
+                probe: DataLoader.from_spikegl(meta_path, bin_path)
+                for probe, (meta_path, bin_path) in paths.items()
+            }
+        )
 
     @classmethod
     def multiprobe_interp(cls, folder_path, interp_name='interp'):
@@ -528,10 +560,12 @@ class MultiProbeLoader(common.MultiDataLoader):
         if len(paths) == 0:
             raise FileNotFoundError(f'No probe found in {folder_path}')
 
-        return cls({
-            probe: DataLoader.from_interp_data(meta_path, bin_path)
-            for probe, (meta_path, bin_path) in paths.items()
-        })
+        return cls(
+            {
+                probe: DataLoader.from_interp_data(meta_path, bin_path)
+                for probe, (meta_path, bin_path) in paths.items()
+            }
+        )
 
 
 class DataLoaderBaseline(DataLoader):
@@ -558,11 +592,13 @@ class DataLoaderBaseline(DataLoader):
     """
 
     def __init__(
-            self, meta, memmap,
-            ref_channels=None,
-            ref_time_ms=None,
-            ref_duration_mins=10,
-            ref_load_hz=None,
+        self,
+        meta,
+        memmap,
+        ref_channels=None,
+        ref_time_ms=None,
+        ref_duration_mins=10,
+        ref_load_hz=None,
     ):
         super().__init__(meta, memmap)
         if ref_channels is None:
@@ -609,7 +645,9 @@ class DataLoaderBaseline(DataLoader):
         offsets = self.channel_offsets[chan_idcs]
 
         if not adjust_gain:
-            offsets = (offsets / self.meta['conversion_factor'][chan_idcs]).astype(denoised.dtype)
+            offsets = (offsets / self.meta['conversion_factor'][chan_idcs]).astype(
+                denoised.dtype
+            )
 
         return denoised - offsets[:, np.newaxis]
 
@@ -629,7 +667,9 @@ class DataLoaderBaseline(DataLoader):
         if load_hz is None:
             load_hz = self.sampling_rate / 30
 
-        load_win_ms = timeslice.Win.build_centered(ref_ms, timeslice.ms(minutes=duration_min))
+        load_win_ms = timeslice.Win.build_centered(
+            ref_ms, timeslice.ms(minutes=duration_min)
+        )
 
         load_slice = load_win_ms.to_slice_idx(self.sampling_rate, load_hz)
 

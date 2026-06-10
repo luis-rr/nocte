@@ -6,7 +6,9 @@ from nocte.timeslice import Win, ms
 
 
 class ScrollablePlot:
-    def __init__(self, plot_zoomed, zoom_window: Win = ms(minutes=10), figsize=(6, 3), nrows=1):
+    def __init__(
+        self, plot_zoomed, zoom_window: Win = ms(minutes=10), figsize=(6, 3), nrows=1
+    ):
         """
         Parameters:
         - plot_zoomed: Function to plot the zoomed-in section.
@@ -23,7 +25,8 @@ class ScrollablePlot:
 
         # Create the figure and axes
         self.fig, axs = plt.subplots(
-            1 + nrows, 1,
+            1 + nrows,
+            1,
             figsize=figsize,
             gridspec_kw={'height_ratios': [1] + [3] * nrows},
             squeeze=False,
@@ -43,7 +46,7 @@ class ScrollablePlot:
 
         # Connect click event
         # noinspection PyTypeChecker
-        self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+        self.fig.canvas.mpl_connect('button_press_event', self.on_click)
 
     def set_view(self, center):
         """Set the view with a given center point."""
@@ -80,13 +83,14 @@ class ScrollablePlot:
 
     @classmethod
     def build_for_timeseries(
-            cls, data,
-            zoom_window=Win.build_centered(0, ms(minutes=10)),
-            scale_overview='hours',
-            scale_zoom='seconds',
-            overview_subsample=1000,
-            figsize=(9, 3),
-            **kwargs,
+        cls,
+        data,
+        zoom_window=Win.build_centered(0, ms(minutes=10)),
+        scale_overview='hours',
+        scale_zoom='seconds',
+        overview_subsample=1000,
+        figsize=(9, 3),
+        **kwargs,
     ):
 
         def plot_zoomed(axs, zoom_win):

@@ -1,6 +1,7 @@
 """
 Code to analyise the cycle of sleep states
 """
+
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -20,11 +21,15 @@ def classify_by_gm(beta, max_detours=ms(seconds=10)):
     gm = GaussianMixture(n_components=2)
     labels = pd.Series(gm.fit_predict(beta), index=beta.index)
 
-    label_sorting = beta.mean(axis=1).groupby(labels).mean().sort_values(ascending=True).index
+    label_sorting = (
+        beta.mean(axis=1).groupby(labels).mean().sort_values(ascending=True).index
+    )
     labels = labels.replace(dict(zip(label_sorting, ['sws', 'rem'])))
 
     if max_detours is not None:
-        rem_wins = timeslice.Windows.build_from_contiguous_values(labels, include_right=False)
+        rem_wins = timeslice.Windows.build_from_contiguous_values(
+            labels, include_right=False
+        )
         rem_wins = rem_wins.merge_sandwiched(max_length=max_detours)
         labels = rem_wins.generate_cat(beta.index)
 
@@ -47,7 +52,9 @@ def classify_by_gm_log10(beta, max_detours=ms(seconds=10)):
 def extract_rem_wins_multi(exp_beta: tr.Traces, key=None, **kwargs):
     return {
         (k if key is None else exp_beta.loc[k, key]): extract_rem_wins(beta, **kwargs)
-        for k, beta in tqdm(exp_beta.traces.items(), total=len(exp_beta.index), desc='rem wins')
+        for k, beta in tqdm(
+            exp_beta.traces.items(), total=len(exp_beta.index), desc='rem wins'
+        )
     }
 
 
@@ -81,7 +88,9 @@ def _is_local_peak(traces, times):
     return mask
 
 
-def estimate_interval(acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3))):
+def estimate_interval(
+    acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3))
+):
     cropped = acorrs_baselines.crop(between)
 
     valid = cropped.traces.notna().any()
@@ -100,9 +109,9 @@ def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
     ax.plot(
         beta_acorrs.traces.loc[zoom_win.to_slice_ms()],
         zorder=1,
-        linewidth=.5,
+        linewidth=0.5,
         color=color,
-        alpha=.125,
+        alpha=0.125,
     )
 
     intervals = intervals.dropna()
@@ -113,8 +122,8 @@ def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
         zorder=1e6,
         facecolor=color,
         edgecolor='w',
-        linewidth=.25,
-        alpha=.75,
+        linewidth=0.25,
+        alpha=0.75,
         clip_on=False,
     )
 
@@ -168,11 +177,10 @@ def extract_rem_traces(analysis_windows, exp_rem_wins):
     rem_traces = {}
 
     for k, win, props in analysis_windows.iter_wins_items(pbar=True):
-        rem_wins = exp_rem_wins[props['exp_name']].crop_to_main(win).shift(-props['ref'])
+        rem_wins = (
+            exp_rem_wins[props['exp_name']].crop_to_main(win).shift(-props['ref'])
+        )
 
         rem_traces[k] = rem_wins.generate_cat_contiguous(100)
 
-    return tr.Traces(
-        analysis_windows.wins,
-        pd.DataFrame(rem_traces)
-    )
+    return tr.Traces(analysis_windows.wins, pd.DataFrame(rem_traces))

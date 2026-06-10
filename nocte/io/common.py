@@ -96,9 +96,9 @@ class DataLoader(abc.ABC):
 
     def describe(self, quiet=False):
         desc = (
-            f" {self.sample_count:,d} samples"
-            f" at {self.sampling_rate * MS_TO_S:.2g}kHz"
-            f" between {self.win_ms}"
+            f' {self.sample_count:,d} samples'
+            f' at {self.sampling_rate * MS_TO_S:.2g}kHz'
+            f' between {self.win_ms}'
         )
 
         if quiet:
@@ -118,20 +118,20 @@ class DataLoader(abc.ABC):
         """
         collect = []
         for probe, ch in channels_per_probe:
-            which = (self.channels["probe"] == probe) & (
-                self.channels["local_channel_id"] == ch
+            which = (self.channels['probe'] == probe) & (
+                self.channels['local_channel_id'] == ch
             )
             local_ids = self.channels.index[which]
             if len(local_ids) == 0:
-                which = (self.channels["probe"] == probe) & (
-                    self.channels["local_channel_id"] == (ch + 1)
+                which = (self.channels['probe'] == probe) & (
+                    self.channels['local_channel_id'] == (ch + 1)
                 )
                 local_ids = self.channels.index[which]
 
                 if len(local_ids) == 0:
-                    raise KeyError(f"Failed to locate probe-{probe} channel-{ch}")
+                    raise KeyError(f'Failed to locate probe-{probe} channel-{ch}')
                 else:
-                    logger.error(f"Channel error by 1")
+                    logger.error(f'Channel error by 1')
 
             assert len(local_ids) == 1
             collect.append(local_ids)
@@ -169,16 +169,16 @@ class MultiDataLoader(DataLoader):
             The keys are unique file identifiers (0, 1, 2...) representing probes.
         """
         if len(loaders) == 0:
-            raise ValueError("No loaders provided to MultiDataLoader")
+            raise ValueError('No loaders provided to MultiDataLoader')
 
         self.loaders = loaders
 
         all_channels = {
             loader_id: loader.channels for loader_id, loader in self.loaders.items()
         }
-        all_channels = pd.concat(all_channels, names=["loader", "local_channel_id"])
+        all_channels = pd.concat(all_channels, names=['loader', 'local_channel_id'])
         all_channels = all_channels.sort_index().reset_index()
-        all_channels.index.name = "channel"
+        all_channels.index.name = 'channel'
         assert all_channels.index.is_unique
         self._channels = all_channels
 
@@ -189,7 +189,7 @@ class MultiDataLoader(DataLoader):
         sampling_rate = all_sampling_rates.mean()
         if not all_sampling_rates.nunique() == 1:
             logger.warning(
-                f"Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}"
+                f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}'
             )
 
         self._sampling_period = timeslice.SamplingRate(
@@ -203,8 +203,8 @@ class MultiDataLoader(DataLoader):
         if not all_sample_counts.nunique() == 1:
             max_sample_count = all_sample_counts.max()
             logger.error(
-                f"Different sample counts across loaders. "
-                f"Taking min: {self._sample_count:,g} (loosing {max_sample_count - self._sample_count:,g} samples)"
+                f'Different sample counts across loaders. '
+                f'Taking min: {self._sample_count:,g} (loosing {max_sample_count - self._sample_count:,g} samples)'
             )
 
     def sel_channels(self, which):
@@ -215,12 +215,12 @@ class MultiDataLoader(DataLoader):
         :return: a reduced copy of this loader
         """
         new = self.__class__(
-            {ld: self.loaders[ld] for ld in self._channels.loc[which, "loader"].values}
+            {ld: self.loaders[ld] for ld in self._channels.loc[which, 'loader'].values}
         )
         new._channels = (
             self._channels.loc[which]
             .reset_index(drop=True)
-            .rename_axis(index="channel")
+            .rename_axis(index='channel')
         )
         return new
 
@@ -240,11 +240,11 @@ class MultiDataLoader(DataLoader):
 
         all_traces = []
 
-        for loader_id, ch_sel in self.channels.loc[channels].groupby("loader"):
+        for loader_id, ch_sel in self.channels.loc[channels].groupby('loader'):
             loader = self.loaders[loader_id]
 
             data = loader.load(
-                channels=ch_sel["local_channel_id"].values,
+                channels=ch_sel['local_channel_id'].values,
                 sample_idcs=sample_idcs,
                 adjust_gain=adjust_gain,
             )
@@ -257,7 +257,7 @@ class MultiDataLoader(DataLoader):
     def describe(self, quiet=False):
 
         desc = super().describe(quiet=True)
-        desc = f"{len(self.channels):,d} channels ({len(self.loaders):,d} files) {desc}"
+        desc = f'{len(self.channels):,d} channels ({len(self.loaders):,d} files) {desc}'
 
         if quiet:
             return desc

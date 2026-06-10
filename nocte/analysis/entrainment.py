@@ -13,17 +13,19 @@ from nocte.analysis import stim
 from nocte.timeslice import Win
 from nocte.timeslice import ms, MS_TO_S
 
-PROT_COLORS = pd.Series({
-    (80000.0, 1000.0): 'C0',
-    (100000.0, 1000.0): 'C1',
-    (120000.0, 1000.0): 'C2',
-    (140000.0, 1000.0): 'C3',
-    (160000.0, 1000.0): 'C4',
-    (180000.0, 1000.0): 'C5',
-    (200000.0, 1000.0): 'C6',
-    (220000.0, 1000.0): 'C8',
-    (240000.0, 1000.0): 'C9',
-})
+PROT_COLORS = pd.Series(
+    {
+        (80000.0, 1000.0): 'C0',
+        (100000.0, 1000.0): 'C1',
+        (120000.0, 1000.0): 'C2',
+        (140000.0, 1000.0): 'C3',
+        (160000.0, 1000.0): 'C4',
+        (180000.0, 1000.0): 'C5',
+        (200000.0, 1000.0): 'C6',
+        (220000.0, 1000.0): 'C8',
+        (240000.0, 1000.0): 'C9',
+    }
+)
 
 
 def group_pulses(light_wins, max_interval=ms(minutes=5)):
@@ -45,8 +47,11 @@ def group_pulses(light_wins, max_interval=ms(minutes=5)):
     group = pd.Series(index=lengths.index, dtype=int)
 
     for idx in lengths.index:
-
-        if (lengths[idx] != length) or (to_prev[idx] != interval) or interval >= max_interval:
+        if (
+            (lengths[idx] != length)
+            or (to_prev[idx] != interval)
+            or interval >= max_interval
+        ):
             k += 1
 
             length = lengths[idx]
@@ -72,13 +77,19 @@ def group_pulses_multi(exp_light_wins):
 def extract_train_protocol(light_wins):
     light_wins = light_wins.sel(cat='on')
 
-    df = pd.DataFrame({
-        'pulse_count': light_wins['train'].value_counts(),
-        'pulse_len_precise': light_wins.lengths().groupby(light_wins['train']).median(),
-        'start': light_wins.groupby(light_wins['train'])['start'].min(),
-        'stop': light_wins.groupby(light_wins['train'])['stop'].max(),
-        'interval_precise': light_wins.interval_to_next().groupby(light_wins['train']).median(),
-    })
+    df = pd.DataFrame(
+        {
+            'pulse_count': light_wins['train'].value_counts(),
+            'pulse_len_precise': light_wins.lengths()
+            .groupby(light_wins['train'])
+            .median(),
+            'start': light_wins.groupby(light_wins['train'])['start'].min(),
+            'stop': light_wins.groupby(light_wins['train'])['stop'].max(),
+            'interval_precise': light_wins.interval_to_next()
+            .groupby(light_wins['train'])
+            .median(),
+        }
+    )
 
     df.loc[df['pulse_count'] <= 1, 'interval_precise'] = 0
 
@@ -106,9 +117,8 @@ def _extract_train_protocol_multi(exp_light_wins):
 
 
 def extract_train_protocol_multi(
-        exp_light_wins,
-        min_pulses=3,
-        interval_range=(ms(seconds=0), ms(minutes=10))) -> timeslice.Windows:
+    exp_light_wins, min_pulses=3, interval_range=(ms(seconds=0), ms(minutes=10))
+) -> timeslice.Windows:
     all_trains = _extract_train_protocol_multi(exp_light_wins)
 
     all_trains = timeslice.Windows.concat(all_trains, local_name='local_train')
@@ -129,12 +139,15 @@ def get_protocol_desc(interval, pulse_len):
 def get_phase_evolution(all_light_wins, valid_trains, exp_phases):
     multiple = {}
 
-    for (interval, pulse_len), trains in valid_trains.iter_groupby(['interval', 'pulse_len']):
-
+    for (interval, pulse_len), trains in valid_trains.iter_groupby(
+        ['interval', 'pulse_len']
+    ):
         traces = {}
 
         for train_idx, train_win, props in trains.iter_wins_items():
-            light_wins = all_light_wins.sel(exp_name=props['exp_name'], train=props['local_train'], cat='on')
+            light_wins = all_light_wins.sel(
+                exp_name=props['exp_name'], train=props['local_train'], cat='on'
+            )
 
             times = light_wins['start']
 
@@ -167,18 +180,17 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
     nrows = len(beta_cut.index)
 
     f, axs = splot.make_axs_grid_with_marginals(
-        figsize=(6, .5 + .75 * nrows),
+        figsize=(6, 0.5 + 0.75 * nrows),
         nrows=nrows,
         constrained_layout=False,
         ymargin=False,
         size_ratio=5,
     )
     f.tight_layout()
-    f.subplots_adjust(hspace=.1, left=.1)
+    f.subplots_adjust(hspace=0.1, left=0.1)
     axs = axs.ravel()
 
     for i, k in enumerate(beta_cut.index):
-
         interval = beta_cut.loc[k, 'interval']
         pulse_len = beta_cut.loc[k, 'pulse_len']
         exp_name = beta_cut.loc[k, 'exp_name']
@@ -200,14 +212,19 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
 
         ylim = racorr.columns.min(), racorr.columns.max()
 
-        for t in np.concatenate([np.arange(0, ylim[0], -interval), np.arange(interval, ylim[1] + 1, interval)]):
+        for t in np.concatenate(
+            [
+                np.arange(0, ylim[0], -interval),
+                np.arange(interval, ylim[1] + 1, interval),
+            ]
+        ):
             ax.plot(
                 zoom_win,
                 [t] * 2,
                 linestyle='--',
                 zorder=1e5,
                 color='k',
-                linewidth=.5,
+                linewidth=0.5,
             )
         ax.text(
             0,
@@ -218,7 +235,9 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
             transform=ax.get_yaxis_transform(),
         )
 
-        splot.add_desc(ax, exp_name, loc='bottom left', loc_pad=0, fontsize=6, bkg_color='none')
+        splot.add_desc(
+            ax, exp_name, loc='bottom left', loc_pad=0, fontsize=6, bkg_color='none'
+        )
 
         light_wins = all_light_wins.sel(exp_name=exp_name)
         train_win = Win(
@@ -254,7 +273,7 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
                     alpha=1,
                     edgecolor=color,
                     facecolor=color,
-                    linewidth=.5,
+                    linewidth=0.5,
                     zorder=1e7,
                     transform=ax.get_xaxis_transform(),
                 )
@@ -264,7 +283,13 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
         splot.drop_spine(axs_dict['main'], 'x')
 
     axs_dict = axs[-1]
-    splot.set_time_ticks(axs_dict['main'], tight=True, scale='minutes', major=ms(minutes=5), minor=ms(minutes=1))
+    splot.set_time_ticks(
+        axs_dict['main'],
+        tight=True,
+        scale='minutes',
+        major=ms(minutes=5),
+        minor=ms(minutes=1),
+    )
 
     return f
 
@@ -272,7 +297,10 @@ def plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs):
 def collect_train_period_lens(exp_rem_wins, analysis_wins, edges='keep'):
     all_periods = []
 
-    for exp_name, trains in tqdm(analysis_wins.iter_groupby('exp_name'), total=analysis_wins['exp_name'].nunique()):
+    for exp_name, trains in tqdm(
+        analysis_wins.iter_groupby('exp_name'),
+        total=analysis_wins['exp_name'].nunique(),
+    ):
         rem_wins = exp_rem_wins[exp_name]
 
         rem = rem_wins.sel(cat='rem')
@@ -281,8 +309,12 @@ def collect_train_period_lens(exp_rem_wins, analysis_wins, edges='keep'):
         sws = rem_wins.sel(cat='sws')
         cut_sws = trains.classify_windows(sws, edges=edges)
 
-        cut_rem = timeslice.Windows.concat(cut_rem, cycle_name='train_id', local_name='period_id')
-        cut_sws = timeslice.Windows.concat(cut_sws, cycle_name='train_id', local_name='period_id')
+        cut_rem = timeslice.Windows.concat(
+            cut_rem, cycle_name='train_id', local_name='period_id'
+        )
+        cut_sws = timeslice.Windows.concat(
+            cut_sws, cycle_name='train_id', local_name='period_id'
+        )
 
         cut_rem['exp_name'] = exp_name
         cut_sws['exp_name'] = exp_name

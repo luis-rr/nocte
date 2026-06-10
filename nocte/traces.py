@@ -16,10 +16,10 @@ from typing import Self
 
 # @nb.njit(parallel=True)
 def _cross_corr_shifted_nb(
-        signal0: np.ndarray,
-        signal1: np.ndarray,
-        idcs: np.ndarray,
-        offset: int,
+    signal0: np.ndarray,
+    signal1: np.ndarray,
+    idcs: np.ndarray,
+    offset: int,
 ):
     """
     Fast sliding window cross corr.
@@ -47,7 +47,7 @@ def _cross_corr_shifted_nb(
     # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
     # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
 
-    valid_idcs, = np.where(valid)
+    (valid_idcs,) = np.where(valid)
     iter_count = len(valid_idcs)
 
     for j in nb.prange(iter_count):
@@ -66,10 +66,10 @@ def _cross_corr_shifted_nb(
 
 @nb.njit(parallel=True)
 def _cross_corr_shifted_pearsons_nb(
-        signal0: np.ndarray,
-        signal1: np.ndarray,
-        idcs: np.ndarray,
-        offset: int,
+    signal0: np.ndarray,
+    signal1: np.ndarray,
+    idcs: np.ndarray,
+    offset: int,
 ):
     """
     Fast sliding window cross corr.
@@ -97,7 +97,7 @@ def _cross_corr_shifted_pearsons_nb(
     # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
     # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
 
-    valid_idcs, = np.where(valid)
+    (valid_idcs,) = np.where(valid)
     iter_count = len(valid_idcs)
 
     for j in nb.prange(iter_count):
@@ -118,25 +118,26 @@ def _cross_corr_shifted_pearsons_nb(
 
 
 def _assert_multiple(sampling_period_ms, t):
-    is_multiple = (t % sampling_period_ms == 0)
+    is_multiple = t % sampling_period_ms == 0
 
     if isinstance(is_multiple, np.ndarray):
         is_multiple = np.all(is_multiple)
 
-    assert is_multiple, \
-        f'Signal sampled every {sampling_period_ms} ms, ' \
+    assert is_multiple, (
+        f'Signal sampled every {sampling_period_ms} ms, '
         f'but asking for non-multiple {t} ms'
+    )
 
 
 # @nb.njit(parallel=True)
 def _rolling_cross_corr_discreete(
-        s0: np.ndarray,
-        s1: np.ndarray,
-        offsets: np.ndarray,
-        sliding_win: int,
-        sliding_step: int,
-        pbar=None,
-        pearson=False,
+    s0: np.ndarray,
+    s1: np.ndarray,
+    offsets: np.ndarray,
+    sliding_win: int,
+    sliding_step: int,
+    pbar=None,
+    pearson=False,
 ):
     length = min(len(s0), len(s1))
 
@@ -146,8 +147,9 @@ def _rolling_cross_corr_discreete(
 
     xcorr = np.empty((len(offsets), len(sliding_wins)))
 
-    for i, offset in enumerate(_optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')):
-
+    for i, offset in enumerate(
+        _optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')
+    ):
         if pearson:
             value = _cross_corr_shifted_pearsons_nb(s0, s1, sliding_wins, offset=offset)
 
@@ -160,14 +162,14 @@ def _rolling_cross_corr_discreete(
 
 
 def _rolling_cross_corr_ms(
-        s0: np.ndarray,
-        s1: np.ndarray,
-        sampling_period_ms: float,
-        lags_ms: np.ndarray,
-        sliding_win_ms: float,
-        sliding_step_ms: float,
-        pbar=None,
-        pearson=False,
+    s0: np.ndarray,
+    s1: np.ndarray,
+    sampling_period_ms: float,
+    lags_ms: np.ndarray,
+    sliding_win_ms: float,
+    sliding_step_ms: float,
+    pbar=None,
+    pearson=False,
 ):
     lags_ms = np.asarray(lags_ms)
     assert len(lags_ms) > 0
@@ -196,7 +198,7 @@ def _rolling_cross_corr_ms(
     return xcorr
 
 
-def _estimate_sampling_period(times, atol=1.e-6) -> float:
+def _estimate_sampling_period(times, atol=1.0e-6) -> float:
     dts = np.diff(times)
     dts = np.unique(dts)
 
@@ -213,10 +215,10 @@ class Traces(DataFrameWrapper):
     """
 
     def __init__(
-            self,
-            reg: pd.DataFrame,
-            traces: pd.DataFrame,
-            copy=True,
+        self,
+        reg: pd.DataFrame,
+        traces: pd.DataFrame,
+        copy=True,
     ):
         if copy:
             traces = traces.copy()
@@ -232,7 +234,9 @@ class Traces(DataFrameWrapper):
         if self.reg.index.name is None:
             default_index_name = 'trace_idx'
             if default_index_name in reg.columns:
-                logging.warning(f'Default index name "{default_index_name}" already in columns. Drop or rename first?')
+                logging.warning(
+                    f'Default index name "{default_index_name}" already in columns. Drop or rename first?'
+                )
             self.reg.rename_axis(index=default_index_name, inplace=True)
 
         assert self.traces.index.is_unique
@@ -244,15 +248,18 @@ class Traces(DataFrameWrapper):
 
         assert self.traces.columns.name == self.reg.index.name
 
-        assert len(self.reg.index) == len(self.traces.columns), \
+        assert len(self.reg.index) == len(self.traces.columns), (
             f'Got {len(self.reg.index)} reg entries but {len(self.traces.columns)} traces'
+        )
 
         assert np.all(self.reg.index == self.traces.columns)
 
         self.traces.columns.name = self.reg.index.name
 
     @classmethod
-    def load_single(cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None):
+    def load_single(
+        cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None
+    ):
 
         load_win = timeslice.Win(*load_win)
 
@@ -262,10 +269,7 @@ class Traces(DataFrameWrapper):
                 (0, load_win.length),
             )
         else:
-            load_wins = timeslice.Windows.build_around(
-                pd.Series([ref]),
-                load_win
-            )
+            load_wins = timeslice.Windows.build_around(pd.Series([ref]), load_win)
 
         result = cls.load_many(
             loader,
@@ -295,7 +299,9 @@ class Traces(DataFrameWrapper):
             win_ms = win_ms.clip(loader.win_ms)
 
             win_ms_rel = win_ms.shift(-ref)
-            slice_idcs_rel: slice = win_ms_rel.to_slice_idx(loader.sampling_rate, load_hz)
+            slice_idcs_rel: slice = win_ms_rel.to_slice_idx(
+                loader.sampling_rate, load_hz
+            )
 
             # Rounding for closest sample together with imperfect sampling rates may cause
             # an off by one difference between:
@@ -311,7 +317,9 @@ class Traces(DataFrameWrapper):
                 slice_idcs_rel.step,
             )
 
-            assert (slice_idcs.stop - slice_idcs.start) == (slice_idcs_rel.stop - slice_idcs_rel.start)
+            assert (slice_idcs.stop - slice_idcs.start) == (
+                slice_idcs_rel.stop - slice_idcs_rel.start
+            )
 
             # This is equivalent of converting to idcs in the ideal load_hz
             rel_idcs = np.arange(
@@ -336,7 +344,7 @@ class Traces(DataFrameWrapper):
 
         traces.index = traces.index.astype(int)
 
-        traces.index = (traces.index * 1_000. / load_hz)
+        traces.index = traces.index * 1_000.0 / load_hz
 
         new_reg = traces.columns.to_frame(index=False)
         merged_reg = pd.merge(
@@ -408,14 +416,14 @@ class Traces(DataFrameWrapper):
 
     @classmethod
     def from_dict_resampled(
-            cls,
-            d: dict,
-            names: list,
-            start='milliseconds',
-            stop=None,
-            period=None,
-            reg: pd.DataFrame = None,
-            pbar=None,
+        cls,
+        d: dict,
+        names: list,
+        start='milliseconds',
+        stop=None,
+        period=None,
+        reg: pd.DataFrame = None,
+        pbar=None,
     ):
         assert len(d) > 0
 
@@ -440,7 +448,6 @@ class Traces(DataFrameWrapper):
 
         resampled = {}
         for k, trace in _optional_pbar(d.items(), total=len(d), pbar=pbar):
-
             if isinstance(trace, pd.Series):
                 resampled[k] = win.interp_series(trace, step=period)
             else:
@@ -466,7 +473,9 @@ class Traces(DataFrameWrapper):
         return cls.from_df(resampled, reg=reg)
 
     @classmethod
-    def from_data_dict(cls, datadict: dd.DataDict, key_name: str = None, pre_aligned=False):
+    def from_data_dict(
+        cls, datadict: dd.DataDict, key_name: str = None, pre_aligned=False
+    ):
         """Assuming each entry is a traces object"""
 
         if key_name is None:
@@ -520,7 +529,6 @@ class Traces(DataFrameWrapper):
             rel_win = self.get_global_win()
             start, stop = rel_win.start, rel_win.stop
 
-
         if ref in self.columns:
             refs = reg[ref]
         else:
@@ -534,18 +542,14 @@ class Traces(DataFrameWrapper):
     @classmethod
     def concat_dict(cls, traces_dict: dict, key_name=None):
 
-        reg = pd.concat({
-            k: traces.reg
-            for k, traces in traces_dict.items()
-        }, axis=0, names=key_name)
+        reg = pd.concat(
+            {k: traces.reg for k, traces in traces_dict.items()}, axis=0, names=key_name
+        )
 
         reg.reset_index(inplace=True)
         reg.rename(columns=dict(trace_idx='local_trace_idx'), inplace=True)
 
-        traces = pd.concat([
-            traces.traces
-            for traces in traces_dict.values()
-        ], axis=1)
+        traces = pd.concat([traces.traces for traces in traces_dict.values()], axis=1)
 
         traces.columns = reg.index
 
@@ -583,24 +587,30 @@ class Traces(DataFrameWrapper):
         This is much faster than concatenating DataFrames with pd.concat, which involves slow reindexing.
         """
 
-        sampling_periods = np.array([traces.sampling_period for traces in traces_dict.values()])
+        sampling_periods = np.array(
+            [traces.sampling_period for traces in traces_dict.values()]
+        )
         step = sampling_periods[0]
-        assert np.all(sampling_periods == step), \
+        assert np.all(sampling_periods == step), (
             f'Traces with different sampling periods'
+        )
 
         starts = np.array([traces.time[0] for traces in traces_dict.values()])
         global_start = np.min(starts)
-        assert np.all(((starts - global_start) % sampling_periods[0]) == 0), \
+        assert np.all(((starts - global_start) % sampling_periods[0]) == 0), (
             f'Traces sampling is misaligned'
+        )
 
         stops = np.array([traces.time[-1] for traces in traces_dict.values()])
         global_stop = np.max(stops)
 
-        unified_index = pd.Index(np.arange(
-            global_start,
-            global_stop + step,
-            step,
-        ))
+        unified_index = pd.Index(
+            np.arange(
+                global_start,
+                global_stop + step,
+                step,
+            )
+        )
 
         padded_dfs = []
         for traces in traces_dict.values():
@@ -609,17 +619,22 @@ class Traces(DataFrameWrapper):
             stop = df.index[-1]
             cols = df.columns
 
-            start_pad = pd.DataFrame(np.nan, index=np.arange(global_start, start, step), columns=cols)
-            stop_pad = pd.DataFrame(np.nan, index=np.arange(stop + step, global_stop + step, step), columns=cols)
+            start_pad = pd.DataFrame(
+                np.nan, index=np.arange(global_start, start, step), columns=cols
+            )
+            stop_pad = pd.DataFrame(
+                np.nan,
+                index=np.arange(stop + step, global_stop + step, step),
+                columns=cols,
+            )
 
             padded = pd.concat([start_pad, df, stop_pad])
             assert len(padded) == len(unified_index)
             padded_dfs.append(padded)
 
-        combined_reg = pd.concat({
-            k: traces.reg
-            for k, traces in traces_dict.items()
-        }, axis=0, names=names)
+        combined_reg = pd.concat(
+            {k: traces.reg for k, traces in traces_dict.items()}, axis=0, names=names
+        )
 
         combined_reg.reset_index(inplace=True, drop=False)
         combined_reg.drop('trace_idx', axis=1, inplace=True)
@@ -627,9 +642,7 @@ class Traces(DataFrameWrapper):
         combined_array = np.hstack([df.to_numpy() for df in padded_dfs])
 
         combined_traces = pd.DataFrame(
-            combined_array,
-            columns=combined_reg.index,
-            index=unified_index
+            combined_array, columns=combined_reg.index, index=unified_index
         )
 
         return cls(combined_reg, combined_traces, copy=False)
@@ -814,7 +827,9 @@ class Traces(DataFrameWrapper):
             same_values = sreg.nunique(dropna=True) == 1
             none_missing = sreg.isna().sum() == 0
             sreg = sreg.loc[:, same_values & none_missing].drop_duplicates()
-            assert len(sreg) == 1, f'Expected single trace for {k}. Got {len(sreg)}: {sreg.nunique()}'
+            assert len(sreg) == 1, (
+                f'Expected single trace for {k}. Got {len(sreg)}: {sreg.nunique()}'
+            )
             idx = sreg.index[0]
 
             agg_reg[idx] = sreg.iloc[0]
@@ -855,10 +870,12 @@ class Traces(DataFrameWrapper):
                 bins + 1,
             )
 
-        df = pd.DataFrame({
-            k: np.histogram(trace, bins=bins, density=density, weights=weights)[0]
-            for k, trace in self.items()
-        })
+        df = pd.DataFrame(
+            {
+                k: np.histogram(trace, bins=bins, density=density, weights=weights)[0]
+                for k, trace in self.items()
+            }
+        )
 
         df.index = pd.IntervalIndex.from_breaks(bins)
 
@@ -932,7 +949,7 @@ class Traces(DataFrameWrapper):
 
         return hists
 
-    def normalize_by_quantiles(self, qmin=0.05, qmax=.95, win=None):
+    def normalize_by_quantiles(self, qmin=0.05, qmax=0.95, win=None):
 
         if win is not None:
             traces = self.crop(win)
@@ -1037,39 +1054,35 @@ class Traces(DataFrameWrapper):
         )
 
     def crop(
-            self,
-            win: timeslice.Win,
-            **kwargs,
+        self,
+        win: timeslice.Win,
+        **kwargs,
     ):
         win = timeslice.Win(*win)
         new = self.apply(lambda trace: win.crop_df(trace, **kwargs))
         return new
 
     def crop_centered(
-            self,
-            duration,
-            **kwargs,
+        self,
+        duration,
+        **kwargs,
     ):
         win = timeslice.Win.build_centered(np.mean(self.time), duration)
         return self.crop(win, **kwargs)
 
     def shift_time(
-            self,
-            ref_time: float | pd.Series | np.ndarray,
+        self,
+        ref_time: float | pd.Series | np.ndarray,
     ):
         if isinstance(ref_time, (pd.Series, np.ndarray)):
-            return self.shift_time_each(
-                ref_time
-            )
+            return self.shift_time_each(ref_time)
         else:
-            return self.replace_traces(
-                self.traces.set_index(self.time + ref_time)
-            )
+            return self.replace_traces(self.traces.set_index(self.time + ref_time))
 
     def shift_time_each(
-            self,
-            shifts: pd.Series,
-            neg=False,
+        self,
+        shifts: pd.Series,
+        neg=False,
     ):
         """
         Shift each individual trace by the corresponding shift.
@@ -1108,11 +1121,9 @@ class Traces(DataFrameWrapper):
         # by directly resampling here in the same way that 'from_dict_resampled' works.
         shifted_traces = pd.DataFrame(shifted_traces)
 
-        return self.replace_traces(
-            shifted_traces
-        )
+        return self.replace_traces(shifted_traces)
 
-    def cross_corr(self, pairs, pearson=True, mode="same"):
+    def cross_corr(self, pairs, pearson=True, mode='same'):
         """
         Compute cross-correlations between selected pairs of traces.
 
@@ -1140,7 +1151,7 @@ class Traces(DataFrameWrapper):
                 return pd.Series(dtype=float)
 
             # align on common index
-            ti, tj = ti.align(tj, join="inner")
+            ti, tj = ti.align(tj, join='inner')
 
             if len(ti) == 0:
                 return pd.Series(dtype=float)
@@ -1151,15 +1162,17 @@ class Traces(DataFrameWrapper):
 
             t = ti.index - ti.index.min()
 
-            if mode == "same":
+            if mode == 'same':
                 lags = t - t[len(t) // 2]
-            elif mode == "full":
-                lags = np.concatenate([
-                    t[::-1] * -1,
-                    t[1:],
-                ])
+            elif mode == 'full':
+                lags = np.concatenate(
+                    [
+                        t[::-1] * -1,
+                        t[1:],
+                    ]
+                )
             else:
-                assert mode == "valid"
+                assert mode == 'valid'
                 lags = [0]
 
             xcorr = scipy.signal.correlate(
@@ -1210,7 +1223,9 @@ class Traces(DataFrameWrapper):
             for pair_idx, (a, b) in self.reg.groupby(pair_by).groups.items()
         }
 
-        pairs = pd.DataFrame.from_dict(groups, orient='index', columns=['first', 'second'])
+        pairs = pd.DataFrame.from_dict(
+            groups, orient='index', columns=['first', 'second']
+        )
 
         xcorrs = self.cross_corr_rolling(
             pairs=pairs,
@@ -1220,14 +1235,14 @@ class Traces(DataFrameWrapper):
         return pairs, xcorrs
 
     def cross_corr_rolling(
-            self,
-            pairs: pd.DataFrame,
-            lags_ms: np.ndarray,
-            sliding_win_ms: float,
-            sliding_step_ms: float = None,
-            pbar=None,
-            pbar_single=None,
-            pearson=True,
+        self,
+        pairs: pd.DataFrame,
+        lags_ms: np.ndarray,
+        sliding_win_ms: float,
+        sliding_step_ms: float = None,
+        pbar=None,
+        pbar_single=None,
+        pearson=True,
     ):
         sampling_period = self.sampling_period
 
@@ -1257,9 +1272,9 @@ class Traces(DataFrameWrapper):
             )
 
             win_centers = (
-                    np.arange(xcorr.shape[1]) * sliding_step_ms
-                    + self.traces.index.min()
-                    + sliding_win_ms * .5
+                np.arange(xcorr.shape[1]) * sliding_step_ms
+                + self.traces.index.min()
+                + sliding_win_ms * 0.5
             )
 
             xcorrs[i] = pd.DataFrame(
@@ -1271,14 +1286,14 @@ class Traces(DataFrameWrapper):
         return xcorrs
 
     def corr_rolling(
-            self,
-            template: np.ndarray,
-            lags_ms: np.ndarray,
-            sliding_win_ms: float,
-            sliding_step_ms: float = None,
-            pbar=None,
-            pbar_single=None,
-            pearson=True,
+        self,
+        template: np.ndarray,
+        lags_ms: np.ndarray,
+        sliding_win_ms: float,
+        sliding_step_ms: float = None,
+        pbar=None,
+        pbar_single=None,
+        pearson=True,
     ):
         sampling_period = self.sampling_period
 
@@ -1306,9 +1321,9 @@ class Traces(DataFrameWrapper):
             )
 
             win_centers = (
-                    np.arange(xcorr.shape[1]) * sliding_step_ms
-                    + self.traces.index.min()
-                    + sliding_win_ms * .5
+                np.arange(xcorr.shape[1]) * sliding_step_ms
+                + self.traces.index.min()
+                + sliding_win_ms * 0.5
             )
 
             xcorrs[k] = pd.DataFrame(
@@ -1320,14 +1335,14 @@ class Traces(DataFrameWrapper):
         return xcorrs
 
     def auto_corr_rolling(
-            self,
-            lags_ms: np.ndarray,
-            sliding_win_ms: float,
-            sliding_step_ms: float = None,
-            pbar=None,
-            pbar_each=None,
-            pearson=True,
-            key=None,
+        self,
+        lags_ms: np.ndarray,
+        sliding_win_ms: float,
+        sliding_step_ms: float = None,
+        pbar=None,
+        pbar_each=None,
+        pearson=True,
+        key=None,
     ):
 
         if key is not None:
@@ -1356,9 +1371,9 @@ class Traces(DataFrameWrapper):
             )
 
             win_centers = (
-                    np.arange(acorr.shape[1]) * sliding_step_ms
-                    + self.traces.index.min()
-                    + sliding_win_ms * .5
+                np.arange(acorr.shape[1]) * sliding_step_ms
+                + self.traces.index.min()
+                + sliding_win_ms * 0.5
             )
 
             acorr = pd.DataFrame(
@@ -1370,10 +1385,7 @@ class Traces(DataFrameWrapper):
             acorrs[k] = acorr
 
         if key is not None:
-            acorrs = {
-                self.loc[k, key]: v
-                for k, v in acorrs.items()
-            }
+            acorrs = {self.loc[k, key]: v for k, v in acorrs.items()}
 
         return acorrs
 
@@ -1399,10 +1411,12 @@ class Traces(DataFrameWrapper):
                 lags = t - t[len(t) // 2]
 
             elif mode == 'full':
-                lags = np.concatenate([
-                    t[::-1] * -1,
-                    t[1:],
-                ])
+                lags = np.concatenate(
+                    [
+                        t[::-1] * -1,
+                        t[1:],
+                    ]
+                )
             else:
                 assert mode == 'valid'
                 lags = [0]
@@ -1453,11 +1467,11 @@ class Traces(DataFrameWrapper):
 
         return merged, reg_index_name
 
-    def extract_all(  #TODO rewrite
-            self,
-            windows: timeslice.Windows,
-            upsampling_ms=None,
-            pbar=None,
+    def extract_all(  # TODO rewrite
+        self,
+        windows: timeslice.Windows,
+        upsampling_ms=None,
+        pbar=None,
     ):
         """
         Extract all traces using a set of time windows.
@@ -1512,7 +1526,8 @@ class Traces(DataFrameWrapper):
         dups = reg.columns.duplicated()
         if np.any(dups):
             logging.warning(
-                f'Dropping duplicated columns: ' + ', '.join(list(reg.columns[dups]))
+                f'Dropping duplicated columns: '
+                + ', '.join(list(reg.columns[dups]))
                 + '. Maybe you want cut_merge?'
             )
             reg = reg.loc[:, ~dups]
@@ -1556,7 +1571,6 @@ class Traces(DataFrameWrapper):
         multi_cut = []
 
         for win_idx, sel in matched_reg.groupby('win_idx', sort=False):
-
             sel_traces = self.traces.loc[:, sel['tr_idx'].values]
 
             assert not np.any(np.isnan(sel_traces.index))
@@ -1681,10 +1695,7 @@ class Traces(DataFrameWrapper):
             else:
                 return s.loc[t]
 
-        return pd.Series({
-            k: lookup_single(self.get(k), t)
-            for k, t in times.items()
-        })
+        return pd.Series({k: lookup_single(self.get(k), t) for k, t in times.items()})
 
     def apply(self, *args, **kwargs):
         new = self.traces.apply(*args, **kwargs)
@@ -1741,9 +1752,7 @@ class Traces(DataFrameWrapper):
         )
 
     def contains_nan(self):
-        return bool(np.any(
-            self.traces.isna().values
-        ))
+        return bool(np.any(self.traces.isna().values))
 
     def drop_missing(self, how='any'):
         """Drop timepoints with missing data for any trace"""
@@ -1786,7 +1795,7 @@ class Traces(DataFrameWrapper):
 
     @property
     def sampling_rate(self) -> float:
-        sampling_rate = 1. / (self.sampling_period * timeslice.MS_TO_S)
+        sampling_rate = 1.0 / (self.sampling_period * timeslice.MS_TO_S)
 
         if sampling_rate.is_integer():
             sampling_rate = int(sampling_rate)
@@ -1795,9 +1804,7 @@ class Traces(DataFrameWrapper):
 
     def gradient(self):
         sampling_period = self.sampling_period
-        return self.apply(
-            lambda trace: np.gradient(trace, sampling_period)
-        )
+        return self.apply(lambda trace: np.gradient(trace, sampling_period))
 
     def diff(self):
         return self.apply(pd.Series.diff)
@@ -1823,18 +1830,20 @@ class Traces(DataFrameWrapper):
         return self.traces.mean(*args, **kwargs)
 
     def cumsum(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.cumsum(*args, **kwargs)
-        )
+        return self.replace_traces(self.traces.cumsum(*args, **kwargs))
 
     def mean_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+        rolling = self.traces.rolling(
+            *args, center=center, min_periods=min_periods, **kwargs
+        )
 
         return self.replace_traces(
             rolling.mean(),
         )
 
-    def mean_rolling_gaussian(self, std_ms, center=True, min_periods=None):  # TODO inconsistent window def
+    def mean_rolling_gaussian(
+        self, std_ms, center=True, min_periods=None
+    ):  # TODO inconsistent window def
 
         std_idcs = std_ms / self.sampling_period
 
@@ -1848,21 +1857,27 @@ class Traces(DataFrameWrapper):
         return self.replace_traces(traces)
 
     def sum_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+        rolling = self.traces.rolling(
+            *args, center=center, min_periods=min_periods, **kwargs
+        )
 
         return self.replace_traces(
             rolling.sum(),
         )
 
     def median_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+        rolling = self.traces.rolling(
+            *args, center=center, min_periods=min_periods, **kwargs
+        )
 
         return self.replace_traces(
             rolling.median(),
         )
 
     def std_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(*args, center=center, min_periods=min_periods, **kwargs)
+        rolling = self.traces.rolling(
+            *args, center=center, min_periods=min_periods, **kwargs
+        )
 
         return self.replace_traces(
             rolling.std(),
@@ -1925,7 +1940,7 @@ class Traces(DataFrameWrapper):
             traces=self.traces.iloc[offset::factor],
         )
 
-    def are_continuously_sampled(self, atol=1.e-6) -> bool:
+    def are_continuously_sampled(self, atol=1.0e-6) -> bool:
         """Check that there are no gaps in the sampling time"""
         dts = np.diff(self.time)
         return np.allclose(dts[0], dts, atol=atol)
@@ -1933,8 +1948,9 @@ class Traces(DataFrameWrapper):
     def downsample(self, period):
         current = self.sampling_period
 
-        assert np.isclose(period % current, 0), \
+        assert np.isclose(period % current, 0), (
             f'New period ({period}) must be a multiple of current period ({current})'
+        )
 
         factor = int(period / current)
 
@@ -1944,10 +1960,12 @@ class Traces(DataFrameWrapper):
 
         times = np.asarray(times)
 
-        interpolated = np.column_stack([
-            np.interp(times, self.time, self.traces[col].values)
-            for col in self.traces.columns
-        ])
+        interpolated = np.column_stack(
+            [
+                np.interp(times, self.time, self.traces[col].values)
+                for col in self.traces.columns
+            ]
+        )
 
         new_traces = pd.DataFrame(
             interpolated,
@@ -1988,7 +2006,9 @@ class Traces(DataFrameWrapper):
 
         low, high = hz
         low_open = low is None or np.isclose(low, 0) or np.isinf(low) or np.isnan(low)
-        high_open = high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+        high_open = (
+            high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+        )
 
         if low_open and not high_open:
             return self.low_pass(high, **kwargs)
@@ -2021,8 +2041,9 @@ class Traces(DataFrameWrapper):
         sampling_hz = self.sampling_rate
 
         nyquist_freq = sampling_hz / 2
-        assert high_hz <= nyquist_freq, \
+        assert high_hz <= nyquist_freq, (
             f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+        )
 
         low = low_hz / nyquist_freq
         high = high_hz / nyquist_freq
@@ -2038,8 +2059,9 @@ class Traces(DataFrameWrapper):
         sampling_hz = self.sampling_rate
 
         nyquist_freq = sampling_hz / 2
-        assert high_hz <= nyquist_freq, \
+        assert high_hz <= nyquist_freq, (
             f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+        )
 
         high = high_hz / nyquist_freq
 
@@ -2092,7 +2114,9 @@ class Traces(DataFrameWrapper):
 
         return df.rename_axis(index='time', columns='freq')
 
-    def _spectral_analysis(self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs):
+    def _spectral_analysis(
+        self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs
+    ):
         """
         Apply a spectral analysis function to each trace
 
@@ -2102,7 +2126,9 @@ class Traces(DataFrameWrapper):
         res = {}
 
         for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            spec = self._spectral_analysis_single(k, spec_func, take_abs=take_abs, **kwargs)
+            spec = self._spectral_analysis_single(
+                k, spec_func, take_abs=take_abs, **kwargs
+            )
 
             if db:
                 spec = 10 * np.log10(spec)
@@ -2123,6 +2149,7 @@ class Traces(DataFrameWrapper):
     def spectral_analysis_wavelet(self, freqs=None, wavelet='morl', **kwargs):
         """Wavelet Transform (Morlet wavelet)"""
         import pywt
+
         sampling_rate = self.sampling_rate
 
         if freqs is None:
@@ -2132,7 +2159,7 @@ class Traces(DataFrameWrapper):
         scales = center_frequency / (freqs / sampling_rate)
 
         def wavelet_single(data, fs, **wv_kwargs):
-            coef, freqs_wt = pywt.cwt(data, sampling_period=1. / fs, **wv_kwargs)
+            coef, freqs_wt = pywt.cwt(data, sampling_period=1.0 / fs, **wv_kwargs)
             freqs_wt = freqs  # convert scales to frequency
             return freqs_wt, np.arange(0, len(self.time)) / sampling_rate, coef
 
@@ -2143,7 +2170,9 @@ class Traces(DataFrameWrapper):
             **kwargs,
         )
 
-    def spectrograms_overlapping(self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs):
+    def spectrograms_overlapping(
+        self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs
+    ):
         """Approximation to multi-taper spectrogram by using overlapping tukey windows"""
 
         return self._spectral_analysis(
@@ -2163,7 +2192,7 @@ class Traces(DataFrameWrapper):
         nperseg = int(np.clip(nperseg, 1, np.inf))
 
         if overlap_ms is None:
-            overlap_ms = segment_ms * .95
+            overlap_ms = segment_ms * 0.95
         noverlap = int(overlap_ms / period)
         noverlap = int(np.clip(noverlap, 0, nperseg - 1))
 
@@ -2175,10 +2204,10 @@ class Traces(DataFrameWrapper):
         )
 
     def welch(
-            self,
-            win_len_ms=None,
-            db=False,
-            **kwargs,
+        self,
+        win_len_ms=None,
+        db=False,
+        **kwargs,
     ):
         assert self.are_continuously_sampled()
 
@@ -2201,13 +2230,13 @@ class Traces(DataFrameWrapper):
         return self.replace_traces(power)
 
     def welch_rolling(
-            self,
-            win_len_ms=None,
-            db=False,
-            sliding_len_ms=timeslice.ms(seconds=10),
-            sliding_step_ms=timeslice.ms(seconds=1),
-            pbar=None,
-            **kwargs,
+        self,
+        win_len_ms=None,
+        db=False,
+        sliding_len_ms=timeslice.ms(seconds=10),
+        sliding_step_ms=timeslice.ms(seconds=1),
+        pbar=None,
+        **kwargs,
     ):
         assert self.are_continuously_sampled()
         sampling_rate = self.sampling_rate
@@ -2231,7 +2260,9 @@ class Traces(DataFrameWrapper):
             name='freq',
         )
 
-    def band_power(self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False):
+    def band_power(
+        self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False
+    ):
         assert self.are_continuously_sampled()
 
         welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
@@ -2252,22 +2283,23 @@ class Traces(DataFrameWrapper):
         )
 
     def band_power_rolling(
-            self,
-            bands=sleep.FREQ_BANDS,
-            sliding_len_ms=timeslice.ms(seconds=10),
-            sliding_step_ms=timeslice.ms(seconds=1),
-            db=False,
-            add_total=True,
-            pbar=None,
-            welch_ms=None,
+        self,
+        bands=sleep.FREQ_BANDS,
+        sliding_len_ms=timeslice.ms(seconds=10),
+        sliding_step_ms=timeslice.ms(seconds=1),
+        db=False,
+        add_total=True,
+        pbar=None,
+        welch_ms=None,
     ):
         """
         Extract the spectral power for each time trace using a sliding window.
         Note the windows will overlap and the value generated is assigned to its center.
         This means we cannot cover the beginning and end of the trace.
         """
-        assert self.get_global_win().length >= sliding_len_ms, \
+        assert self.get_global_win().length >= sliding_len_ms, (
             f'Data shorter than sliding window ({self.get_global_win().length} vs {sliding_len_ms})'
+        )
 
         assert not self.contains_nan()
 
@@ -2277,9 +2309,10 @@ class Traces(DataFrameWrapper):
 
         welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
 
-        assert sliding_len_ms >= welch_ms, \
-            f'Sliding window ({sliding_len_ms} ms) must be bigger than ' \
+        assert sliding_len_ms >= welch_ms, (
+            f'Sliding window ({sliding_len_ms} ms) must be bigger than '
             f'Welch window ({welch_ms}ms; lowest freq: {bands.freq_min.replace(0, np.nan).min()} Hz)'
+        )
 
         sampling_rate = self.sampling_rate
 
@@ -2304,12 +2337,12 @@ class Traces(DataFrameWrapper):
         )
 
     def apply_rolling(
-            self,
-            func,
-            length_ms,
-            step_ms=None,
-            pbar=None,
-            name='',
+        self,
+        func,
+        length_ms,
+        step_ms=None,
+        pbar=None,
+        name='',
     ):
         """
         Extract some function for each time trace using a sliding window.
@@ -2361,8 +2394,14 @@ class Traces(DataFrameWrapper):
         cols = []
 
         results = []
-        for i in _optional_pbar(sliding_steps, total=len(sliding_steps), desc='sliding win', pbar=pbar, many=100):
-            section = self.traces.iloc[starts[i]:stops[i]]
+        for i in _optional_pbar(
+            sliding_steps,
+            total=len(sliding_steps),
+            desc='sliding win',
+            pbar=pbar,
+            many=100,
+        ):
+            section = self.traces.iloc[starts[i] : stops[i]]
             cols, result = func(section)
             results.append(result.ravel(order='C'))
 

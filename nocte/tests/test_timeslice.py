@@ -6,11 +6,11 @@ from nocte.timeslice import Windows, _classify_events_exclusive
 
 
 def test_sampling_rate():
-    assert timeslice.SamplingRate.from_period(1.).period == 1.
-    assert timeslice.SamplingRate.from_period(1.).rate == 1000.
+    assert timeslice.SamplingRate.from_period(1.0).period == 1.0
+    assert timeslice.SamplingRate.from_period(1.0).rate == 1000.0
 
-    assert timeslice.SamplingRate.from_period(1000.).period == 1000.
-    assert timeslice.SamplingRate.from_period(1000.).rate == 1.
+    assert timeslice.SamplingRate.from_period(1000.0).period == 1000.0
+    assert timeslice.SamplingRate.from_period(1000.0).rate == 1.0
 
 
 def test_build_around():
@@ -46,11 +46,15 @@ def test_build_between_df():
     # noinspection PyTypeChecker
     wins = Windows.build_between(df, start=0, stop=4)
     assert len(wins) == 4
-    assert np.all(wins.wins.columns == ['start', 'stop', 'ref', 'start_else', 'stop_else'])
+    assert np.all(
+        wins.wins.columns == ['start', 'stop', 'ref', 'start_else', 'stop_else']
+    )
 
 
 def test_build_from_contiguous_values():
-    wins = Windows.build_from_contiguous_values([0, 0, 0, 1, 1, 1, 0, 2, 2, 2], include_right=False)
+    wins = Windows.build_from_contiguous_values(
+        [0, 0, 0, 1, 1, 1, 0, 2, 2, 2], include_right=False
+    )
     # noinspection PyUnresolvedReferences
     assert (wins.total_by_cat() == pd.Series({0: 4, 1: 3, 2: 3})).all()
 
@@ -65,7 +69,9 @@ def test_classify_exclusive_ref_cols():
     )
     wins = wins.wins
 
-    assert _classify_events_exclusive(wins, [], ref_col=['start', 'stop'], **kwargs).shape == (0, 3)
+    assert _classify_events_exclusive(
+        wins, [], ref_col=['start', 'stop'], **kwargs
+    ).shape == (0, 3)
 
 
 def test_classify_exclusive():
@@ -85,12 +91,23 @@ def test_classify_exclusive():
     assert _classify_events_exclusive(wins, [0, 400], **kwargs).shape == (0, 2)
 
     # valid classifications
-    assert np.all(_classify_events_exclusive(wins, [0, 75, 400], **kwargs)[['win_idx', 'delay']] == ('z', -25.))
-    assert np.all(_classify_events_exclusive(wins, [0, 200, 400], **kwargs)[['win_idx', 'delay']] == ('a', 0.))
-    assert np.all(_classify_events_exclusive(wins, [0, 325, 400], **kwargs)[['win_idx', 'delay']] == ('k', +25.))
+    assert np.all(
+        _classify_events_exclusive(wins, [0, 75, 400], **kwargs)[['win_idx', 'delay']]
+        == ('z', -25.0)
+    )
+    assert np.all(
+        _classify_events_exclusive(wins, [0, 200, 400], **kwargs)[['win_idx', 'delay']]
+        == ('a', 0.0)
+    )
+    assert np.all(
+        _classify_events_exclusive(wins, [0, 325, 400], **kwargs)[['win_idx', 'delay']]
+        == ('k', +25.0)
+    )
 
     # respect event indices
-    delays = _classify_events_exclusive(wins, pd.Series(dict(x=75, y=200, z=325)), **kwargs)
+    delays = _classify_events_exclusive(
+        wins, pd.Series(dict(x=75, y=200, z=325)), **kwargs
+    )
     assert delays.index.is_unique
     assert np.all(delays['win_idx'] == np.array(['z', 'a', 'k']))
     assert np.all(delays.index == np.array(['x', 'y', 'z']))

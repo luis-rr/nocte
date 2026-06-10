@@ -10,6 +10,7 @@ import scipy.linalg
 
 from nocte import traces as tr
 
+
 def _take_pca(traces, n_components=None):
     import sklearn.decomposition
 
@@ -19,13 +20,13 @@ def _take_pca(traces, n_components=None):
 
     valid = np.all(np.isfinite(traces), axis=1)
 
-    transformed_array = pca.fit_transform(
-        traces[valid].values
-    )
+    transformed_array = pca.fit_transform(traces[valid].values)
 
     pc_idcs = np.arange(pca.n_components_) + 1
 
-    transformed: pd.DataFrame = pd.DataFrame(transformed_array, columns=pc_idcs, index=traces.index)
+    transformed: pd.DataFrame = pd.DataFrame(
+        transformed_array, columns=pc_idcs, index=traces.index
+    )
     transformed = transformed.rename_axis(
         columns='PC',
         index=traces.index.name,
@@ -56,10 +57,13 @@ def take_pca(traces: tr.Traces, n_components: int = None) -> tr.Traces:
     )
 
     reg = explained_variance.to_frame()
-    reg = pd.concat([
-        reg,
-        components.add_prefix('comp_'),
-    ], axis=1)
+    reg = pd.concat(
+        [
+            reg,
+            components.add_prefix('comp_'),
+        ],
+        axis=1,
+    )
 
     return tr.Traces(
         reg=reg,
@@ -67,7 +71,9 @@ def take_pca(traces: tr.Traces, n_components: int = None) -> tr.Traces:
     )
 
 
-def _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray, n_latents: int):
+def _reduced_rank_regression(
+    neural_data: np.ndarray, behavior_data: np.ndarray, n_latents: int
+):
     """
     Reduced-rank regression from neural activity to behavior.
 
@@ -92,9 +98,9 @@ def _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray,
         Predicted behavior
     """
     # Ordinary least squares mapping from neural activity to behavior
-    full_regression_weights = np.linalg.lstsq(
-        neural_data, behavior_data, rcond=None
-    )[0]  # (N, B)
+    full_regression_weights = np.linalg.lstsq(neural_data, behavior_data, rcond=None)[
+        0
+    ]  # (N, B)
 
     # Behavior predicted by the full model
     full_behavior_prediction = neural_data @ full_regression_weights
@@ -109,7 +115,7 @@ def _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray,
 
     # Reduced-rank mappings
     neural_projection = full_regression_weights @ behavior_subspace  # (N, n_latents)
-    behavior_readout = behavior_subspace.T                           # (n_latents, B)
+    behavior_readout = behavior_subspace.T  # (n_latents, B)
 
     # Latent neural activity
     latent = neural_data @ neural_projection
@@ -120,13 +126,19 @@ def _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray,
     return latent, neural_projection, behavior_readout, behavior_prediction
 
 
-def _reduced_rank_regression_dd(neural_data: pd.DataFrame, behavior_data: pd.DataFrame, n_latents: int):
-    valid = np.all(np.isfinite(neural_data.values), axis=1) & np.all(np.isfinite(neural_data.values), axis=1)
+def _reduced_rank_regression_dd(
+    neural_data: pd.DataFrame, behavior_data: pd.DataFrame, n_latents: int
+):
+    valid = np.all(np.isfinite(neural_data.values), axis=1) & np.all(
+        np.isfinite(neural_data.values), axis=1
+    )
 
-    latent_array, neural_projection, behavior_readout, behavior_prediction = _reduced_rank_regression(
-        neural_data.values[valid],
-        behavior_data.values[valid],
-        n_latents=n_latents,
+    latent_array, neural_projection, behavior_readout, behavior_prediction = (
+        _reduced_rank_regression(
+            neural_data.values[valid],
+            behavior_data.values[valid],
+            n_latents=n_latents,
+        )
     )
 
     latent_idcs = np.arange(n_latents) + 1
@@ -143,4 +155,3 @@ def _reduced_rank_regression_dd(neural_data: pd.DataFrame, behavior_data: pd.Dat
     )
 
     return latent, neural_projection, behavior_readout, behavior_prediction
-

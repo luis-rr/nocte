@@ -5,6 +5,7 @@ This relies on the open ephys python tools being installed, and will default to 
 mechanism.
 
 """
+
 import logging
 
 import numpy as np
@@ -37,7 +38,7 @@ class ContinuousLoader(common.DataLoader):
     @property
     def sampling_period(self) -> float:
         """The inter-sample interval in ms"""
-        return 1000. / self.stream.metadata.sample_rate
+        return 1000.0 / self.stream.metadata.sample_rate
 
     @property
     def channels(self) -> pd.DataFrame:
@@ -55,11 +56,13 @@ class ContinuousLoader(common.DataLoader):
         :return: a reduced copy of this loader
         """
         return self.__class__(
-             self._channels.loc[which].reset_index(drop=True),
-             self.stream,
+            self._channels.loc[which].reset_index(drop=True),
+            self.stream,
         )
 
-    def load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray:
+    def load(
+        self, sample_idcs: slice, channels: pd.Index, adjust_gain=True
+    ) -> np.ndarray:
         """
         Load as a numpy array some sample range of some channels.
 
@@ -83,22 +86,33 @@ class ContinuousLoader(common.DataLoader):
         )
 
         array = np.asarray(data).T
-        array = array[:, ::sample_idcs.step]
+        array = array[:, :: sample_idcs.step]
 
         return array
 
     @classmethod
-    def from_session(cls, session_path: str | Path, recording_node_idx=0, recording_idx=0, continuous_idx=0):
+    def from_session(
+        cls,
+        session_path: str | Path,
+        recording_node_idx=0,
+        recording_idx=0,
+        continuous_idx=0,
+    ):
         session = open_ephys.analysis.Session(session_path)
-        stream = session.recordnodes[recording_node_idx].recordings[recording_idx].continuous[continuous_idx]
+        stream = (
+            session.recordnodes[recording_node_idx]
+            .recordings[recording_idx]
+            .continuous[continuous_idx]
+        )
 
-        channels = pd.DataFrame({
-            'name': stream.metadata.channel_names,
-            'probe': 0,  # TODO if we want to support multiple probes, this should be set to the probe id
-        })
+        channels = pd.DataFrame(
+            {
+                'name': stream.metadata.channel_names,
+                'probe': 0,  # TODO if we want to support multiple probes, this should be set to the probe id
+            }
+        )
 
         channels['local_channel_id'] = channels.index
-        channels.index.name = "channel"
+        channels.index.name = 'channel'
 
         return cls(channels, stream)
-

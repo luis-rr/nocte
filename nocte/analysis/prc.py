@@ -12,12 +12,12 @@ from nocte.timeslice import ms
 
 
 def get_hilbert_transform(
-        trace,
-        filter_hz=(
-                1_000 / ms(minutes=6),
-                1_000 / ms(seconds=60),
-        ),
-        phase_shift=True,
+    trace,
+    filter_hz=(
+        1_000 / ms(minutes=6),
+        1_000 / ms(seconds=60),
+    ),
+    phase_shift=True,
 ):
     period = np.diff(trace.index)
     assert np.allclose(period[0], period)
@@ -34,7 +34,9 @@ def get_hilbert_transform(
         'power': np.abs(x_a) ** 2,
     }
 
-    analytic['freq'] = np.append(np.nan, np.diff(analytic['phase']) / (2 * np.pi * period))
+    analytic['freq'] = np.append(
+        np.nan, np.diff(analytic['phase']) / (2 * np.pi * period)
+    )
 
     if phase_shift:
         analytic['phase'] = (analytic['phase'] + 1.5 * np.pi) % (2 * np.pi) - np.pi
@@ -44,10 +46,7 @@ def get_hilbert_transform(
 
 def get_phase(trace, **kwargs):
     if isinstance(trace, pd.DataFrame):
-        df = pd.DataFrame({
-            k: get_phase(tr, **kwargs)
-            for k, tr in trace.items()
-        })
+        df = pd.DataFrame({k: get_phase(tr, **kwargs) for k, tr in trace.items()})
 
         df.columns = trace.columns
 
@@ -68,10 +67,7 @@ def get_phase_norm(trace, **kwargs):
 
 def collect_beta_phases(exp_beta: nocte.traces.Traces, unwrap=True, **kwargs):
     exp_phase: nocte.traces.Traces = exp_beta.apply(
-        lambda beta: get_phase_norm(
-            beta.dropna(),
-            **kwargs
-        )
+        lambda beta: get_phase_norm(beta.dropna(), **kwargs)
     )
 
     if unwrap:
@@ -86,27 +82,37 @@ def classify_phase(values):
 
     idcs = pd.Series(idcs, values.index)
 
-    return idcs.map({
-        0: 'early sws',
-        1: 'late sws',
-        2: 'early rem',
-        3: 'late rem',
-    })
+    return idcs.map(
+        {
+            0: 'early sws',
+            1: 'late sws',
+            2: 'early rem',
+            3: 'late rem',
+        }
+    )
 
 
-def get_phase_cut(phase_traces, analysis_windows, phase_time=ms(seconds=-5), name='single'):
+def get_phase_cut(
+    phase_traces, analysis_windows, phase_time=ms(seconds=-5), name='single'
+):
     phase_detailed_cut = phase_traces.extract(analysis_windows)
 
-    phase_detailed_cut = phase_detailed_cut - np.floor(phase_detailed_cut.tloc[phase_time])
+    phase_detailed_cut = phase_detailed_cut - np.floor(
+        phase_detailed_cut.tloc[phase_time]
+    )
 
     phase_detailed_cut[f'phase_{name}'] = phase_detailed_cut.lookup(phase_time)
-    phase_detailed_cut[f'phase_{name}_cat'] = classify_phase(phase_detailed_cut[f'phase_{name}'])
+    phase_detailed_cut[f'phase_{name}_cat'] = classify_phase(
+        phase_detailed_cut[f'phase_{name}']
+    )
 
     return phase_detailed_cut
 
 
 def take_phase_diff(phase_cut, phase_time, class_by, n_periods=1):
-    actual_phase = phase_cut.lookup(phase_time + phase_cut['cycle_length'] * n_periods, interp=True)
+    actual_phase = phase_cut.lookup(
+        phase_time + phase_cut['cycle_length'] * n_periods, interp=True
+    )
 
     expected_phase = phase_cut[class_by] + n_periods
 

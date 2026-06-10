@@ -37,10 +37,7 @@ class DataDict(DataFrameWrapper):
     def apply(self, function, pbar=None, **kwargs):
         """Apply the given callable independently to each entry"""
 
-        processed = {
-            k: function(v, **kwargs)
-            for k, v in self.items(pbar=pbar)
-        }
+        processed = {k: function(v, **kwargs) for k, v in self.items(pbar=pbar)}
 
         return self.__class__(self.reg, processed)
 
@@ -57,7 +54,7 @@ class DataDict(DataFrameWrapper):
         *,
         by: str | list[str],
         sort: bool = False,
-    ) -> "DataDict":
+    ) -> 'DataDict':
         """
         Split a DataFrameWrapper into a DataDict by one or more columns
         in its registry.
@@ -96,7 +93,7 @@ class DataDict(DataFrameWrapper):
             reg_rows.append(meta)
 
         dd_reg = pd.DataFrame(reg_rows)
-        dd_reg.index.name = "id"
+        dd_reg.index.name = 'id'
 
         return cls(
             reg=dd_reg,
@@ -110,10 +107,11 @@ class DataDict(DataFrameWrapper):
         """
         self.reg.to_hdf(filename, key=f'{key}_reg')
 
-        index = _optional_pbar(self.index, total=len(self.index), desc='storing', pbar=pbar)
+        index = _optional_pbar(
+            self.index, total=len(self.index), desc='storing', pbar=pbar
+        )
 
         for k in index:
-
             v = self.get(k)
 
             item_key = item_key_fmt.format(k=k)
@@ -132,7 +130,9 @@ class DataDict(DataFrameWrapper):
                 )
 
     @classmethod
-    def from_hdf(cls, filename, key='dd', loader=pd.read_hdf, item_key_fmt='{k}', pbar=True):
+    def from_hdf(
+        cls, filename, key='dd', loader=pd.read_hdf, item_key_fmt='{k}', pbar=True
+    ):
         """
         Load data and registry from HDF5.
         """
@@ -140,7 +140,9 @@ class DataDict(DataFrameWrapper):
         reg: pd.DataFrame = pd.read_hdf(filename, key=f'{key}_reg')
 
         data = {}
-        index = _optional_pbar(reg.index, total=len(reg.index), desc='loading', pbar=pbar)
+        index = _optional_pbar(
+            reg.index, total=len(reg.index), desc='loading', pbar=pbar
+        )
 
         for k in index:
             item_key = item_key_fmt.format(k=k)
@@ -151,10 +153,10 @@ class DataDict(DataFrameWrapper):
         return cls(reg, data)
 
     def flatten(
-            self,
-            *,
-            inner_name: str = None,
-            outer_name: str = None,
+        self,
+        *,
+        inner_name: str = None,
+        outer_name: str = None,
     ) -> Self:
 
         data = {}
@@ -163,7 +165,7 @@ class DataDict(DataFrameWrapper):
 
         for outer_key, inner in self.items():
             if not isinstance(inner, DataDict):
-                raise TypeError("flatten() requires all items to be DataDicts")
+                raise TypeError('flatten() requires all items to be DataDicts')
 
             outer_meta = self.reg.loc[outer_key]
 
@@ -179,22 +181,21 @@ class DataDict(DataFrameWrapper):
                 for k, v in inner_meta.items():
                     if k in meta and meta[k] != v:
                         raise ValueError(
-                            f"Inconsistent metadata for column '{k}': "
-                            f"{meta[k]} vs {v}"
+                            f"Inconsistent metadata for column '{k}': {meta[k]} vs {v}"
                         )
                     meta[k] = v
 
                 if outer_name is not None:
                     if outer_name in meta:
                         raise ValueError(
-                            "Key names collide with existing metadata columns"
+                            'Key names collide with existing metadata columns'
                         )
                     meta[outer_name] = outer_key
 
                 if inner_name is not None:
                     if inner_name in meta:
                         raise ValueError(
-                            "Key names collide with existing metadata columns"
+                            'Key names collide with existing metadata columns'
                         )
                     meta[inner_name] = inner_key
 
@@ -203,7 +204,7 @@ class DataDict(DataFrameWrapper):
                 new_id += 1
 
         reg = pd.DataFrame.from_records(reg_rows)
-        reg.index.name = "id"
+        reg.index.name = 'id'
 
         return self.__class__(reg=reg, data=data)
 
@@ -264,8 +265,7 @@ class DataDict(DataFrameWrapper):
         concatenate them all along axis=1
         """
         results = {
-            tuple(key): func(key, data, **kwargs)
-            for key, data in self.items(pbar=pbar)
+            tuple(key): func(key, data, **kwargs) for key, data in self.items(pbar=pbar)
         }
 
         df = pd.concat(
@@ -273,7 +273,7 @@ class DataDict(DataFrameWrapper):
             axis=1,
         )
 
-        names = list(self.reg.columns) + df.columns.names[len(self.reg.columns):]
+        names = list(self.reg.columns) + df.columns.names[len(self.reg.columns) :]
         df.rename_axis(columns=names, inplace=True)
 
         return df
@@ -281,7 +281,9 @@ class DataDict(DataFrameWrapper):
     def iterby(self, by, pbar=None):  # TODO homogenize names
         groups = self.reg.groupby(by).groups.items()
 
-        for k, uids in _optional_pbar(groups, total=len(groups), desc=str(by), pbar=pbar):
+        for k, uids in _optional_pbar(
+            groups, total=len(groups), desc=str(by), pbar=pbar
+        ):
             subset = self.sel_mask(uids)
             subset.reg.drop(by, axis=1, inplace=True)
             yield k, subset
@@ -296,7 +298,6 @@ class DataDict(DataFrameWrapper):
         global_id = 0
 
         for key, s in stackset_dict.items():
-
             merged_reg[key] = s.reg.rename_axis(index='local_id')
 
             for local_id, data in s.data.items():
@@ -313,7 +314,8 @@ class DataDict(DataFrameWrapper):
     def combine(cls, left, right, func, *, left_ref, right_ref):  # TODO deprecate
 
         result = cls._combine_idcs(
-            left=left, right=right,
+            left=left,
+            right=right,
             left_ref=left_ref,
             right_ref=right_ref,
         )
@@ -329,7 +331,8 @@ class DataDict(DataFrameWrapper):
     def _combine_idcs(cls, left, right, *, left_ref, right_ref, **merge_kwargs):
 
         merged = cls.match(
-            left, right,
+            left,
+            right,
             left_ref=left_ref,
             right_ref=right_ref,
             **merge_kwargs,
@@ -348,10 +351,7 @@ class DataDict(DataFrameWrapper):
 
         mapping = pd.Series(reg.index, index=self.reg.index)
 
-        data = {
-            mapping[k]: d
-            for k, d in self.data.items()
-        }
+        data = {mapping[k]: d for k, d in self.data.items()}
 
         return self.__class__(reg, data)
 
@@ -362,16 +362,14 @@ class DataDict(DataFrameWrapper):
 
         mapping = pd.Series(reg.index, index=self.reg.index)
 
-        data = {
-            mapping[k]: d
-            for k, d in self.data.items()
-        }
+        data = {mapping[k]: d for k, d in self.data.items()}
 
         return self.__class__(reg, data)
 
     def _extract(self, wins: nocte.timeslice.Windows):
         paired = self._combine_idcs(
-            self, wins,
+            self,
+            wins,
             left_ref='dd_idx',
             right_ref='win_idx',
         )
@@ -414,16 +412,14 @@ class DataDict(DataFrameWrapper):
             mask = (idx >= window.start) & (idx <= window.stop)
             return item.loc[mask]
 
-        raise TypeError(
-            f"Object of type {type(item)} cannot be cropped"
-        )
+        raise TypeError(f'Object of type {type(item)} cannot be cropped')
 
     def shift_time(self, ts: pd.Series | np.ndarray | int | float):
         if isinstance(ts, (int, float, np.ndarray)):
             ts = pd.Series(ts, index=self.index)
 
         if not ts.index.equals(self.index):
-            raise ValueError("shift_time Series must be indexed like DataDict")
+            raise ValueError('shift_time Series must be indexed like DataDict')
 
         result = {
             k: DataDict._shift_time_item(
@@ -437,7 +433,7 @@ class DataDict(DataFrameWrapper):
 
     @staticmethod
     def _shift_time_item(item, dt):
-        if hasattr(item, "shift_time"):
+        if hasattr(item, 'shift_time'):
             return item.shift_time(dt)
 
         if isinstance(item, pd.DataFrame):
@@ -445,9 +441,7 @@ class DataDict(DataFrameWrapper):
             out.index = out.index + dt
             return out
 
-        raise TypeError(
-            f"Object of type {type(item)} cannot be time-shifted"
-        )
+        raise TypeError(f'Object of type {type(item)} cannot be time-shifted')
 
     def extract(self, wins: nocte.timeslice.Windows, align=None):
 

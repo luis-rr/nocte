@@ -1,6 +1,7 @@
 """
 Code to analyse the switches of inter-hemispheric dominance.
 """
+
 import logging
 
 import matplotlib.colors
@@ -22,8 +23,12 @@ def extract_lead_traces(xcorr, rem_wins, all_beta, lag_modes):
 
     # we extract power at a lower sampling rate, so make sure we cover the same space
     lead_traces = rem_wins.get_global_win().crop_df(lead_traces)
-    lead_traces['beta_ch0'] = events.interpolate_trace(all_beta['ch0'], lead_traces.index)
-    lead_traces['beta_ch1'] = events.interpolate_trace(all_beta['ch1'], lead_traces.index)
+    lead_traces['beta_ch0'] = events.interpolate_trace(
+        all_beta['ch0'], lead_traces.index
+    )
+    lead_traces['beta_ch1'] = events.interpolate_trace(
+        all_beta['ch1'], lead_traces.index
+    )
     lead_traces['rem_state'] = rem_wins.generate_cat(lead_traces.index)
     lead_traces['log_lead_ch0'] = np.log10(lead_traces['lead_ch0'])
     lead_traces['log_lead_ch1'] = np.log10(lead_traces['lead_ch1'])
@@ -32,23 +37,33 @@ def extract_lead_traces(xcorr, rem_wins, all_beta, lag_modes):
 
 
 def load_lead_traces(
-        reg, exp_name,
-        tau=1_000,
-        exp_valid_win=timeslice.Win(ms(hours=2), ms(hours=2 + 9)),
-        low_hz=100,
-        suffix='_exp_clipped',
+    reg,
+    exp_name,
+    tau=1_000,
+    exp_valid_win=timeslice.Win(ms(hours=2), ms(hours=2 + 9)),
+    low_hz=100,
+    suffix='_exp_clipped',
 ):
     all_beta = reg.load_all_beta_norm(exp_name, exp_valid_win=exp_valid_win)
 
     rem_wins = extract_rem_wins_from_log_beta_thresh_detour(all_beta)
 
-    xcorr = load_xcorr(reg, exp_name, tau=tau, suffix=suffix, exp_valid_win=exp_valid_win, low_hz=low_hz)
+    xcorr = load_xcorr(
+        reg,
+        exp_name,
+        tau=tau,
+        suffix=suffix,
+        exp_valid_win=exp_valid_win,
+        low_hz=low_hz,
+    )
 
     lag_modes = extract_lag_modes(xcorr)
 
     lead_traces = extract_lead_traces(xcorr, rem_wins, all_beta, lag_modes)
     lead_traces['lead_state_thresh'] = classify_lead_state_by_diag_thresh(lead_traces)
-    lead_traces['lead_state'] = smooth_lead_state_detour(lead_traces['lead_state_thresh'])
+    lead_traces['lead_state'] = smooth_lead_state_detour(
+        lead_traces['lead_state_thresh']
+    )
 
     return lead_traces
 
@@ -75,8 +90,10 @@ def load_xcorr(reg, exp_name, tau, suffix='_exp', exp_valid_win=None, low_hz=100
     sliding_win = tau * 10
 
     xcorr = stacks.Stack.load_hdf(
-        reg.get_path_xcorr_area(exp_name, area='CLA', sliding_win=sliding_win, suffix=suffix, low_hz=low_hz),
-        'xcorr'
+        reg.get_path_xcorr_area(
+            exp_name, area='CLA', sliding_win=sliding_win, suffix=suffix, low_hz=low_hz
+        ),
+        'xcorr',
     )
 
     if exp_valid_win is not None:
@@ -85,34 +102,44 @@ def load_xcorr(reg, exp_name, tau, suffix='_exp', exp_valid_win=None, low_hz=100
             logging.warning(f'x-corr does not exist in window {exp_valid_win}')
             return xcorr
 
-    vmax = np.quantile(xcorr.values.ravel(), .999)
+    vmax = np.quantile(xcorr.values.ravel(), 0.999)
     assert vmax > 0
     xcorr = xcorr / vmax
 
     return xcorr
 
 
-def extract_rem_wins_from_log_beta_thresh_detour(all_beta, beta_thresh=.15, max_detours=ms(seconds=15)):
+def extract_rem_wins_from_log_beta_thresh_detour(
+    all_beta, beta_thresh=0.15, max_detours=ms(seconds=15)
+):
     is_rem = all_beta['beta_max'] > beta_thresh
 
     rem_states = is_rem.map({True: 'rem', False: 'sws'})
 
-    rem_wins = timeslice.Windows.build_from_contiguous_values(rem_states, include_right=False)
+    rem_wins = timeslice.Windows.build_from_contiguous_values(
+        rem_states, include_right=False
+    )
 
     rem_wins = rem_wins.merge_sandwiched(max_length=max_detours)
 
     return rem_wins
 
 
-def classify_lead_state_by_diag_thresh(lead_traces, col0='log_lead_ch0', col1='log_lead_ch1', slope=1.2):
+def classify_lead_state_by_diag_thresh(
+    lead_traces, col0='log_lead_ch0', col1='log_lead_ch1', slope=1.2
+):
     lead_states = pd.Series('x', index=lead_traces.index)
 
     sws_center = lead_traces.loc[lead_traces['rem_state'] == 'sws', [col0, col1]].mean()
 
-    mask = (lead_traces[col0] - sws_center[col0]) * slope + sws_center[col0] < lead_traces[col1]
+    mask = (lead_traces[col0] - sws_center[col0]) * slope + sws_center[
+        col0
+    ] < lead_traces[col1]
     lead_states.loc[mask] = 'lead_ch1'
 
-    mask = (lead_traces[col1] - sws_center[col1]) * slope + sws_center[col1] < lead_traces[col0]
+    mask = (lead_traces[col1] - sws_center[col1]) * slope + sws_center[
+        col1
+    ] < lead_traces[col0]
     lead_states.loc[mask] = 'lead_ch0'
 
     lead_states.loc[lead_traces['rem_state'] == 'sws'] = 'sws'
@@ -120,7 +147,7 @@ def classify_lead_state_by_diag_thresh(lead_traces, col0='log_lead_ch0', col1='l
     return lead_states
 
 
-def extract_cycle_wins(rem_wins, rem_align=.5, sws_align=None):
+def extract_cycle_wins(rem_wins, rem_align=0.5, sws_align=None):
     """
     Create windows that go from SWS to SWS including exactly one REM
     in each window.
@@ -155,7 +182,9 @@ def classify_wins_by_cycle(lead_wins_raw, cycle_wins):
     lead_wins = lead_wins.sel_mask(lead_wins.lengths() > 0)
     lead_wins['ref'] = lead_wins.mid()
 
-    lead_wins: pd.DataFrame = cycle_wins.rename_index('idx').annotate_events(lead_wins.wins, col='ref', prefix='cycle')
+    lead_wins: pd.DataFrame = cycle_wins.rename_index('idx').annotate_events(
+        lead_wins.wins, col='ref', prefix='cycle'
+    )
     lead_wins.rename(columns=dict(cycle_rem_idx='rem_idx'), inplace=True)
     lead_wins: pd.DataFrame = lead_wins.dropna()
     lead_wins['cycle_idx'] = lead_wins['cycle_idx'].astype(int)
@@ -172,7 +201,11 @@ def plot_lead_state_cycle_counts(counts, suptitle=''):
         #         ('x', 'lead_ch1'),
     ]
 
-    f, axs = plt.subplots(constrained_layout=True, ncols=1 + len(combs2d), figsize=(1 + 2 * len(combs2d), 1.75))
+    f, axs = plt.subplots(
+        constrained_layout=True,
+        ncols=1 + len(combs2d),
+        figsize=(1 + 2 * len(combs2d), 1.75),
+    )
 
     f.suptitle(suptitle)
 
@@ -181,9 +214,7 @@ def plot_lead_state_cycle_counts(counts, suptitle=''):
     total_good = counts['lead_ch0'] + counts['lead_ch1']
 
     ax.hist(
-        total_good - 1,
-        bins=np.arange(-.5, total_good.max() + 1.5, 1),
-        facecolor='k'
+        total_good - 1, bins=np.arange(-0.5, total_good.max() + 1.5, 1), facecolor='k'
     )
 
     ax.set_ylabel('#rem periods')
@@ -197,10 +228,9 @@ def plot_lead_state_cycle_counts(counts, suptitle=''):
         ax = axs[1 + i]
 
         h, _, _, im = ax.hist2d(
-
             counts[a],
             counts[b],
-            bins=[np.arange(-.5, 9, 1)] * 2,
+            bins=[np.arange(-0.5, 9, 1)] * 2,
             cmap='cividis',
             norm=matplotlib.colors.Normalize(0, vmax),
         )
@@ -227,7 +257,9 @@ def smooth_lead_state_detour(lead_state_raw):
     while lead_wins_0 is None or len(lead_wins_0) != len(lead_wins):
         lead_wins_0 = lead_wins
         lead_wins = lead_wins.merge_sandwiched(cat='x', max_length=15_000)
-        lead_wins = lead_wins.merge_sandwiched(cat=['lead_ch0', 'lead_ch1'], max_length=5_000)
+        lead_wins = lead_wins.merge_sandwiched(
+            cat=['lead_ch0', 'lead_ch1'], max_length=5_000
+        )
 
     return lead_wins.generate_cat(lead_state_raw.index)
 
@@ -244,15 +276,11 @@ class Cycles:
         assert 'cycle_idx' in self.lead_wins.wins.columns
 
     def shift(self, value):
-        return self.__class__(
-            self.lead_wins.shift(value)
-        )
+        return self.__class__(self.lead_wins.shift(value))
 
     def sel_mask_cycle(self, mask):
         return self.__class__(
-            self.lead_wins.sel_mask(
-                self.lead_wins['cycle_idx'].map(mask)
-            )
+            self.lead_wins.sel_mask(self.lead_wins['cycle_idx'].map(mask))
         )
 
     def align_to_rem_center(self):
@@ -277,17 +305,29 @@ class Cycles:
             0                 3         2    2  4
             1                 3         2    2  4
         """
-        return self.lead_wins.groupby(['cycle_idx', 'cat']).size().unstack('cat', fill_value=0)
+        return (
+            self.lead_wins.groupby(['cycle_idx', 'cat'])
+            .size()
+            .unstack('cat', fill_value=0)
+        )
 
     def get_switch_count_per_cycle(self) -> pd.Series:
-        return self.get_period_counts_per_cycle()[['lead_ch0', 'lead_ch1']].sum(axis=1) - 1
+        return (
+            self.get_period_counts_per_cycle()[['lead_ch0', 'lead_ch1']].sum(axis=1) - 1
+        )
 
     def get_period_lengths_per_cycle(self) -> pd.DataFrame:
         df = self.lead_wins.wins.copy()
         df['length'] = self.lead_wins.lengths()
-        return df.groupby(['cat', 'cycle_idx'])['length'].sum().unstack('cat', fill_value=0)
+        return (
+            df.groupby(['cat', 'cycle_idx'])['length']
+            .sum()
+            .unstack('cat', fill_value=0)
+        )
 
-    def get_period_lengths_relative(self, valid_cats=('lead_ch0', 'lead_ch1')) -> pd.Series:
+    def get_period_lengths_relative(
+        self, valid_cats=('lead_ch0', 'lead_ch1')
+    ) -> pd.Series:
         lengths = self.get_period_lengths_per_cycle()
         lengths = lengths.loc[:, list(valid_cats)]
         total = lengths.sum(axis=1)
@@ -300,20 +340,28 @@ class Cycles:
         largest = df.groupby(['cat', 'cycle_idx'])['length'].idxmax()
         assert largest.is_unique
 
-        return self.__class__(
-            self.lead_wins.sel_mask(largest.sort_values().values)
-        )
+        return self.__class__(self.lead_wins.sel_mask(largest.sort_values().values))
 
     def get_center_largest(self) -> pd.DataFrame:
         largest = self.take_largest_by_cat()
         assert np.all(largest.lead_wins.groupby(['cycle_idx', 'cat']).size() <= 1)
-        return largest.lead_wins.groupby(['cycle_idx', 'cat'])['ref'].first().unstack('cat')
+        return (
+            largest.lead_wins.groupby(['cycle_idx', 'cat'])['ref']
+            .first()
+            .unstack('cat')
+        )
 
     def get_rem_wins(self):
-        rems = pd.DataFrame({
-            'start': self.lead_wins.sel(cat='sws', but=True).groupby('cycle_idx')['start'].min(),
-            'stop': self.lead_wins.sel(cat='sws', but=True).groupby('cycle_idx')['stop'].max(),
-        })
+        rems = pd.DataFrame(
+            {
+                'start': self.lead_wins.sel(cat='sws', but=True)
+                .groupby('cycle_idx')['start']
+                .min(),
+                'stop': self.lead_wins.sel(cat='sws', but=True)
+                .groupby('cycle_idx')['stop']
+                .max(),
+            }
+        )
 
         rems['ref'] = rems.mean(axis=1)
 
@@ -322,7 +370,7 @@ class Cycles:
     def get_rem_center(self) -> pd.Series:
         return self.get_rem_wins().mid()
 
-    def plot_cycles_stack(self, ax, cycle_idcs=None, height=.8):
+    def plot_cycles_stack(self, ax, cycle_idcs=None, height=0.8):
         grouped = self.lead_wins.groupby('cycle_idx')
 
         if cycle_idcs is None:
@@ -335,8 +383,8 @@ class Cycles:
             splot.plot_wins_fill(
                 ax,
                 wins,
-                ymin=y - .5 * height,
-                ymax=y + .5 * height,
+                ymin=y - 0.5 * height,
+                ymax=y + 0.5 * height,
                 transform=ax.transData,
-                alpha=.5,
+                alpha=0.5,
             )

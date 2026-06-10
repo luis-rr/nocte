@@ -15,7 +15,9 @@ from nocte import timeslice
 class SpikeTrains:
     """Container for spike trains of multiple cells."""
 
-    def __init__(self, spikes: pd.DataFrame, cells: pd.DataFrame, win_ms: timeslice.Win):
+    def __init__(
+        self, spikes: pd.DataFrame, cells: pd.DataFrame, win_ms: timeslice.Win
+    ):
         self.spikes = spikes.copy()
         assert self.spikes.index.is_unique
 
@@ -29,21 +31,29 @@ class SpikeTrains:
         if len(self.spikes) > 0:
             tmin = self.spikes['time'].min()
             tmax = self.spikes['time'].max()
-            assert self.win_ms.start <= tmin, f'Spikes start too early ({timeslice.ms_to_str(tmin)}) for window {self.win_ms}'
-            assert tmax <= self.win_ms.stop, f'Spikes stop too late ({timeslice.ms_to_str(tmax)}) for window {self.win_ms}'
+            assert self.win_ms.start <= tmin, (
+                f'Spikes start too early ({timeslice.ms_to_str(tmin)}) for window {self.win_ms}'
+            )
+            assert tmax <= self.win_ms.stop, (
+                f'Spikes stop too late ({timeslice.ms_to_str(tmax)}) for window {self.win_ms}'
+            )
 
         self._add_cells_props(time_col='time')
 
     @classmethod
-    def from_simple_spike_table(cls, times: np.ndarray, clusters: np.ndarray, win_ms: timeslice.Win = None):
+    def from_simple_spike_table(
+        cls, times: np.ndarray, clusters: np.ndarray, win_ms: timeslice.Win = None
+    ):
         if win_ms is None:
             win_ms = timeslice.Win(times.min(), times.max())
 
         return cls(
-            spikes=pd.DataFrame.from_dict({
-                'time': times,
-                'gid': clusters,
-            }),
+            spikes=pd.DataFrame.from_dict(
+                {
+                    'time': times,
+                    'gid': clusters,
+                }
+            ),
             cells=pd.DataFrame(index=np.sort(np.unique(clusters))),
             win_ms=win_ms,
         )
@@ -53,22 +63,31 @@ class SpikeTrains:
 
         self.cells['spike_count'] = self.spikes.groupby('gid').size()
         self.cells['spike_count'] = self.cells['spike_count'].fillna(0).astype(int)
-        self.cells['time_quantile_95'] = self.spikes.groupby('gid')[time_col].quantile(.95)
-        self.cells['time_quantile_05'] = self.spikes.groupby('gid')[time_col].quantile(.05)
-        self.cells['active_duration'] = self.cells['time_quantile_95'] - self.cells['time_quantile_05']
+        self.cells['time_quantile_95'] = self.spikes.groupby('gid')[time_col].quantile(
+            0.95
+        )
+        self.cells['time_quantile_05'] = self.spikes.groupby('gid')[time_col].quantile(
+            0.05
+        )
+        self.cells['active_duration'] = (
+            self.cells['time_quantile_95'] - self.cells['time_quantile_05']
+        )
 
         # this contains the site that most often is marked as "best_site" on this cell's spikes
         # however, due to drift and other sorting artifacts, it is possible that at different
         # times of the recording the best site is a different one.
         if 'best_site' in self.spikes.columns:
-            self.cells['best_site'] = self.spikes.groupby(['gid', 'best_site']).size(). \
-                groupby('gid').idxmax().map(lambda x: x[1])
+            self.cells['best_site'] = (
+                self.spikes.groupby(['gid', 'best_site'])
+                .size()
+                .groupby('gid')
+                .idxmax()
+                .map(lambda x: x[1])
+            )
 
     def describe_str(self):
         """return summary of contents"""
-        return (
-            f'{len(self.spikes):,d} spikes from {len(self.cells)} cells, between {self.win_ms}'
-        )
+        return f'{len(self.spikes):,d} spikes from {len(self.cells)} cells, between {self.win_ms}'
 
     def describe(self):
         """print summary of contents"""
@@ -120,11 +139,9 @@ class SpikeTrains:
         :return: 2 DataFrames (spks.cells and spikes)
         """
 
-        spikes_raw = pd.read_csv(
-            fullpath,
-            names=['time', 'gid', 'best_site'])
+        spikes_raw = pd.read_csv(fullpath, names=['time', 'gid', 'best_site'])
 
-        spikes_raw['time'] = spikes_raw['time'] * 1000.  # in ms
+        spikes_raw['time'] = spikes_raw['time'] * 1000.0  # in ms
         spikes_raw.index.name = 'spike_id'
 
         cells_raw = pd.DataFrame(index=spikes_raw['gid'].unique())
@@ -135,10 +152,12 @@ class SpikeTrains:
         cells_raw['is_good'] = ~(cells_raw['was_deleted'] | cells_raw['was_noise'])
         cells_raw.index.name = 'gid'
 
-        spikes = spikes_raw[cells_raw['is_good'].reindex(spikes_raw['gid'], fill_value=False).values].copy()
+        spikes = spikes_raw[
+            cells_raw['is_good'].reindex(spikes_raw['gid'], fill_value=False).values
+        ].copy()
         cells = cells_raw[cells_raw['is_good']].copy()
 
-        if adjust_time is not None and not np.isclose(adjust_time, 1., rtol=1e-12):
+        if adjust_time is not None and not np.isclose(adjust_time, 1.0, rtol=1e-12):
             logging.warning(
                 f'Adjusting spike times by {adjust_time} '
                 f'which shifts last spike by {spikes.time.max() - (spikes.time.max() * adjust_time)} ms'
@@ -157,11 +176,13 @@ class SpikeTrains:
         time_idcs = np.load(str(path / 'spike_times.npy'))
         times = time_idcs * sampling_period_ms
 
-        spikes = pd.DataFrame({
-            'time': times,
-            'gid': np.load(str(path / 'spike_clusters.npy')),
-            'amplitude': np.load(str(path / 'amplitudes.npy')).squeeze(),
-        })
+        spikes = pd.DataFrame(
+            {
+                'time': times,
+                'gid': np.load(str(path / 'spike_clusters.npy')),
+                'amplitude': np.load(str(path / 'amplitudes.npy')).squeeze(),
+            }
+        )
 
         cells = pd.DataFrame(index=spikes['gid'].unique())
 
@@ -180,19 +201,26 @@ class SpikeTrains:
         all_start = [spks.win_ms.start for spks in all_spikes]
         all_stop = [spks.win_ms.stop for spks in all_spikes]
 
-        if not np.allclose(all_start, all_start[0]) or not np.allclose(all_stop, all_stop[0]):
+        if not np.allclose(all_start, all_start[0]) or not np.allclose(
+            all_stop, all_stop[0]
+        ):
             logging.warning(f'Spike trains cover different time windows')
 
         win_ms = timeslice.Win(np.min(all_start), np.max(all_stop))
 
-        all_cells = pd.concat({
-            i: spks.cells
-            for i, spks in enumerate(all_spikes)
-        }, axis=0)
+        all_cells = pd.concat(
+            {i: spks.cells for i, spks in enumerate(all_spikes)}, axis=0
+        )
 
-        all_cells = all_cells.rename_axis(index=['_group', 'local_gid']).reset_index().rename_axis(index='gid')
+        all_cells = (
+            all_cells.rename_axis(index=['_group', 'local_gid'])
+            .reset_index()
+            .rename_axis(index='gid')
+        )
 
-        map_back = all_cells.reset_index()[['_group', 'local_gid', 'gid']].set_index(['_group', 'local_gid'])
+        map_back = all_cells.reset_index()[['_group', 'local_gid', 'gid']].set_index(
+            ['_group', 'local_gid']
+        )
 
         all_cells.drop(columns=['_group'], inplace=True)
 
@@ -220,7 +248,7 @@ class SpikeTrains:
         all_spikes = []
 
         for ks_path in base_path.glob(f'catgt_*/*_imec*/imec*_ks2'):
-            probe = int(str(ks_path)[-(1 + len('_ks2')):-len('_ks2')])
+            probe = int(str(ks_path)[-(1 + len('_ks2')) : -len('_ks2')])
 
             spikes = cls.load_ks2_single(
                 ks_path,
@@ -256,7 +284,9 @@ class SpikeTrains:
         sel_spikes = self.spikes[mask]
 
         remaining_cells: pd.Index = sel_spikes['gid'].unique()
-        remaining_cells = self.cells.index.intersection(remaining_cells)  # preseve the order
+        remaining_cells = self.cells.index.intersection(
+            remaining_cells
+        )  # preseve the order
         sel_cells = self.cells.loc[remaining_cells]
 
         return self.__class__(sel_spikes, sel_cells, self.win_ms)
@@ -270,10 +300,9 @@ class SpikeTrains:
         example:
             tr.select_between(time=(-5, +10))
         """
-        mask = np.array([
-            self.spikes[key].between(*vrange).values
-            for key, vrange in kwargs.items()
-        ])
+        mask = np.array(
+            [self.spikes[key].between(*vrange).values for key, vrange in kwargs.items()]
+        )
 
         mask = np.all(mask, axis=0)
 
@@ -361,7 +390,7 @@ class SpikeTrains:
         """
         Iterate by groups of cells defined by some property.
         """
-        for (key, scells) in self.cells.groupby(by):
+        for key, scells in self.cells.groupby(by):
             yield key, self.sel_in(gid=scells.index)
 
     def shift_time(self, ms):
@@ -393,7 +422,10 @@ class SpikeTrains:
             for probe, probe_loader in raw_loader.loaders.items()
         }
 
-        factors = self.cells['probe'].map(probe_periods) / raw_loader.loaders[ref_probe].sampling_period
+        factors = (
+            self.cells['probe'].map(probe_periods)
+            / raw_loader.loaders[ref_probe].sampling_period
+        )
 
         factors = self.spikes['gid'].map(factors)
 
@@ -402,11 +434,14 @@ class SpikeTrains:
         return times
 
     def compute_activity_per_cluster(
-            self, tbins, gid_col='gid', time_col='time',
-            fr=False,
-            rolling_wins=None,
-            rolling_win_type='hamming',
-            pbar=True
+        self,
+        tbins,
+        gid_col='gid',
+        time_col='time',
+        fr=False,
+        rolling_wins=None,
+        rolling_win_type='hamming',
+        pbar=True,
     ):
         """return a pd.DataFrame containing the histogram of spikes for each cluster"""
 
@@ -414,9 +449,11 @@ class SpikeTrains:
         if pbar:
             grouped = tqdm(grouped, desc='spks.cells')
 
-        df = pd.DataFrame.from_dict({
-            gid: np.histogram(times, bins=tbins, density=False)[0]
-            for gid, times in grouped},
+        df = pd.DataFrame.from_dict(
+            {
+                gid: np.histogram(times, bins=tbins, density=False)[0]
+                for gid, times in grouped
+            },
         )
 
         # noinspection PyUnresolvedReferences
@@ -428,13 +465,19 @@ class SpikeTrains:
             df = (df.T / bin_widths).T
 
         if rolling_wins is not None:
-            df = df.rolling(window=rolling_wins, center=True, win_type=rolling_win_type).mean().dropna()
+            df = (
+                df.rolling(window=rolling_wins, center=True, win_type=rolling_win_type)
+                .mean()
+                .dropna()
+            )
 
         return df
 
     def compute_isi(self, tbins, time_col='time', pmf=False, pbar=True):
         """Compute Inter-Spike-Intervals"""
-        tdiffs = self.spikes.sort_values(['gid', time_col]).groupby(['gid'])[time_col].diff()
+        tdiffs = (
+            self.spikes.sort_values(['gid', time_col]).groupby(['gid'])[time_col].diff()
+        )
         bin_widths = tbins[1:] - tbins[:-1]
 
         grouped = tdiffs.groupby(self.spikes['gid'])
@@ -444,10 +487,16 @@ class SpikeTrains:
         # noinspection PyUnresolvedReferences
         tbins_index = pd.IntervalIndex.from_breaks(tbins)
 
-        isis = pd.DataFrame.from_dict({
-            gid: np.histogram(td, bins=tbins)[0] / bin_widths
-            for gid, td in grouped
-        }).set_index(tbins_index).rename_axis(index='tbin', columns='gid')
+        isis = (
+            pd.DataFrame.from_dict(
+                {
+                    gid: np.histogram(td, bins=tbins)[0] / bin_widths
+                    for gid, td in grouped
+                }
+            )
+            .set_index(tbins_index)
+            .rename_axis(index='tbin', columns='gid')
+        )
 
         if pmf:
             isis = isis / isis.sum()

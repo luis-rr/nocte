@@ -26,6 +26,7 @@ using a fast template-matching approach optimized with NumPy, Numba, and SciPy.
      a null CDF value. Picking a p-value to compare to, we filter out peaks that are
      not statistically significantly different from noise.
 """
+
 import logging
 
 import numba
@@ -65,9 +66,8 @@ def extract_cdf_other_nb(this: np.ndarray, null: np.ndarray) -> np.ndarray:
     """
     counts = np.empty(this.shape[0])
     for i in nb.prange(this.shape[0]):
-
         # noinspection PyTypeChecker
-        mask: np.ndarray = (null >= this[i])
+        mask: np.ndarray = null >= this[i]
 
         which = np.ones(mask.shape[0], dtype=np.bool_)
 
@@ -106,7 +106,7 @@ def _slide_template_pearson_nb(signal: np.ndarray, template: np.ndarray) -> np.n
     scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
-        section = signal[i:i + template_length]
+        section = signal[i : i + template_length]
 
         section_mean = np.mean(section)
         section_std = np.std(section)
@@ -142,7 +142,7 @@ def _slide_template_corr_nb(signal: np.ndarray, template: np.ndarray) -> np.ndar
     scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
-        section = signal[i:i + template_length]
+        section = signal[i : i + template_length]
         section_c = section - np.mean(section)
         scores[i] = np.mean(section_c * template_c)
 
@@ -150,7 +150,9 @@ def _slide_template_corr_nb(signal: np.ndarray, template: np.ndarray) -> np.ndar
 
 
 @nb.jit(parallel=True)
-def _slide_template_wmse_nb(signal: np.ndarray, template: np.ndarray, examples_var:np.ndarray) -> np.ndarray:
+def _slide_template_wmse_nb(
+    signal: np.ndarray, template: np.ndarray, examples_var: np.ndarray
+) -> np.ndarray:
     """
     Slide a probabilistic template (estimated from multiple examples)
     over the signal, computing weighted Gaussian log-likelihood scores.
@@ -174,7 +176,7 @@ def _slide_template_wmse_nb(signal: np.ndarray, template: np.ndarray, examples_v
     scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
-        section = signal[i:i + template_length]
+        section = signal[i : i + template_length]
         section_c = section - np.mean(section)
 
         diff = section_c - template_c
@@ -186,7 +188,9 @@ def _slide_template_wmse_nb(signal: np.ndarray, template: np.ndarray, examples_v
 
 
 @nb.jit(parallel=True)
-def _slide_template_wmse_l1_nb(signal: np.ndarray, template: np.ndarray, examples_var:np.ndarray) -> np.ndarray:
+def _slide_template_wmse_l1_nb(
+    signal: np.ndarray, template: np.ndarray, examples_var: np.ndarray
+) -> np.ndarray:
     """
     Slide a probabilistic template (estimated from multiple examples)
     over the signal, computing weighted Gaussian log-likelihood scores.
@@ -212,7 +216,7 @@ def _slide_template_wmse_l1_nb(signal: np.ndarray, template: np.ndarray, example
     scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
-        section = signal[i:i + template_length]
+        section = signal[i : i + template_length]
         section_c = section - np.mean(section)
 
         abs_error = np.abs(section_c - template_c)
@@ -223,7 +227,9 @@ def _slide_template_wmse_l1_nb(signal: np.ndarray, template: np.ndarray, example
 
 
 @nb.jit(parallel=True)
-def _slide_template_fullcov_nb(signal: np.ndarray, template: np.ndarray, examples_cov_inv:np.ndarray) -> np.ndarray:
+def _slide_template_fullcov_nb(
+    signal: np.ndarray, template: np.ndarray, examples_cov_inv: np.ndarray
+) -> np.ndarray:
     """
     Slide a probabilistic template (estimated from multiple examples)
     over the signal using the full covariance matrix.
@@ -249,7 +255,7 @@ def _slide_template_fullcov_nb(signal: np.ndarray, template: np.ndarray, example
     scores = np.empty(signal_length - template_length)
 
     for i in nb.prange(signal_length - template_length):
-        section = signal[i:i + template_length]
+        section = signal[i : i + template_length]
         section_c = section - np.mean(section)
         diff = section_c - template_c
 
@@ -260,10 +266,10 @@ def _slide_template_fullcov_nb(signal: np.ndarray, template: np.ndarray, example
 
 
 def slide_template(
-        signal: pd.Series,
-        examples: pd.DataFrame,
-        method: str,
-        norm_score: bool,
+    signal: pd.Series,
+    examples: pd.DataFrame,
+    method: str,
+    norm_score: bool,
 ):
     assert len(examples) <= len(signal)
 
@@ -300,11 +306,13 @@ def slide_template(
 
     half_template_length = len(examples) // 2
 
-    time = signal.index + examples.index.min()  # align things to wherever "zero" is in the template time
+    time = (
+        signal.index + examples.index.min()
+    )  # align things to wherever "zero" is in the template time
 
     scores = pd.Series(
         scores,
-        index=time[half_template_length:half_template_length - len(examples)],
+        index=time[half_template_length : half_template_length - len(examples)],
     )
 
     if norm_score:
@@ -323,11 +331,14 @@ def find_peak_idcs(scores: pd.Series, **kwargs) -> np.ndarray:
 
 def look_up_peak_properties(signal: pd.Series, peak_idcs: np.ndarray) -> pd.DataFrame:
     # Compute prominence (returns left and right base positions)
-    prominences, left_bases, right_bases = scipy.signal.peak_prominences(signal.values, peak_idcs, wlen=100)
+    prominences, left_bases, right_bases = scipy.signal.peak_prominences(
+        signal.values, peak_idcs, wlen=100
+    )
 
     # Compute width using prominence bases to ensure correct calculations
     widths, width_heights, left_ips, right_ips = scipy.signal.peak_widths(
-        signal.values, peak_idcs,
+        signal.values,
+        peak_idcs,
     )
 
     peaks = {
@@ -348,7 +359,8 @@ def look_up_peak_properties(signal: pd.Series, peak_idcs: np.ndarray) -> pd.Data
 
 def find_closest_peak(peaks, times, col='time'):
     closest_idcs = np.argmin(
-        np.abs(peaks[col].values[:, np.newaxis] - times[np.newaxis, :]), axis=0)
+        np.abs(peaks[col].values[:, np.newaxis] - times[np.newaxis, :]), axis=0
+    )
 
     return peaks[col][closest_idcs]
 
@@ -378,9 +390,9 @@ def find_template(
     )
 
     peaks['valid'] = (
-        peaks['height'].between(*height_range) &
-        peaks['width'].between(*width_range) &
-        peaks['prominence'].between(*prominence_range)
+        peaks['height'].between(*height_range)
+        & peaks['width'].between(*width_range)
+        & peaks['prominence'].between(*prominence_range)
     )
 
     # invert the signal to estimate the "noise" distributions
@@ -396,7 +408,7 @@ def find_template(
         find_peak_idcs(scores_noise, distance=min_distance),
     )
 
-    cdf_cols = ['height', 'width',  'prominence']
+    cdf_cols = ['height', 'width', 'prominence']
 
     sign = np.array([1, -1, 1])  # invert width because we want narrow peaks
 
@@ -409,11 +421,11 @@ def find_template(
 
 
 def extract_waves_from_recording(
-        loader,
-        times,
-        cut_out=timeslice.Win(-500, +1500),
-        filter_hz=(0.25, 40),
-        load_hz=1000,
+    loader,
+    times,
+    cut_out=timeslice.Win(-500, +1500),
+    filter_hz=(0.25, 40),
+    load_hz=1000,
 ) -> pd.DataFrame:
 
     load_wins = timeslice.Windows.build_around(times, cut_out)
@@ -430,15 +442,15 @@ def extract_waves_from_recording(
 
 
 def find_waves_in_recording(
-        loader,
-        template_examples: pd.DataFrame,
-        method='pearson',
-        filter_hz=(0.25, 40),
-        load_win=None,
-        load_hz=1000,
-        channels=None,
-        chunk_size=timeslice.ms(hours=1),
-        **kwargs,
+    loader,
+    template_examples: pd.DataFrame,
+    method='pearson',
+    filter_hz=(0.25, 40),
+    load_win=None,
+    load_hz=1000,
+    channels=None,
+    chunk_size=timeslice.ms(hours=1),
+    **kwargs,
 ):
     assert len(loader.channels) == 1
 
@@ -453,7 +465,6 @@ def find_waves_in_recording(
     all_peaks = []
 
     for t0, t1 in zip(tqdm(breaks[:-1]), breaks[1:]):
-
         raw = tr.Traces.load_single(
             loader,
             timeslice.Win(t0, t1),
@@ -473,16 +484,16 @@ def find_waves_in_recording(
         else:
             peaks = find_template(signal, template_examples, method=method, **kwargs)
 
-            peaks['time'] = peaks['time']  + t0
+            peaks['time'] = peaks['time'] + t0
 
             all_peaks.append(peaks)
 
     return pd.concat(all_peaks, ignore_index=True)
 
 
-
 #########################################################################################################
 # Plotting for exploration
+
 
 def make_scatter_matrix_fig(cols, figsize=(4, 4)):
     f, axs = plt.subplots(
@@ -509,7 +520,6 @@ def plot_scatter_matrix(axs, df, *, max_scatter=10_000, alpha=0.25, s=10, **kwar
 
     for i, ycol in enumerate(xcols):
         for j, xcol in enumerate(ycols):
-
             ax = axs[i, j]
 
             if len(df) > max_scatter:
@@ -533,6 +543,7 @@ def make_hists_fig(cols, figsize=(9, 1.5)):
         ax.set_xlabel(col)
 
     return axs
+
 
 def plot_hists_many(axs, df, alpha=0.5, bins=100, density=True, **kwargs):
     for i, ax in enumerate(axs):
@@ -570,11 +581,9 @@ def evaluate_traces_shift_nb(traces: np.array, offsets):
     scores = np.empty(offsets.shape[0])
 
     for i in nb.prange(len(scores)):
-
         shifted_traces = np.empty(traces.shape, dtype=traces.dtype)
 
         for j in range(traces.shape[1]):
-
             offset_x = offsets[i, j, 0]
             offset_y = offsets[i, j, 1]
 

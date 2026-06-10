@@ -2,6 +2,7 @@
 Process data to extract spectral power, SNs and SWR.
 Experiments are long (> 10h) and require processing in chunks or using sliding windows.
 """
+
 import gc
 import logging
 from pathlib import Path
@@ -23,7 +24,16 @@ class ChunkedExperiment:
     and then stitch them all together.
     """
 
-    def __init__(self, raw, channels, chunk_length, chunk_overlap, load_win=None, load_hz=None, min_chunk_length=None):
+    def __init__(
+        self,
+        raw,
+        channels,
+        chunk_length,
+        chunk_overlap,
+        load_win=None,
+        load_hz=None,
+        min_chunk_length=None,
+    ):
 
         self.raw = raw
         self.channels = channels
@@ -41,7 +51,7 @@ class ChunkedExperiment:
         chunk_step_ms = max(chunk_length - chunk_overlap, timeslice.S_TO_MS / load_hz)
 
         self.stride = timeslice.SamplingRate(raw.sampling_rate).get_stride(load_hz)
-        load_sampling_period = (self.stride * raw.sampling_period)
+        load_sampling_period = self.stride * raw.sampling_period
 
         load_sampling_hz = timeslice.SamplingRate.from_period(load_sampling_period)
 
@@ -58,13 +68,17 @@ class ChunkedExperiment:
         )
 
         if min_chunk_length is not None:
-            durations_ms: pd.Series = timeslice.S_TO_MS * self.wins.lengths() / raw.sampling_rate
+            durations_ms: pd.Series = (
+                timeslice.S_TO_MS * self.wins.lengths() / raw.sampling_rate
+            )
 
             # noinspection PyTypeChecker
             mask: pd.Series = durations_ms >= min_chunk_length
 
             if np.any(~mask):
-                logging.info(f'Dropping {np.count_nonzero(~mask)}/{len(mask)} chunks smaller than {min_chunk_length}')
+                logging.info(
+                    f'Dropping {np.count_nonzero(~mask)}/{len(mask)} chunks smaller than {min_chunk_length}'
+                )
 
             self.wins = self.wins.sel_mask(mask)
 
@@ -100,7 +114,8 @@ class ChunkedExperiment:
                 {
                     'channel': list(self.channels),
                     'time': t,
-                })
+                },
+            )
 
             yield idx, main_raw
 
@@ -113,7 +128,9 @@ class ChunkedExperiment:
 
         duration = self.wins.lengths().iloc[0]
 
-        ref_win_ms = self.raw.idcs_to_ms(self.raw.win_idcs.take_centered(duration).round())
+        ref_win_ms = self.raw.idcs_to_ms(
+            self.raw.win_idcs.take_centered(duration).round()
+        )
 
         ref_main = stacks.Stack.load_single_ms(
             self.raw,
@@ -150,14 +167,15 @@ class ChunkedExperiment:
 #################################################################################################################
 # power extraction
 
+
 def extract_sliding(
-        raw,
-        sliding_win_ms,
-        step_ms,
-        chunk_length_ms=timeslice.ms(hours=1),
-        load_hz=1000,
-        channels='all',
-        load_win=None,
+    raw,
+    sliding_win_ms,
+    step_ms,
+    chunk_length_ms=timeslice.ms(hours=1),
+    load_hz=1000,
+    channels='all',
+    load_win=None,
 ):
     if load_win is None:
         load_win = raw.win_ms
@@ -169,7 +187,7 @@ def extract_sliding(
         load_win.stop,
         length_ms=sliding_win_ms,
         sampling_rate=raw.sampling_rate,
-        step_ms=step_ms
+        step_ms=step_ms,
     )
 
     wins_ms = wins_samples.sample_to_ms(raw.sampling_rate)
@@ -180,15 +198,18 @@ def extract_sliding(
     current_chunk = None
 
     for win_idx in tqdm(wins_ms.wins.index, desc='sliding win'):
-
         current_win = Win(*wins_ms.wins.loc[win_idx, ['start', 'stop']])
 
-        if not (chunk_win.start <= current_win.start and current_win.stop <= chunk_win.stop):
+        if not (
+            chunk_win.start <= current_win.start and current_win.stop <= chunk_win.stop
+        ):
             chunk_win = Win(current_win.start, current_win.start + chunk_length_ms)
 
             print('load next chunk:', chunk_win)
 
-            current_chunk = stacks.Stack.load_single_ms(raw, load_win=chunk_win, load_hz=load_hz, channels=channels)
+            current_chunk = stacks.Stack.load_single_ms(
+                raw, load_win=chunk_win, load_hz=load_hz, channels=channels
+            )
 
         ref_ms = wins_ms.wins.loc[win_idx, 'ref']
         sel = current_chunk.sel_between(time=current_win)
@@ -197,12 +218,12 @@ def extract_sliding(
 
 
 def extract_sliding_power(
-        raw,
-        bands=('delta', 'beta', 'spiking'),
-        sliding_win_ms=10_000,
-        step_ms=1000,
-        load_win=None,
-        **kwargs,
+    raw,
+    bands=('delta', 'beta', 'spiking'),
+    sliding_win_ms=10_000,
+    step_ms=1000,
+    load_win=None,
+    **kwargs,
 ):
     all_power = {}
 
@@ -222,13 +243,13 @@ def extract_sliding_power(
 
 
 def process_experiment_power(
-        results_path,
-        raw,
-        channel,
-        band,
-        sliding_win_ms=10_000,
-        step_ms=1000,
-        load_win=None,
+    results_path,
+    raw,
+    channel,
+    band,
+    sliding_win_ms=10_000,
+    step_ms=1000,
+    load_win=None,
 ):
     results_path = Path(results_path)
     results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,8 +268,12 @@ def process_experiment_power(
     power_trace.to_hdf(str(results_path), key='power', mode='a')
 
 
-def extract_all_power(reg, band, sliding_win, sliding_step, areas=('CLA',), ignore_failures=True):
-    missing = reg.collect_paths_power(band, sliding_win, sliding_step, missing=True, areas=areas)
+def extract_all_power(
+    reg, band, sliding_win, sliding_step, areas=('CLA',), ignore_failures=True
+):
+    missing = reg.collect_paths_power(
+        band, sliding_win, sliding_step, missing=True, areas=areas
+    )
     to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
     for _, exp_name, results_path, probe, local_ch in to_extract:
@@ -280,14 +305,15 @@ def extract_all_power(reg, band, sliding_win, sliding_step, areas=('CLA',), igno
 #################################################################################################################
 # SNE extraction
 
+
 def process_experiment_sne(
-        results_path,
-        raw,
-        channel,
-        load_hz=None,
-        chunk_length=timeslice.ms(hours=1),
-        load_win=None,
-        **kwargs,
+    results_path,
+    raw,
+    channel,
+    load_hz=None,
+    chunk_length=timeslice.ms(hours=1),
+    load_win=None,
+    **kwargs,
 ):
     results_path = Path(results_path)
     results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -326,11 +352,15 @@ def process_experiment_sne(
         chunk_events.reg['null_cdf'] = chunk_events.extract_cdf_other(sns_null)
 
         all_events_list.append(chunk_events.reg)
-        all_events = pd.concat(all_events_list, axis=0, ignore_index=True).rename_axis(index='event_id')
+        all_events = pd.concat(all_events_list, axis=0, ignore_index=True).rename_axis(
+            index='event_id'
+        )
         all_events.to_hdf(results_path, key='sne')
 
 
-def extract_all_sne(reg, areas=('CLA',), suffix='', ignore_failures=True, load_win=None, missing=True):
+def extract_all_sne(
+    reg, areas=('CLA',), suffix='', ignore_failures=True, load_win=None, missing=True
+):
     missing = reg.collect_paths_sne(missing=missing, areas=areas, suffix=suffix)
     to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
 
@@ -358,18 +388,21 @@ def extract_all_sne(reg, areas=('CLA',), suffix='', ignore_failures=True, load_w
 
 
 def process_experiment_matching(
-        results_path,
-        reg: Registry, exp_name,
-        null_thresh,
-        xcorr_sliding_win,
-        pbar,
+    results_path,
+    reg: Registry,
+    exp_name,
+    null_thresh,
+    xcorr_sliding_win,
+    pbar,
 ):
     results_path = Path(results_path)
     results_path.parent.mkdir(parents=True, exist_ok=True)
     print(f'Extract {exp_name} matching to: {results_path}')
 
     xcorr = stacks.Stack.load_hdf(
-        reg.get_path_xcorr_area(exp_name, area='CLA', sliding_win=xcorr_sliding_win, suffix='_exp'),
+        reg.get_path_xcorr_area(
+            exp_name, area='CLA', sliding_win=xcorr_sliding_win, suffix='_exp'
+        ),
         'xcorr',
     )
 
@@ -395,10 +428,13 @@ def process_experiment_matching(
 
 
 def extract_all_matchings(
-        reg, suffix='', area='',
-        null_thresh=.05, xcorr_sliding_win=100,
-        pbar=False,
-        ignore_failures=True,
+    reg,
+    suffix='',
+    area='',
+    null_thresh=0.05,
+    xcorr_sliding_win=100,
+    pbar=False,
+    ignore_failures=True,
 ):
     missing = reg.collect_paths_matching(missing=True, area=area, suffix=suffix)
     to_extract = tqdm(missing.itertuples(), desc='experiments', total=len(missing))
@@ -406,7 +442,9 @@ def extract_all_matchings(
     for _, exp_name, results_path in to_extract:
         try:
             process_experiment_matching(
-                results_path, reg, exp_name,
+                results_path,
+                reg,
+                exp_name,
                 null_thresh=null_thresh,
                 xcorr_sliding_win=xcorr_sliding_win,
                 pbar=pbar,

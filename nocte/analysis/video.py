@@ -16,7 +16,7 @@ from nocte import stacks, timeslice
 from nocte import traces as tr
 from nocte.io import neuralynx
 
-MICROS_TO_MS = .001
+MICROS_TO_MS = 0.001
 
 
 class VideoWriter:
@@ -44,7 +44,12 @@ class VideoWriter:
     def __enter__(self):
         # noinspection PyUnresolvedReferences
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        self.out = cv2.VideoWriter(self.output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
+        self.out = cv2.VideoWriter(
+            self.output_video_path,
+            fourcc,
+            self.fps,
+            (self.frame_width, self.frame_height),
+        )
         return self.out
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -78,14 +83,14 @@ class VideoReader:
 
         self.cap = cv2.VideoCapture(input_video_path)
         if not self.cap.isOpened():
-            raise ValueError(f"Could not open video file {input_video_path}")
+            raise ValueError(f'Could not open video file {input_video_path}')
 
         total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if start < 0 or stop >= total_frames or start > stop:
-            raise ValueError(f"Invalid frame indices: {start}, {stop}")
+            raise ValueError(f'Invalid frame indices: {start}, {stop}')
 
         if step <= 0:
-            raise ValueError("Step must be a positive integer")
+            raise ValueError('Step must be a positive integer')
 
         self.start = start
         self.stop = stop
@@ -100,7 +105,9 @@ class VideoReader:
         return self
 
     def __iter__(self):
-        for idx in tqdm(range(self.start, self.stop, self.step), desc='Processing frames'):
+        for idx in tqdm(
+            range(self.start, self.stop, self.step), desc='Processing frames'
+        ):
             ret, frame = self.cap.read()
             if not ret:
                 break
@@ -116,7 +123,9 @@ class VideoReader:
         self.cap.release()  # Ensures proper cleanup exactly once
 
 
-def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -> stacks.Stack:
+def load_movie(
+    avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1
+) -> stacks.Stack:
     cap = cv2.VideoCapture(str(avi_path))
 
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -130,13 +139,15 @@ def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -
 
     if start_ms is not None:
         start_idx = int(np.round(start_ms * timeslice.MS_TO_S * fps))
-        assert 0 <= start_idx < frame_count, \
+        assert 0 <= start_idx < frame_count, (
             f'Start time must fall within {timeslice.Win(0, frame_count / fps * timeslice.S_TO_MS)}'
+        )
 
     if stop_ms is not None:
         stop_idx = int(np.round(stop_ms * timeslice.MS_TO_S * fps))
-        assert 0 <= stop_idx <= frame_count, \
+        assert 0 <= stop_idx <= frame_count, (
             f'Stop time must fall within {timeslice.Win(0, frame_count / fps * timeslice.S_TO_MS)}'
+        )
         stop_idx = int(np.round(stop_ms * timeslice.MS_TO_S * fps))
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
@@ -149,7 +160,6 @@ def load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -
         iteration = tqdm(iteration, 'frames')
 
     for i, _ in enumerate(iteration):
-
         ret, frame_data = cap.read()
 
         if not ret:
@@ -198,8 +208,9 @@ def get_frame_idx_by_fps(avi_path, time_ms) -> int:
     start_idx, stop_idx = 0, frame_count
 
     time_idx = int(np.round(time_ms * timeslice.MS_TO_S * fps))
-    assert 0 <= start_idx < frame_count, \
+    assert 0 <= start_idx < frame_count, (
         f'Time must fall within {timeslice.Win(0, frame_count / fps * timeslice.S_TO_MS)}'
+    )
 
     return time_idx
 
@@ -233,10 +244,7 @@ def load_movie_frames_ms(exp_info, show_times):
     frames = {}
 
     for i, t in enumerate(tqdm(show_times, desc='load frames')):
-        frames[t] = load_movie_frame_idx(
-            video_path,
-            np.searchsorted(frame_times, t)
-        )
+        frames[t] = load_movie_frame_idx(video_path, np.searchsorted(frame_times, t))
 
     return frames
 
@@ -307,7 +315,9 @@ def fix_exp_luminance(exp_info, lum_raw, smooth_ms=None):
 
     if smooth_ms is not None:
         sampling_period = np.median(np.diff(lum_raw.index))
-        lum = lum_raw.rolling(int(smooth_ms / sampling_period), center=True, min_periods=1).median()
+        lum = lum_raw.rolling(
+            int(smooth_ms / sampling_period), center=True, min_periods=1
+        ).median()
 
     if exp_info['probe'] == 'neuronexus':
         lum = adjust_frame_times_multiple_tries(exp_info, lum)
@@ -317,10 +327,12 @@ def fix_exp_luminance(exp_info, lum_raw, smooth_ms=None):
     return lum
 
 
-def extract_light_wins(lum: pd.Series, high_q=.99, low_q=.1, merge_length=1_000):
-    th = .5 * (lum.quantile(high_q) + lum.quantile(low_q))
+def extract_light_wins(lum: pd.Series, high_q=0.99, low_q=0.1, merge_length=1_000):
+    th = 0.5 * (lum.quantile(high_q) + lum.quantile(low_q))
 
-    light_wins = timeslice.Windows.build_from_contiguous_values(lum > th, include_right=False)
+    light_wins = timeslice.Windows.build_from_contiguous_values(
+        lum > th, include_right=False
+    )
     light_wins['cat'] = light_wins['cat'].map({True: 'on', False: 'off'})
 
     light_wins = light_wins.merge_sandwiched(max_length=merge_length)
@@ -346,13 +358,17 @@ def get_first_timestamp(loader) -> float:
 
     for idx, lo in loader.loaders.items():
         with open(lo.header['full_path'], 'rb') as fid:
-            recs = neuralynx.NeuralynxBaseLoader.read_records(fid, neuralynx.NCSLoader.RECORD, 0, 1)
+            recs = neuralynx.NeuralynxBaseLoader.read_records(
+                fid, neuralynx.NCSLoader.RECORD, 0, 1
+            )
 
             timestamps.append(recs['TimeStamp'][0])
 
     timestamps = np.asarray(timestamps)
 
-    assert np.all(timestamps[0] == timestamps), f'Different starting timestamps for different sub-loaders'
+    assert np.all(timestamps[0] == timestamps), (
+        f'Different starting timestamps for different sub-loaders'
+    )
 
     return np.min(timestamps) * MICROS_TO_MS
 
@@ -364,7 +380,9 @@ def get_cam_frame_timestamps(events_path, cam=b'cam0') -> np.ndarray:
     mask = nev.records['EventString'] == cam
 
     cam_frames = timestamps[mask]
-    assert np.all(cam_frames[:-1] < cam_frames[1:]), 'Frames timestamps should be sorted'
+    assert np.all(cam_frames[:-1] < cam_frames[1:]), (
+        'Frames timestamps should be sorted'
+    )
 
     cam_frames = cam_frames * MICROS_TO_MS
 
@@ -379,13 +397,16 @@ def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
         logging.warning(f'Skipping last entry (missing 1 timestamp)')
         lum = lum.iloc[:-1]
 
-    assert len(new_time) == len(lum), \
-        f'Unable to adjust {exp_info.name}. ' \
-        f'Got {len(lum):,d} frames but {len(new_time):,d} timestamps' \
+    assert len(new_time) == len(lum), (
+        f'Unable to adjust {exp_info.name}. '
+        f'Got {len(lum):,d} frames but {len(new_time):,d} timestamps'
         f' (diff: {len(lum) - len(new_time)})'
+    )
 
     offsets = new_time - lum.index
-    logging.info(f'Adjusting {exp_info.name} for offset: {np.min(offsets)}- {np.max(offsets)}')
+    logging.info(
+        f'Adjusting {exp_info.name} for offset: {np.min(offsets)}- {np.max(offsets)}'
+    )
 
     return pd.Series(lum.values, index=new_time)
 
@@ -426,7 +447,7 @@ def adjust_frame_times_multiple_tries(exp_info, lum: pd.Series):
 # deep lab cut eye-tracking
 
 
-def load_deeplabcut(path, sampling_rate=50.):
+def load_deeplabcut(path, sampling_rate=50.0):
     df = pd.read_csv(
         str(path),
         index_col=0,
@@ -439,19 +460,29 @@ def load_deeplabcut(path, sampling_rate=50.):
 
     right = df.loc[:, df.columns.get_level_values('bodyparts').str.startswith('R')]
     right = right.rename(
-        columns=dict(zip(right.columns.get_level_values('bodyparts'),
-                         right.columns.get_level_values('bodyparts').str.slice(1, None)))
+        columns=dict(
+            zip(
+                right.columns.get_level_values('bodyparts'),
+                right.columns.get_level_values('bodyparts').str.slice(1, None),
+            )
+        )
     )
 
     left = df.loc[:, df.columns.get_level_values('bodyparts').str.startswith('L')]
     left = left.rename(
-        columns=dict(zip(left.columns.get_level_values('bodyparts'),
-                         left.columns.get_level_values('bodyparts').str.slice(1, None)))
+        columns=dict(
+            zip(
+                left.columns.get_level_values('bodyparts'),
+                left.columns.get_level_values('bodyparts').str.slice(1, None),
+            )
+        )
     )
 
-    df = pd.concat({'left': left, 'right': right}, axis=1, names=['side']).sort_index(axis=1)
+    df = pd.concat({'left': left, 'right': right}, axis=1, names=['side']).sort_index(
+        axis=1
+    )
 
-    sampling_period_ms = 1000. / sampling_rate
+    sampling_period_ms = 1000.0 / sampling_rate
     df.index = df.index * sampling_period_ms
 
     return df
@@ -460,7 +491,9 @@ def load_deeplabcut(path, sampling_rate=50.):
 def load_deeplabcut_multi(exp_paths):
     return {
         exp_name: load_deeplabcut(tracking_path)
-        for exp_name, tracking_path in tqdm(exp_paths.items(), desc='load', total=len(exp_paths))
+        for exp_name, tracking_path in tqdm(
+            exp_paths.items(), desc='load', total=len(exp_paths)
+        )
     }
 
 
@@ -468,7 +501,6 @@ def adjust_deeplabcut_time_multi(reg, exp_tracking):
     result = {}
 
     for exp_name, tracking in tqdm(exp_tracking.items(), desc='adjust'):
-
         if exp_name not in reg.experiment_names:
             logging.warning(f'{exp_name} missing from reg. Skipping adjustment.')
 
@@ -476,14 +508,15 @@ def adjust_deeplabcut_time_multi(reg, exp_tracking):
             new_times = get_cam_frame_timestamps_rec(reg.get_entry(exp_name))
 
             if len(new_times) == len(tracking):
-
                 new_tracking = tracking.copy()
 
                 new_tracking.index = new_times
 
                 result[exp_name] = new_tracking
 
-                print(f'{exp_name} time adjusted by {np.max(new_times - tracking.index):.2f} ms')
+                print(
+                    f'{exp_name} time adjusted by {np.max(new_times - tracking.index):.2f} ms'
+                )
 
             else:
                 logging.error(
@@ -501,18 +534,18 @@ def extract_eye_open_multi(exp_dlc, max_pix=100):
         return np.sqrt(np.square(diff).sum(axis=1))
 
     exp_eyes = {
-        exp_name: pd.DataFrame({
-            'left': euclidean_distance(
-                dlc['left', 'TopEL'][['x', 'y']],
-                dlc['left', 'BottomEL'][['x', 'y']],
-            ),
-
-            'right': euclidean_distance(
-                dlc['right', 'TopEL'][['x', 'y']],
-                dlc['right', 'BottomEL'][['x', 'y']],
-            ),
-        })
-
+        exp_name: pd.DataFrame(
+            {
+                'left': euclidean_distance(
+                    dlc['left', 'TopEL'][['x', 'y']],
+                    dlc['left', 'BottomEL'][['x', 'y']],
+                ),
+                'right': euclidean_distance(
+                    dlc['right', 'TopEL'][['x', 'y']],
+                    dlc['right', 'BottomEL'][['x', 'y']],
+                ),
+            }
+        )
         for exp_name, dlc in exp_dlc.items()
     }
 
@@ -520,7 +553,9 @@ def extract_eye_open_multi(exp_dlc, max_pix=100):
 
     exp_eyes.sort_index(inplace=True)
 
-    exp_eyes = tr.Traces.from_multiindex_df(exp_eyes.rename_axis(columns=['exp_name', 'side']))
+    exp_eyes = tr.Traces.from_multiindex_df(
+        exp_eyes.rename_axis(columns=['exp_name', 'side'])
+    )
 
     # downsample to match upsampled beta
     exp_eyes = exp_eyes.resample(100, start=0)

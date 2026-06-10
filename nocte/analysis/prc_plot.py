@@ -24,7 +24,7 @@ PHASE_CAT_COLORS = {
 
 def plot_background_phase(ax, which='y'):
     prb_rem = pd.Series(
-        np.sin(np.linspace(.5, 1.5, 101) * np.pi * 2) > 0,
+        np.sin(np.linspace(0.5, 1.5, 101) * np.pi * 2) > 0,
         index=np.linspace(0, 1, 101),
     )
 
@@ -46,11 +46,11 @@ def plot_background_phase(ax, which='y'):
         window_colors=dict(
             rem='w',
             sws='xkcd:silver',
-        )
+        ),
     )
 
 
-def plot_scatter_reflected(ax, x, y, colors, xlim=(-.5, +1.5), ylim=(-1, +1), s=50):
+def plot_scatter_reflected(ax, x, y, colors, xlim=(-0.5, +1.5), ylim=(-1, +1), s=50):
     df = pd.DataFrame(dict(x=x, y=y))
 
     reflected = get_circular_scatter(df, xlim, ylim, include_zero=False)
@@ -60,8 +60,8 @@ def plot_scatter_reflected(ax, x, y, colors, xlim=(-.5, +1.5), ylim=(-1, +1), s=
         reflected['y'],
         facecolor='xkcd:grey',
         edgecolor='w',
-        linewidth=.25,
-        alpha=.25,
+        linewidth=0.25,
+        alpha=0.25,
         s=s,
     )
 
@@ -70,8 +70,8 @@ def plot_scatter_reflected(ax, x, y, colors, xlim=(-.5, +1.5), ylim=(-1, +1), s=
         df['y'],
         facecolor=colors,
         edgecolor='w',
-        linewidth=.25,
-        alpha=.5,
+        linewidth=0.25,
+        alpha=0.5,
         s=s,
         clip_on=False,
     )
@@ -102,13 +102,17 @@ def get_circular_scatter(df, xlim, ylim, include_zero):
 
 
 def plot_phase_response(
-        ax, x, y, colors,
-        exp_names=None,
-        xlim=(-.5, +1.5), ylim=(-1, +1),
-        zero_bottom_spine=True,
-        xlabel='phase at pulse end',
-        ylabel='phase shift',
-        s=150,
+    ax,
+    x,
+    y,
+    colors,
+    exp_names=None,
+    xlim=(-0.5, +1.5),
+    ylim=(-1, +1),
+    zero_bottom_spine=True,
+    xlabel='phase at pulse end',
+    ylabel='phase shift',
+    s=150,
 ):
     if exp_names is not None:
         x = x[exp_names]
@@ -116,7 +120,9 @@ def plot_phase_response(
         colors = colors[exp_names]
 
     plot_scatter_reflected(
-        ax, x, y,
+        ax,
+        x,
+        y,
         colors=colors,
         xlim=xlim,
         ylim=ylim,
@@ -133,8 +139,8 @@ def plot_phase_response(
 
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(base=1))
     ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(base=1))
-    ax.yaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(base=.5))
-    ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(base=.5))
+    ax.yaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(base=0.5))
+    ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(base=0.5))
 
     if zero_bottom_spine:
         ax.axhline(0, color='k')
@@ -143,20 +149,24 @@ def plot_phase_response(
 
 
 def plot_beta_spread_single_exp(
-        beta,
-        y_space=1.75,
-        left_fill=False,
-        right_fill=False,
-        max_fill=True,
-        summary=pd.DataFrame.median,
-        suptitle=''
+    beta,
+    y_space=1.75,
+    left_fill=False,
+    right_fill=False,
+    max_fill=True,
+    summary=pd.DataFrame.median,
+    suptitle='',
 ):
-    f, axs = plt.subplots(nrows=4, gridspec_kw=dict(height_ratios=[8, 1, 1, 1]), sharex='all', figsize=(4, 5))
+    f, axs = plt.subplots(
+        nrows=4,
+        gridspec_kw=dict(height_ratios=[8, 1, 1, 1]),
+        sharex='all',
+        figsize=(4, 5),
+    )
 
     f.suptitle(suptitle)
 
     for i, (_, traces) in enumerate(beta.iter_grouped('win_idx')):
-
         ax = axs[0]
 
         for k, which in traces['side'].items():
@@ -171,7 +181,7 @@ def plot_beta_spread_single_exp(
                     np.ones(len(trace)) * i * y_space + trace,
                     trace.values,
                     facecolor=color,
-                    alpha=.75,
+                    alpha=0.75,
                 )
             else:
                 ax.plot(
@@ -187,7 +197,7 @@ def plot_beta_spread_single_exp(
                 np.ones(len(trace)) * i * y_space + trace,
                 trace.values,
                 facecolor='k',
-                alpha=.75,
+                alpha=0.75,
             )
 
     for i, which in enumerate(['left', 'right']):
@@ -198,8 +208,8 @@ def plot_beta_spread_single_exp(
         ax.plot(
             traces.traces,
             color=splot.COLORS[which],
-            linewidth=.25,
-            alpha=.25,
+            linewidth=0.25,
+            alpha=0.25,
             clip_on=False,
         )
 
@@ -209,7 +219,7 @@ def plot_beta_spread_single_exp(
             clip_on=False,
         )
 
-        ax.set_ylim(-.25, 2)
+        ax.set_ylim(-0.25, 2)
 
     ax = axs[-1]
     traces = beta.groupby_max(['exp_name', 'win_idx']).normalize_by_quantiles()
@@ -217,8 +227,8 @@ def plot_beta_spread_single_exp(
     ax.plot(
         traces.traces,
         color='k',
-        linewidth=.25,
-        alpha=.25,
+        linewidth=0.25,
+        alpha=0.25,
         clip_on=False,
     )
 
@@ -228,7 +238,7 @@ def plot_beta_spread_single_exp(
         clip_on=False,
     )
 
-    ax.set_ylim(-.25, 2)
+    ax.set_ylim(-0.25, 2)
 
     splot.drop_spines_grid(axs, left_edge=True)
     for ax in axs:
@@ -252,10 +262,18 @@ CAP_COLORS = {
     'blind': splot.COLORS['right'],
     'sws': splot.COLORS['sws'],
 }
-IQR = [.25, .75]
+IQR = [0.25, 0.75]
 
 
-def plot_circ_line(ax, slope, intercept=.75, split=0.25, range_x=(-.5, 1.5), color='k', linestyle='--'):
+def plot_circ_line(
+    ax,
+    slope,
+    intercept=0.75,
+    split=0.25,
+    range_x=(-0.5, 1.5),
+    color='k',
+    linestyle='--',
+):
     line_x = np.linspace(*range_x, 101)
 
     line_y = slope * line_x + intercept
@@ -263,13 +281,7 @@ def plot_circ_line(ax, slope, intercept=.75, split=0.25, range_x=(-.5, 1.5), col
     mask = line_x < split
     line_y[mask] -= 1
 
-    ax.plot(
-        line_x,
-        line_y,
-        color=color,
-        linestyle=linestyle,
-        zorder=1e6
-    )
+    ax.plot(line_x, line_y, color=color, linestyle=linestyle, zorder=1e6)
 
 
 def plot_prc_single(ax, samples, class_by, line='diag'):
@@ -283,7 +295,7 @@ def plot_prc_single(ax, samples, class_by, line='diag'):
     ax.set(xlabel='phase at pulse')
 
     if line == 'diag':
-        params = dict(slope=-1, intercept=.75, split=.25)
+        params = dict(slope=-1, intercept=0.75, split=0.25)
     else:
         params = dict(slope=0, intercept=0, split=-np.inf)
 
@@ -292,13 +304,12 @@ def plot_prc_single(ax, samples, class_by, line='diag'):
         **params,
     )
 
-    ax.set(
-        xlabel=r'$\varphi$ at pulse end',
-        ylabel=r'$\Delta \varphi$'
-    )
+    ax.set(xlabel=r'$\varphi$ at pulse end', ylabel=r'$\Delta \varphi$')
     ax.xaxis.set_label_position('top')
 
-    splot.add_desc(ax, f'n={len(samples.index):,g}', loc='upper right', bkg_color='none')
+    splot.add_desc(
+        ax, f'n={len(samples.index):,g}', loc='upper right', bkg_color='none'
+    )
 
 
 def plot_phases_grouped_single(ax, phase_detailed_cut, class_by, shaded):
@@ -311,8 +322,8 @@ def plot_phases_grouped_single(ax, phase_detailed_cut, class_by, shaded):
             ax.plot(
                 trace,
                 color=PHASE_CAT_COLORS[phase_cat],
-                linewidth=.25,
-                alpha=.25,
+                linewidth=0.25,
+                alpha=0.25,
             )
 
     for i, phase_cat in enumerate(['late rem', 'early rem', 'late sws', 'early sws']):
@@ -322,15 +333,15 @@ def plot_phases_grouped_single(ax, phase_detailed_cut, class_by, shaded):
 
         if shaded:
             summary = traces.median(axis=1)
-            low = traces.quantile(.05, axis=1)
-            high = traces.quantile(.95, axis=1)
+            low = traces.quantile(0.05, axis=1)
+            high = traces.quantile(0.95, axis=1)
 
             ax.fill_between(
                 low.index,
                 low,
                 high,
                 facecolor=color,
-                alpha=.5,
+                alpha=0.5,
                 edgecolor='none',
             )
 
@@ -367,14 +378,14 @@ def plot_phases_grouped_single(ax, phase_detailed_cut, class_by, shaded):
 
 
 def plot_betas_grouped_single(
-        ax,
-        beta_detailed_cut,
-        class_by,
-        colors=None,
-        show_labels=True,
-        shaded=False,
-        n_label_offset=0.,
-        clip_on=True,
+    ax,
+    beta_detailed_cut,
+    class_by,
+    colors=None,
+    show_labels=True,
+    shaded=False,
+    n_label_offset=0.0,
+    clip_on=True,
 ):
     if colors is None:
         colors = PHASE_CAT_COLORS
@@ -394,8 +405,8 @@ def plot_betas_grouped_single(
             ax.plot(
                 traces.traces + y_offset,
                 color=color,
-                linewidth=.25,
-                alpha=.125,
+                linewidth=0.25,
+                alpha=0.125,
                 clip_on=clip_on,
             )
         else:
@@ -412,7 +423,7 @@ def plot_betas_grouped_single(
                 low + y_offset,
                 high + y_offset,
                 facecolor=color,
-                alpha=.25,
+                alpha=0.25,
                 edgecolor='none',
                 clip_on=clip_on,
             )
@@ -430,7 +441,7 @@ def plot_betas_grouped_single(
         if show_labels:
             ax.text(
                 0,
-                y_offset + .5 * y_spacing,
+                y_offset + 0.5 * y_spacing,
                 phase_cat.replace('_', ' ') + '\n',
                 ha='left',
                 va='bottom',
@@ -441,7 +452,7 @@ def plot_betas_grouped_single(
             )
             ax.text(
                 1 + n_label_offset,
-                y_offset + .5 * y_spacing,
+                y_offset + 0.5 * y_spacing,
                 f'n={len(traces.index):,g}\n',
                 ha='right',
                 va='bottom',
@@ -454,7 +465,7 @@ def plot_betas_grouped_single(
     splot.set_time_ticks(ax, scale='minutes', label='Time (min)')
 
     ax.set(
-        ylim=(-.1, y_spacing * 4),
+        ylim=(-0.1, y_spacing * 4),
         xlim=beta_detailed_cut.get_global_win(),
     )
     # ax.set(ylim=(-1.5, +2), xlim=(ms(minutes=-2), ms(minutes=+4)))
@@ -510,7 +521,7 @@ def plot_phase_dependency(beta_comb_cut, phase_comb_cut, class_by='phase_single_
         class_by=class_by,
         shaded=True,
         show_labels=True,
-        n_label_offset=-.25,
+        n_label_offset=-0.25,
     )
 
     return f
