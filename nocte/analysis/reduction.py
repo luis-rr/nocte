@@ -112,9 +112,35 @@ def _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray,
     behavior_readout = behavior_subspace.T                           # (n_latents, B)
 
     # Latent neural activity
-    latent_activity = neural_data @ neural_projection
+    latent = neural_data @ neural_projection
 
     # Final behavioral prediction
-    behavior_prediction = latent_activity @ behavior_readout
+    behavior_prediction = latent @ behavior_readout
 
-    return latent_activity, neural_projection, behavior_readout, behavior_prediction
+    return latent, neural_projection, behavior_readout, behavior_prediction
+
+
+def _reduced_rank_regression_dd(neural_data: pd.DataFrame, behavior_data: pd.DataFrame, n_latents: int):
+    valid = np.all(np.isfinite(neural_data.values), axis=1) & np.all(np.isfinite(neural_data.values), axis=1)
+
+    latent_array, neural_projection, behavior_readout, behavior_prediction = _reduced_rank_regression(
+        neural_data.values[valid],
+        behavior_data.values[valid],
+        n_latents=n_latents,
+    )
+
+    latent_idcs = np.arange(n_latents) + 1
+
+    latent = pd.DataFrame(
+        latent_array,
+        index=neural_data.index[valid],
+        columns=latent_idcs,
+    )
+
+    latent = latent.rename_axis(
+        columns='PC',
+        index=neural_data.index.name,
+    )
+
+    return latent, neural_projection, behavior_readout, behavior_prediction
+
