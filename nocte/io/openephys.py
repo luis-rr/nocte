@@ -25,8 +25,9 @@ class ContinuousLoader(common.DataLoader):
     https://github.com/open-ephys/open-ephys-python-tools/blob/main/src/open_ephys/analysis/formats/BinaryRecording.py
     """
 
-    def __init__(self, stream):
+    def __init__(self, channels: pd.DataFrame, stream):
         self.stream = stream
+        self._channels = channels
 
     @property
     def sample_count(self) -> int:
@@ -36,7 +37,7 @@ class ContinuousLoader(common.DataLoader):
     @property
     def sampling_period(self) -> float:
         """The inter-sample interval in ms"""
-        return 1000. / self.stream.metadata['sample_rate']
+        return 1000. / self.stream.metadata.sample_rate
 
     @property
     def channels(self) -> pd.DataFrame:
@@ -44,16 +45,19 @@ class ContinuousLoader(common.DataLoader):
         A DataFrame with metadata about the channels that this loader can load from.
         Index must be unique and will be used to select channels to load.
         """
+        return self._channels
 
-        df = pd.DataFrame({
-            'name': self.stream.metadata['channel_names'],
-        })
-
-        df['local_channel_id'] = df.index
-
-        df.index.name = "channel"
-
-        return df
+    def sel_channels(self, which):
+        """
+        Select a subsection of all channels.
+        These will reset the index of channels so
+        if which=[32, 64] then the result will have: channels.index == [0, 1]
+        :return: a reduced copy of this loader
+        """
+        return self.__class__(
+             self._channels.loc[which].reset_index(drop=True),
+             self.stream,
+        )
 
     def load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray:
         """
@@ -87,4 +91,14 @@ class ContinuousLoader(common.DataLoader):
     def from_session(cls, session_path: str | Path, recording_node_idx=0, recording_idx=0, continuous_idx=0):
         session = open_ephys.analysis.Session(session_path)
         stream = session.recordnodes[recording_node_idx].recordings[recording_idx].continuous[continuous_idx]
-        return cls(stream)
+
+        channels = pd.DataFrame({
+            'name': stream.metadata.channel_names,
+            'probe': 0,  # TODO if we want to support multiple probes, this should be set to the probe id
+        })
+
+        channels['local_channel_id'] = channels.index
+        channels.index.name = "channel"
+
+        return cls(channels, stream)
+

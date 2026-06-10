@@ -2,6 +2,7 @@
 Manage conversion between timescales & sampling rates, as well as defining windows of time
 that can be used to cut data.
 """
+
 import functools
 import logging
 import re
@@ -14,7 +15,7 @@ from tqdm.auto import tqdm
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 S_TO_MS = 1e3
-MS_TO_S = 1. / S_TO_MS
+MS_TO_S = 1.0 / S_TO_MS
 
 
 def to_ms(t) -> float:
@@ -52,26 +53,26 @@ def _ms_scale(scale) -> float:
     return scale_to
 
 
-def ms_round(value: float, scale='milliseconds', decimals=0) -> float:
+def ms_round(value: float, scale="milliseconds", decimals=0) -> float:
     """Round to a given timescale"""
     scale_to = _ms_scale(scale)
     rounded = float(np.round(value / scale_to, decimals=decimals))
     return rounded * scale_to
 
 
-def ms_floor(value: float, scale='milliseconds'):
+def ms_floor(value: float, scale="milliseconds"):
     """Floor to a given timescale"""
     scale_to = _ms_scale(scale)
     return np.floor(value / scale_to) * scale_to
 
 
-def ms_ceil(value: float, scale='milliseconds'):
+def ms_ceil(value: float, scale="milliseconds"):
     """Ceil to a given timescale"""
     scale_to = _ms_scale(scale)
     return np.ceil(value / scale_to) * scale_to
 
 
-def ms_remainder(value: float, scale='days'):
+def ms_remainder(value: float, scale="days"):
     """
     Return the remainder of `value` (in ms) after removing full multiples of `scale`.
 
@@ -101,9 +102,9 @@ def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
 
     total = tdelta.total_seconds()
 
-    sign = '' if not plus_sign else '+'
+    sign = "" if not plus_sign else "+"
     if total < 0:
-        sign = '-'
+        sign = "-"
         total = total * -1
 
     if show_days:
@@ -116,17 +117,17 @@ def ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str:
     minutes, seconds = divmod(minutes, 60)
     seconds, decimals = divmod(seconds, 1)
 
-    desc = ''
+    desc = ""
     if show_days:
-        desc = f'{days:g}d '
+        desc = f"{days:g}d "
 
-    desc = f'{sign}{desc}{int(hours):02d}:{int(minutes):02d}'
+    desc = f"{sign}{desc}{int(hours):02d}:{int(minutes):02d}"
 
     if seconds > 0 or decimals > 0 or not strip:
-        desc += f':{seconds:02.0f}'
+        desc += f":{seconds:02.0f}"
 
         if decimals or not strip:
-            desc += f'.{int(decimals * 1000.):03g}'
+            desc += f".{int(decimals * 1000.0):03g}"
 
     return desc
 
@@ -141,7 +142,7 @@ def str_to_ms(timestamp) -> float:
     For pretty-printing with more options see strf_ms
     """
     # Define regex pattern with optional days, hours, minutes, optional seconds, and milliseconds
-    pattern = r'(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
+    pattern = r"(?:(\d+)d)?\s*(?:(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?"
     match = re.match(pattern, timestamp.strip())
 
     if not match:
@@ -152,7 +153,7 @@ def str_to_ms(timestamp) -> float:
     hours = int(match.group(2)) if match.group(2) else 0
     minutes = int(match.group(3)) if match.group(3) else 0
     seconds = int(match.group(4)) if match.group(4) else 0
-    milliseconds = int(match.group(5).ljust(3, '0')) if match.group(5) else 0
+    milliseconds = int(match.group(5).ljust(3, "0")) if match.group(5) else 0
 
     return ms(
         days=days,
@@ -186,8 +187,10 @@ class TimeRef:
         self.ref = ref
 
     def _relative_time_offset(self, hour=0, minute=0, second=0, microsecond=0):
-        time_reference = self.ref.replace(hour=hour, minute=minute, second=second, microsecond=microsecond)
-        dt = (self.ref - time_reference)
+        time_reference = self.ref.replace(
+            hour=hour, minute=minute, second=second, microsecond=microsecond
+        )
+        dt = self.ref - time_reference
         return to_ms(dt)
 
     @property
@@ -227,7 +230,7 @@ class SamplingRate:
             # noinspection PyUnresolvedReferences
             rate = rate.rate
 
-        assert rate > 0, 'Sampling rate must be positive.'
+        assert rate > 0, "Sampling rate must be positive."
 
         self.rate = rate
 
@@ -251,18 +254,19 @@ class SamplingRate:
     def match_load_hz(self, load_hz, thresh=None) -> float:
         """Adjust the load_hz to produce a perfect integer stride"""
 
-        new_load_hz = (self.rate / self.get_stride(load_hz))
+        new_load_hz = self.rate / self.get_stride(load_hz)
 
         valid = (
             abs(new_load_hz - load_hz) < thresh
-            if thresh is not None else
-            np.isclose(new_load_hz - load_hz, 0)
+            if thresh is not None
+            else np.isclose(new_load_hz - load_hz, 0)
         )
 
         if not valid:
             logging.warning(
-                f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
-                f'a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})')
+                f"Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it "
+                f"a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})"
+            )
 
         return new_load_hz
 
@@ -270,10 +274,16 @@ class SamplingRate:
         """check that the downsample_hz is as close as possible to a perfect divisor of the sampling  rate"""
         return np.isclose(self.get_stride(downsample_hz), (self.rate / downsample_hz))
 
-    def assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz'):
+    def assert_stride(
+        self,
+        downsample_hz,
+        numerator_name="sampling_hz",
+        denominator_name="downsample_hz",
+    ):
         """assert if the downsample_hz is not a divisor of the sampling  rate"""
-        assert self.check_stride(downsample_hz), \
-            f'Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({self.rate})'
+        assert self.check_stride(downsample_hz), (
+            f"Expected {denominator_name} ({downsample_hz}) to be divisor of {numerator_name} ({self.rate})"
+        )
 
     def ms_to_idcs(self, time_ms: np.array) -> np.array:
         return np.round(self.rate * time_ms * MS_TO_S).astype(int)
@@ -287,7 +297,7 @@ class SamplingRate:
         new = np.round(self.period, decimals=9)
 
         if not quiet and not np.isclose(new, self.period):
-            logging.warning(f'Adjusting sampling period from {self.period} to {new}')
+            logging.warning(f"Adjusting sampling period from {self.period} to {new}")
 
         return new
 
@@ -295,7 +305,7 @@ class SamplingRate:
         new = np.round(length / self.period) * self.period
 
         if desc is not None and not np.isclose(new, length):
-            logging.warning(f'Adjusting {desc} from {length} to {new}')
+            logging.warning(f"Adjusting {desc} from {length} to {new}")
 
         return new
 
@@ -339,11 +349,11 @@ class Win(tuple):
         ref = to_ms(ref)
         duration = to_ms(duration)
         # noinspection PyArgumentList
-        return cls(ref - duration * .5, ref + duration * .5)
+        return cls(ref - duration * 0.5, ref + duration * 0.5)
 
     @classmethod
     def from_str(cls, s):
-        start, stop = s.split('-')
+        start, stop = s.split("-")
         start = str_to_ms(start.strip())
         stop = str_to_ms(stop.strip())
         return cls(start, stop)
@@ -396,7 +406,7 @@ class Win(tuple):
     @property
     def mid(self):
         """get the mid point of the window"""
-        return self.quantile_time(.5)
+        return self.quantile_time(0.5)
 
     def is_empty(self) -> bool:
         return self.stop <= self.start
@@ -427,13 +437,13 @@ class Win(tuple):
         start = self.stop + offset
         return self.__class__(start, start + duration)
 
-    def centered(self, duration, q='mid'):
+    def centered(self, duration, q="mid"):
         """build a new window centered in the middle of this one"""
         return self.__class__.build_centered(self.relative_time(q), duration)
 
     def arange(self, step):
         assert step > 0
-        return np.arange(self.start, self.stop + step * .5, step)
+        return np.arange(self.start, self.stop + step * 0.5, step)
 
     def contains(self, t):
         """check if a time stamp is contained in [start, stop]"""
@@ -486,15 +496,15 @@ class Win(tuple):
         :return:
         """
         if isinstance(q, str):
-            if q == 'mid':
+            if q == "mid":
                 # noinspection PyTypeChecker
                 return self.mid
-            elif q == 'start':
+            elif q == "start":
                 return self.start
-            elif q == 'zero':
+            elif q == "zero":
                 return 0
             else:
-                assert q == 'stop', f'Unknown time "{q}"'
+                assert q == "stop", f'Unknown time "{q}"'
                 return self.stop
 
         else:
@@ -517,8 +527,8 @@ class Win(tuple):
     def to_str(self, plus_sign=False, strip=True, show_days=True):
         """pretty str format"""
         return (
-            f'({ms_to_str(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
-            f' {ms_to_str(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
+            f"({ms_to_str(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},"
+            f" {ms_to_str(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})"
         )
 
     def __str__(self):
@@ -529,7 +539,7 @@ class Win(tuple):
         """pretty str format"""
         return self.__str__()
 
-    def change(self, pre=0., post=0.):
+    def change(self, pre=0.0, post=0.0):
         """
         Add (or remove) time at the start (pre) or the end (post) of the window
         :param pre: time in milliseconds relative to start
@@ -538,11 +548,11 @@ class Win(tuple):
         """
         return Win(self.start + to_ms(pre), self.stop + to_ms(post))
 
-    def shrink(self, duration=0.):
+    def shrink(self, duration=0.0):
         """shrink this window by the same ammount at start and stop"""
         return self.change(+duration, -duration)
 
-    def expand(self, duration=0.):
+    def expand(self, duration=0.0):
         """expand this window by the same ammount at start and stop"""
         return self.change(-duration, +duration)
 
@@ -572,7 +582,7 @@ class Win(tuple):
         breaks = self.arange(length_ms)
         return Windows.build_between(breaks)
 
-    def shift(self, by=0.):
+    def shift(self, by=0.0):
         """
         Shift the window without changing the duration
         :return: a new tuple object
@@ -598,7 +608,7 @@ class Win(tuple):
         right_shift = other[1] - self.stop
 
         if left_shift > 0 > right_shift:
-            raise ValueError(f'Window {self} can not be fit in {other}')
+            raise ValueError(f"Window {self} can not be fit in {other}")
 
         elif left_shift > 0:
             return self.shift(left_shift)
@@ -620,28 +630,30 @@ class Win(tuple):
         new = self.build_centered(ref=self.mid, duration=max_duration)
         return new.clip(self)
 
-    def round(self, decimals=0, start=True, stop=True, scale='milliseconds'):
-        """round this window """
+    def round(self, decimals=0, start=True, stop=True, scale="milliseconds"):
+        """round this window"""
         return self.__class__(
-            ms_round(self.start, scale=scale, decimals=decimals) if start else self.start,
+            ms_round(self.start, scale=scale, decimals=decimals)
+            if start
+            else self.start,
             ms_round(self.stop, scale=scale, decimals=decimals) if stop else self.stop,
         )
 
-    def floor(self, start=True, stop=True, scale='milliseconds'):
+    def floor(self, start=True, stop=True, scale="milliseconds"):
         """round down to the closest integer for the given scale"""
         return self.__class__(
             ms_floor(self.start, scale=scale) if start else self.start,
             ms_floor(self.stop, scale=scale) if stop else self.stop,
         )
 
-    def ceil(self, start=True, stop=True, scale='milliseconds'):
+    def ceil(self, start=True, stop=True, scale="milliseconds"):
         """round down to the closest integer for the given scale"""
         return self.__class__(
             ms_ceil(self.start, scale=scale) if start else self.start,
             ms_ceil(self.stop, scale=scale) if stop else self.stop,
         )
 
-    def floor_ceil(self, scale='milliseconds'):
+    def floor_ceil(self, scale="milliseconds"):
         """
         Round start down and stop up.
         Useful to get a round window that for sure includes this one.
@@ -651,7 +663,7 @@ class Win(tuple):
         w = w.ceil(scale=scale, start=False, stop=True)
         return w
 
-    def ceil_floor(self, scale='milliseconds'):
+    def ceil_floor(self, scale="milliseconds"):
         """
         Round start up and stop down.
         Useful to get a round window that for sure is included in this one (for example has valid data).
@@ -661,11 +673,11 @@ class Win(tuple):
         w = w.floor(scale=scale, start=False, stop=True)
         return w
 
-    def round_loose(self, scale='milliseconds'):
+    def round_loose(self, scale="milliseconds"):
         """Round start down and stop up, making the window looser"""
         return self.floor_ceil(scale)
 
-    def round_tight(self, scale='milliseconds'):
+    def round_tight(self, scale="milliseconds"):
         """Round start up and stop down, making the window tighter"""
         return self.ceil_floor(scale)
 
@@ -702,7 +714,7 @@ class Win(tuple):
         if load_hz is None:
             load_hz = stored_hz
 
-        SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
+        SamplingRate(stored_hz).assert_stride(load_hz, "stored_hz", "load_hz")
 
         from_i = int(np.round(stored_hz * self.start_s))
         to_i = int(np.round(stored_hz * self.stop_s))
@@ -722,7 +734,9 @@ class Win(tuple):
         """
         return slice(self.start, self.stop, step)
 
-    def crop_df(self, df: pd.DataFrame | pd.Series, reset=None, by=None) -> pd.DataFrame:
+    def crop_df(
+        self, df: pd.DataFrame | pd.Series, reset=None, by=None
+    ) -> pd.DataFrame:
         """
         :param df:
         :param reset:
@@ -742,7 +756,7 @@ class Win(tuple):
         df = df[mask].copy()
 
         if isinstance(reset, bool):
-            reset = None if not reset else 'start'
+            reset = None if not reset else "start"
 
         if reset is not None:
             reset = self.relative_time(reset)
@@ -759,7 +773,7 @@ class Win(tuple):
         new_ts = ts[self.contains(ts)]
 
         if isinstance(reset, bool):
-            reset = None if not reset else 'start'
+            reset = None if not reset else "start"
 
         if reset is not None:
             reset = self.relative_time(reset)
@@ -768,11 +782,12 @@ class Win(tuple):
         return new_ts
 
     def interp_series(
-            self,
-            series: pd.Series,
-            step,
-            reset=None, shift=0,
-            bounds_error=False,
+        self,
+        series: pd.Series,
+        step,
+        reset=None,
+        shift=0,
+        bounds_error=False,
     ) -> pd.Series:
         """
         Resample the data within the given window using linear interpolation.
@@ -781,7 +796,9 @@ class Win(tuple):
         instead of being predetermined by the data original sampling.
         """
 
-        assert np.all(series.index[:-1] < series.index[1:]), f'Index should be monotonic. Got: {series.index}'
+        assert np.all(series.index[:-1] < series.index[1:]), (
+            f"Index should be monotonic. Got: {series.index}"
+        )
 
         # for very long series, we can just cut it before doing any checks
         # noinspection PyTypeChecker
@@ -801,7 +818,6 @@ class Win(tuple):
             new_series = np.nan
 
         else:
-
             old_time = series.index.values - shift
 
             new_series = np.interp(
@@ -809,11 +825,11 @@ class Win(tuple):
                 old_time,
                 series.values,
                 left=np.nan if not bounds_error else None,
-                right=np.nan if not bounds_error else None
+                right=np.nan if not bounds_error else None,
             )
 
         if isinstance(reset, bool):
-            reset = None if not reset else 'start'
+            reset = None if not reset else "start"
 
         if reset is not None:
             reset = self.relative_time(reset)
@@ -836,11 +852,12 @@ class Win(tuple):
                 **kwargs,
             )
 
-        df_iter = _optional_pbar(df.items(), total=len(df.columns), desc='interp', pbar=pbar)
+        df_iter = _optional_pbar(
+            df.items(), total=len(df.columns), desc="interp", pbar=pbar
+        )
 
         new_df = {
-            k: self.interp_series(series, step, **kwargs)
-            for k, series in df_iter
+            k: self.interp_series(series, step, **kwargs) for k, series in df_iter
         }
 
         return pd.DataFrame(new_df, columns=df.columns)
@@ -853,11 +870,11 @@ class Windows(DataFrameWrapper):
         """
         :param windows: a windows DataFrame
         """
-        assert 'start' in windows.columns
-        assert 'stop' in windows.columns
+        assert "start" in windows.columns
+        assert "stop" in windows.columns
 
         if windows.index.name is None:
-            windows = windows.rename_axis(index='win_idx')
+            windows = windows.rename_axis(index="win_idx")
 
         super().__init__(windows)
 
@@ -865,7 +882,7 @@ class Windows(DataFrameWrapper):
     def wins(self):
         return self.reg
 
-    def store_hdf(self, path: str, key='wins'):
+    def store_hdf(self, path: str, key="wins"):
         """
         save these windows in an HDF5 file
         """
@@ -880,7 +897,9 @@ class Windows(DataFrameWrapper):
         wins: pd.DataFrame = pd.read_hdf(path, key)
         return cls(wins)
 
-    def to_str(self, split='\n', strip=False, plus_sign=False, show_days=True, col='cat'):
+    def to_str(
+        self, split="\n", strip=False, plus_sign=False, show_days=True, col="cat"
+    ):
         """
         Serialize to human-readable text format.
         This drops most of the properties of the windows.
@@ -888,18 +907,22 @@ class Windows(DataFrameWrapper):
         """
         desc = []
 
-        for _, start, stop, cat in self.reg[['start', 'stop', col]].itertuples():
-            start = ms_to_str(start, plus_sign=plus_sign, strip=strip, show_days=show_days)
-            stop = ms_to_str(stop, plus_sign=plus_sign, strip=strip, show_days=show_days)
+        for _, start, stop, cat in self.reg[["start", "stop", col]].itertuples():
+            start = ms_to_str(
+                start, plus_sign=plus_sign, strip=strip, show_days=show_days
+            )
+            stop = ms_to_str(
+                stop, plus_sign=plus_sign, strip=strip, show_days=show_days
+            )
 
             desc.append(
-                f'{cat}: {start} - {stop}',
+                f"{cat}: {start} - {stop}",
             )
 
         return split.join(desc)
 
     @classmethod
-    def from_str(cls, string, name='cat'):
+    def from_str(cls, string, name="cat"):
         """
         Serialize from human-readable text format.
         For proper saving look at store_hdf / load_hdf.
@@ -909,35 +932,35 @@ class Windows(DataFrameWrapper):
 
         wins = []
 
-        for line in string.strip().split('\n'):
+        for line in string.strip().split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            split = line.find(':')
+            split = line.find(":")
             if split < 0:
                 raise ValueError(f'Missing ":" in line: "{line}"')
 
             metadata_str = line[:split]
-            metadata = tuple(s.strip() for s in metadata_str.split(';'))
+            metadata = tuple(s.strip() for s in metadata_str.split(";"))
 
             if len(name) != len(metadata):
                 raise ValueError(
-                    f'Expected {len(name)} metadata fields {name}, '
+                    f"Expected {len(name)} metadata fields {name}, "
                     f'found {len(metadata)} in line: "{line}"'
                 )
 
-            win_str = line[split + 1:].strip()
+            win_str = line[split + 1 :].strip()
             win = Win.from_str(win_str)
 
             wins.append(metadata + (win.start, win.stop, win.start))
 
-        df = pd.DataFrame(wins, columns=list(name) + ['start', 'stop', 'ref'])
+        df = pd.DataFrame(wins, columns=list(name) + ["start", "stop", "ref"])
 
         return cls(df)
 
     @classmethod
-    def build_around_df(cls, df, win=(0., 0.), col='time'):
+    def build_around_df(cls, df, win=(0.0, 0.0), col="time"):
 
         new = cls.build_around(df[col], win)
         new = new.add_cols(df.drop([col], axis=1))
@@ -945,7 +968,7 @@ class Windows(DataFrameWrapper):
         return new
 
     @classmethod
-    def build_around(cls, marks, win=(0., 0.)):
+    def build_around(cls, marks, win=(0.0, 0.0)):
         """
         build a dataframe containing several time windows around a series of time points
         for each row entry there are the start/stop points and the reference
@@ -971,20 +994,21 @@ class Windows(DataFrameWrapper):
 
         df = pd.DataFrame(
             {
-                'start': all_windows[:, 0],
-                'stop': all_windows[:, 1],
-                'ref': marks,
+                "start": all_windows[:, 0],
+                "stop": all_windows[:, 1],
+                "ref": marks,
             },
-            index=marks.index)
+            index=marks.index,
+        )
 
         if df.index.name is None:
-            df.index.name = 'win_idx'
+            df.index.name = "win_idx"
 
-        df.name = 'windows'
+        df.name = "windows"
 
         return cls(df)
 
-    def around(self, win, q='mid', old=None):
+    def around(self, win, q="mid", old=None):
         """build a new set of windows around a reference time of the current ones"""
         new_wins = self.__class__.build_around(
             self.relative_time(q),
@@ -994,16 +1018,19 @@ class Windows(DataFrameWrapper):
         cols = self.reg.loc[:, self.columns_extra]
 
         if old is not None:
-            cols = pd.concat([
-                cols,
-                self[['start', 'stop']].add_prefix(f'{old}_'),
-            ], axis=1)
+            cols = pd.concat(
+                [
+                    cols,
+                    self[["start", "stop"]].add_prefix(f"{old}_"),
+                ],
+                axis=1,
+            )
 
         new_wins = new_wins.add_cols(cols)
 
         return new_wins
 
-    def centered(self, duration, q='mid', old=None):
+    def centered(self, duration, q="mid", old=None):
         """build a new set of windows centered in the middle of these ones"""
         return self.around(
             Win.build_centered(0, duration),
@@ -1011,7 +1038,7 @@ class Windows(DataFrameWrapper):
             old=old,
         )
 
-    def before(self, duration, offset=0, q='start', old=None):
+    def before(self, duration, offset=0, q="start", old=None):
         """build a new set of windows before the current ones"""
         return self.around(
             (-duration + offset, offset),
@@ -1019,7 +1046,7 @@ class Windows(DataFrameWrapper):
             old=old,
         )
 
-    def after(self, duration, offset=0, q='stop', old=None):
+    def after(self, duration, offset=0, q="stop", old=None):
         """build a new set of windows after the current ones"""
         return self.around(
             (offset, duration + offset),
@@ -1028,22 +1055,22 @@ class Windows(DataFrameWrapper):
         )
 
     def before_after(
-            self,
-            pre, post,
-            pre_q='start', post_q='stop',
-            pre_name='pre', post_name='post',
-            col='when',
+        self,
+        pre,
+        post,
+        pre_q="start",
+        post_q="stop",
+        pre_name="pre",
+        post_name="post",
+        col="when",
     ):
         new_wins = {
-            pre_name:
-                self.around(pre, q=pre_q)
-                if isinstance(pre, (tuple, Win))
-                else self.before(pre, q=pre_q),
-
-            post_name:
-                self.around(post, q=post_q)
-                if isinstance(post, (tuple, Win))
-                else self.after(post, q=post_q),
+            pre_name: self.around(pre, q=pre_q)
+            if isinstance(pre, (tuple, Win))
+            else self.before(pre, q=pre_q),
+            post_name: self.around(post, q=post_q)
+            if isinstance(post, (tuple, Win))
+            else self.after(post, q=post_q),
         }
         return Windows.concat(new_wins, cycle_name=col)
 
@@ -1077,18 +1104,18 @@ class Windows(DataFrameWrapper):
         all_windows = []
         for name, win in wins.items():
             windows = cls.build_around(marks, win).reg
-            windows['cat'] = name
+            windows["cat"] = name
             all_windows.append(windows)
 
         all_windows = pd.concat(all_windows, axis=0, ignore_index=True)
-        all_windows.sort_values(['ref', 'start', 'stop'], inplace=True)
+        all_windows.sort_values(["ref", "start", "stop"], inplace=True)
         all_windows.reset_index(drop=True, inplace=True)
-        all_windows.index.name = 'win_idx'
+        all_windows.index.name = "win_idx"
 
         return cls(all_windows)
 
     @classmethod
-    def from_arrays(cls, start: np.ndarray, stop: np.ndarray, ref=.5):
+    def from_arrays(cls, start: np.ndarray, stop: np.ndarray, ref=0.5):
         """
         build windows from arrays of start and stop times
 
@@ -1102,20 +1129,24 @@ class Windows(DataFrameWrapper):
         stop = np.asarray(stop)
 
         if np.issubdtype(type(ref), np.number):
-            assert 0. <= ref <= 1
+            assert 0.0 <= ref <= 1
             ref: np.ndarray = start + (stop - start) * ref
 
             if np.allclose(ref, np.round(ref)):
                 ref = np.round(ref).astype(int)
 
-        return cls(pd.DataFrame.from_dict({
-            'start': start,
-            'stop': stop,
-            'ref': ref,
-        }))
+        return cls(
+            pd.DataFrame.from_dict(
+                {
+                    "start": start,
+                    "stop": stop,
+                    "ref": ref,
+                }
+            )
+        )
 
     @classmethod
-    def build_from_dict(cls, wins: dict, columns=('start', 'stop'), name='cat'):
+    def build_from_dict(cls, wins: dict, columns=("start", "stop"), name="cat"):
         """
         build windows from dict of start and stop times. Example:
 
@@ -1129,18 +1160,20 @@ class Windows(DataFrameWrapper):
         """
 
         df = pd.DataFrame.from_dict(
-            wins, orient='index', columns=columns,
+            wins,
+            orient="index",
+            columns=columns,
         )
 
         df.rename_axis(index=name, inplace=True)
         df.reset_index(inplace=True)
 
-        if 'ref' not in df.columns:
-            df['ref'] = df['start']
+        if "ref" not in df.columns:
+            df["ref"] = df["start"]
 
         return cls(df)
 
-    def to_dict(self, col='exp_name') -> dict:
+    def to_dict(self, col="exp_name") -> dict:
         """
         Returns a version of these windows that looks like:
         {col_value: (start, stop)}
@@ -1149,14 +1182,14 @@ class Windows(DataFrameWrapper):
 
     @classmethod
     def build_sliding(
-            cls,
-            start_ms,
-            stop_ms,
-            length_ms,
-            sampling_rate,
-            start_off_ms=0,
-            stop_off_ms=0,
-            **kwargs
+        cls,
+        start_ms,
+        stop_ms,
+        length_ms,
+        sampling_rate,
+        start_off_ms=0,
+        stop_off_ms=0,
+        **kwargs,
     ):
         """
         Build equal-sized sliding windows in SAMPLES to analyze a time series.
@@ -1186,19 +1219,21 @@ class Windows(DataFrameWrapper):
             tstart=start_ms,
         )
 
-        win_samples = win_samples.add_cols(win_ms.reg[['start', 'stop', 'ref']].add_suffix('_ms'))
+        win_samples = win_samples.add_cols(
+            win_ms.reg[["start", "stop", "ref"]].add_suffix("_ms")
+        )
 
         return win_samples
 
     @classmethod
     def build_sliding_samples(
-            cls,
-            start_ms,
-            stop_ms,
-            length_ms,
-            sampling_rate,
-            step_ms=None,
-            ignore_remaining=True,
+        cls,
+        start_ms,
+        stop_ms,
+        length_ms,
+        sampling_rate,
+        step_ms=None,
+        ignore_remaining=True,
     ):
         """
         Build equal-sized sliding windows in SAMPLES.
@@ -1281,48 +1316,62 @@ class Windows(DataFrameWrapper):
         """
 
         if isinstance(times, (np.ndarray, list, tuple)):
-            times = pd.Series(times, name='time')
+            times = pd.Series(times, name="time")
 
         if isinstance(times, pd.Series):
-            times = times.rename('time').to_frame()
+            times = times.rename("time").to_frame()
 
         assert isinstance(times, pd.DataFrame)
-        assert 'time' in times.columns
+        assert "time" in times.columns
 
-        times = times.sort_values('time')
+        times = times.sort_values("time")
 
         if start is not None:
-            endpoint = np.min(times['time'])
+            endpoint = np.min(times["time"])
             if start < endpoint or np.isnan(endpoint):
-                times = pd.concat([
-                    pd.DataFrame({'time': [start]}),
-                    times,
-                ], axis=0, ignore_index=True)
+                times = pd.concat(
+                    [
+                        pd.DataFrame({"time": [start]}),
+                        times,
+                    ],
+                    axis=0,
+                    ignore_index=True,
+                )
             else:
-                logging.warning(f'Cannot set start at {start} when windows begin earlier at {endpoint}')
+                logging.warning(
+                    f"Cannot set start at {start} when windows begin earlier at {endpoint}"
+                )
 
         if stop is not None:
-            endpoint = np.max(times['time'])
+            endpoint = np.max(times["time"])
             if stop > endpoint or np.isnan(endpoint):
-                times = pd.concat([
-                    times,
-                    pd.DataFrame({'time': [stop]}),
-                ], axis=0, ignore_index=True)
+                times = pd.concat(
+                    [
+                        times,
+                        pd.DataFrame({"time": [stop]}),
+                    ],
+                    axis=0,
+                    ignore_index=True,
+                )
             else:
-                logging.warning(f'Cannot set stop at {stop} when windows begin later at {endpoint}')
+                logging.warning(
+                    f"Cannot set stop at {stop} when windows begin later at {endpoint}"
+                )
 
         start = times.iloc[:-1]
         stop = times.iloc[1:]
 
-        wins = pd.DataFrame({
-            'start': start['time'].values,
-            'stop': stop['time'].values,
-        })
+        wins = pd.DataFrame(
+            {
+                "start": start["time"].values,
+                "stop": stop["time"].values,
+            }
+        )
 
-        wins['ref'] = wins['start']
+        wins["ref"] = wins["start"]
 
-        for prefix, ref in [('start_', start), ('stop_', stop)]:
-            for name, values in ref.drop('time', axis=1).add_prefix(prefix).items():
+        for prefix, ref in [("start_", start), ("stop_", stop)]:
+            for name, values in ref.drop("time", axis=1).add_prefix(prefix).items():
                 wins[name] = values.values
 
         return cls(wins)
@@ -1333,24 +1382,31 @@ class Windows(DataFrameWrapper):
         time_jump = ~np.isclose(np.diff(values.index), sampling_period)
         mode_jump = values.values[:-1] != values.values[1:]
 
-        transition_idcs, = np.where(time_jump | mode_jump)
+        (transition_idcs,) = np.where(time_jump | mode_jump)
 
         all_transitions = []
 
         for i in tqdm(transition_idcs):
             t0, t1 = values.index[[i, i + 1]]
 
-            all_transitions.append({
-                'start': t0,
-                'stop': t1,
-                'start_state': values.loc[t0],
-                'stop_state': values.loc[t1],
-            })
+            all_transitions.append(
+                {
+                    "start": t0,
+                    "stop": t1,
+                    "start_state": values.loc[t0],
+                    "stop_state": values.loc[t1],
+                }
+            )
 
         all_transitions = pd.DataFrame(all_transitions)
-        all_transitions['mid_time'] = all_transitions[['start_time', 'stop_time']].mean(axis=1)
+        all_transitions["mid_time"] = all_transitions[["start_time", "stop_time"]].mean(
+            axis=1
+        )
 
-        assert np.all(all_transitions['stop_state'].values[:-1] == all_transitions['start_state'].values[1:])
+        assert np.all(
+            all_transitions["stop_state"].values[:-1]
+            == all_transitions["start_state"].values[1:]
+        )
 
         return cls(all_transitions)
 
@@ -1389,30 +1445,33 @@ class Windows(DataFrameWrapper):
             values = pd.Series(values)
 
         if values.empty:
-            return cls(pd.DataFrame({'start': [], 'stop': [], 'ref': [], 'cat': []}))
+            return cls(pd.DataFrame({"start": [], "stop": [], "ref": [], "cat": []}))
 
-        assert pd.Series(np.asarray(values)).notna().all(), \
-            'Can not extract unique values with nans. Please drop or replace.'
+        assert pd.Series(np.asarray(values)).notna().all(), (
+            "Can not extract unique values with nans. Please drop or replace."
+        )
 
         unique_values, codes = np.unique(values, return_inverse=True)
 
         transitions = np.diff(codes) != 0
 
         # diff drops the first element
-        transitions_idcs, = np.where(transitions)
+        (transitions_idcs,) = np.where(transitions)
 
-        wins = pd.DataFrame.from_dict({
-            'start': np.append(0, transitions_idcs),
-            'stop': np.append(transitions_idcs, len(codes) - 1),
-        })
+        wins = pd.DataFrame.from_dict(
+            {
+                "start": np.append(0, transitions_idcs),
+                "stop": np.append(transitions_idcs, len(codes) - 1),
+            }
+        )
 
-        wins['cat'] = unique_values[codes[np.append(True, transitions)]]
+        wins["cat"] = unique_values[codes[np.append(True, transitions)]]
 
         if include_right:
-            wins['stop'] = wins['stop'] - 1
+            wins["stop"] = wins["stop"] - 1
 
-        assert np.all(wins['start'] <= wins['stop'])
-        wins['ref'] = wins['start']
+        assert np.all(wins["start"] <= wins["stop"])
+        wins["ref"] = wins["start"]
 
         if isinstance(values, pd.Series):
             wins = cls(wins).sample_to_ms_by_time_index(values.index).reg
@@ -1421,59 +1480,53 @@ class Windows(DataFrameWrapper):
             sampling_periods: np.array = np.unique(np.diff(values.index))
             assert np.allclose(sampling_periods[0], sampling_periods), sampling_periods
             sampling_period = sampling_periods[0]
-            wins[['start', 'stop', 'ref']] += sampling_period * .5
-            wins.loc[wins['start'].idxmin(), 'start'] -= sampling_period * 1
+            wins[["start", "stop", "ref"]] += sampling_period * 0.5
+            wins.loc[wins["start"].idxmin(), "start"] -= sampling_period * 1
 
         return cls(wins)
 
     @classmethod
-    def concat(cls, many, cycle_name='cycle_idx', local_name=None, **kwargs):
-        """
-        """
+    def concat(cls, many, cycle_name="cycle_idx", local_name=None, **kwargs):
+        """ """
 
-        if hasattr(many, 'items'):
-            dfs = {
-                idx: c.reg for idx, c in many.items()
-            }
+        if hasattr(many, "items"):
+            dfs = {idx: c.reg for idx, c in many.items()}
         else:
-            dfs = {
-                idx: c.reg for idx, c in enumerate(many)
-            }
+            dfs = {idx: c.reg for idx, c in enumerate(many)}
 
         results = pd.concat(dfs, **kwargs)
 
         if local_name is None:
             old_index_name = results.index.names[1]
-            if old_index_name == '':
-                old_index_name = 'win_idx'
+            if old_index_name == "":
+                old_index_name = "win_idx"
 
-            local_name = f'original_{old_index_name}'
+            local_name = f"original_{old_index_name}"
 
         if not isinstance(cycle_name, list):
             cycle_name = [cycle_name]
         results.rename_axis(index=cycle_name + [local_name], inplace=True)
         results.reset_index(inplace=True)
-        results.rename_axis(index='win_idx', inplace=True)
+        results.rename_axis(index="win_idx", inplace=True)
 
         return cls(results)
 
     @classmethod
     def concat_list(cls, many, axis=0, reset_index=True, **kwargs):
-        """
-        """
+        """ """
         dfs = [c.reg for c in many]
         results = pd.concat(dfs, axis=axis, **kwargs)
 
         if reset_index:
             results.reset_index(inplace=True, drop=True)
-            results.rename_axis(index='win_idx', inplace=True)
+            results.rename_axis(index="win_idx", inplace=True)
 
         return cls(results)
 
     def rename_index(self, name):
         return self.__class__(self.reg.rename_axis(index=name))
 
-    def generate_cat(self, times: pd.Index, col='cat', right=False) -> pd.Series:
+    def generate_cat(self, times: pd.Index, col="cat", right=False) -> pd.Series:
         """
         Take the category for each given time point.
         This generates a result similar to "generate_cat_contiguous", but it takes
@@ -1496,9 +1549,13 @@ class Windows(DataFrameWrapper):
         return classified[col].reindex(times)
 
     def generate_cat_contiguous(
-            self, sampling_period, start=None, stop=None,
-            dim='cat', pbar=None,
-            fillna=False,
+        self,
+        sampling_period,
+        start=None,
+        stop=None,
+        dim="cat",
+        pbar=None,
+        fillna=False,
     ) -> pd.Series:
         """
         Generate a series containing the categories indicated by these windows
@@ -1516,31 +1573,31 @@ class Windows(DataFrameWrapper):
         assert self.are_exclusive()
 
         if start is None:
-            start = self.reg[['start', 'stop']].values.min()
+            start = self.reg[["start", "stop"]].values.min()
 
         if stop is None:
-            stop = self.reg[['start', 'stop']].values.max()
+            stop = self.reg[["start", "stop"]].values.max()
 
         index = np.arange(start, stop, sampling_period)
 
         mode = pd.Series(fillna, index=index, dtype=self.reg.dtypes[dim])
 
-        slicing = self.reg[['start', 'stop', dim]].itertuples()
+        slicing = self.reg[["start", "stop", dim]].itertuples()
 
-        slicing = _optional_pbar(slicing, total=len(self), desc='gen values', pbar=pbar)
+        slicing = _optional_pbar(slicing, total=len(self), desc="gen values", pbar=pbar)
 
         for _, start, stop, cat in slicing:
             mode.loc[start:stop] = cat
 
         return mode
 
-    def reset_index(self, sort_by=('start', 'stop', 'ref'), drop=True):
+    def reset_index(self, sort_by=("start", "stop", "ref"), drop=True):
         """return a copy of these windows where the windows have been sorted in time and the index reset"""
         sort_by = pd.Index(list(sort_by)).intersection(self.reg.columns)
         wins = self.reg.sort_values(list(sort_by)).reset_index(drop=drop)
         return self.__class__(wins)
 
-    def scale(self, factor, cols=('start', 'stop', 'ref')):
+    def scale(self, factor, cols=("start", "stop", "ref")):
         cols = list(cols)
 
         new = self.copy()
@@ -1556,8 +1613,10 @@ class Windows(DataFrameWrapper):
         assert not self.are_in_samples()
 
         new = self.copy()
-        cols = ['start', 'stop', 'ref']
-        new.reg[cols] = np.round(sampling_rate * new.reg[cols].values * MS_TO_S).astype(int)
+        cols = ["start", "stop", "ref"]
+        new.reg[cols] = np.round(sampling_rate * new.reg[cols].values * MS_TO_S).astype(
+            int
+        )
 
         assert new.are_in_samples()
 
@@ -1569,11 +1628,13 @@ class Windows(DataFrameWrapper):
         """
         wins_ms = self.copy()
 
-        time_cols = ['start', 'stop', 'ref']
-        wins_ms.reg[time_cols] = S_TO_MS * self.reg[time_cols] / sampling_rate + to_ms(tstart)
+        time_cols = ["start", "stop", "ref"]
+        wins_ms.reg[time_cols] = S_TO_MS * self.reg[time_cols] / sampling_rate + to_ms(
+            tstart
+        )
 
-        if 'length' in wins_ms.reg.columns:
-            wins_ms.reg['length'] = wins_ms.lengths()
+        if "length" in wins_ms.reg.columns:
+            wins_ms.reg["length"] = wins_ms.lengths()
 
         return wins_ms
 
@@ -1587,19 +1648,19 @@ class Windows(DataFrameWrapper):
         """
         tstep = np.diff(index)
         if np.allclose(tstep, tstep[0]):
-            sampling_rate = 1. / (tstep[0] * MS_TO_S)
+            sampling_rate = 1.0 / (tstep[0] * MS_TO_S)
             return self.sample_to_ms(sampling_rate, tstart=np.min(index))
 
         else:
             wins = self.reg.copy()
 
-            for col in 'start', 'stop', 'ref':
+            for col in "start", "stop", "ref":
                 if col in wins.columns:
                     wins[col] = index[wins[col]]
 
             return self.__class__(wins)
 
-    def rename_cat(self, renaming, *, col='cat', **renaming_kwargs):
+    def rename_cat(self, renaming, *, col="cat", **renaming_kwargs):
         """
         Change one or more category names
 
@@ -1618,30 +1679,26 @@ class Windows(DataFrameWrapper):
 
         wins = self.copy()
 
-        wins.reg[col] = wins.reg[col].map(
-            lambda x: renaming[x] if x in renaming else x
-        )
+        wins.reg[col] = wins.reg[col].map(lambda x: renaming[x] if x in renaming else x)
 
         return wins
 
-    def complement(self, cat='unknown', reset_index=False, start=None, stop=None):
+    def complement(self, cat="unknown", reset_index=False, start=None, stop=None):
         """make windows cover all of the time by adding new ones for the periods missing (see invert)"""
 
         inv = self.invert(start=start, stop=stop)
 
-        wins_ms = pd.concat(
-            [self.reg, inv.reg],
-            axis=0, ignore_index=True, sort=False)
+        wins_ms = pd.concat([self.reg, inv.reg], axis=0, ignore_index=True, sort=False)
 
         wins_ms = Windows(wins_ms)
 
-        if 'cat' in wins_ms.reg.columns:
-            wins_ms.reg['cat'].fillna(cat, inplace=True)
+        if "cat" in wins_ms.reg.columns:
+            wins_ms.reg["cat"].fillna(cat, inplace=True)
 
-        if 'length' in wins_ms.reg.columns:
-            wins_ms.reg['length'] = wins_ms.lengths()
+        if "length" in wins_ms.reg.columns:
+            wins_ms.reg["length"] = wins_ms.lengths()
 
-        wins_ms.reg.sort_values('start', inplace=True)
+        wins_ms.reg.sort_values("start", inplace=True)
 
         if reset_index:
             wins_ms.reg.reset_index(drop=True, inplace=True)
@@ -1657,7 +1714,7 @@ class Windows(DataFrameWrapper):
 
     def iter_wins_ref(self, *, pbar=None):  # TODO drop
         for idx, win, props in self.iter_wins_items(pbar=pbar):
-            yield idx, props['ref'], win
+            yield idx, props["ref"], win
 
     def iter_wins_items(self, *, pbar=None):
         """
@@ -1670,14 +1727,14 @@ class Windows(DataFrameWrapper):
             for idx, win, props in wins.iter_wins_items():
                 print(win, props['cat'])
         """
-        other_cols = self.reg.columns.difference(['start', 'stop'])
+        other_cols = self.reg.columns.difference(["start", "stop"])
 
         it = self.reg.T.items()
 
         it = _optional_pbar(it, total=len(self.reg), pbar=pbar)
 
         for idx, props in it:
-            yield idx, Win(props['start'], props['stop']), props[other_cols]
+            yield idx, Win(props["start"], props["stop"]), props[other_cols]
 
     def iter_groupby(self, *args, pbar=None, **kwargs):
         """Iterate these windows after pd.groupby. Objects returned will be of Windows type."""
@@ -1694,7 +1751,7 @@ class Windows(DataFrameWrapper):
             assert len(self.reg.index) == 1
             win_id = self.index[0]
 
-        start, stop = self.reg.loc[win_id, ['start', 'stop']]
+        start, stop = self.reg.loc[win_id, ["start", "stop"]]
         return Win(start, stop)
 
     def iget(self, win_idx=0) -> Win:
@@ -1710,7 +1767,7 @@ class Windows(DataFrameWrapper):
             assert len(self.reg.index) == 1
             win_idx = self.index[0]
 
-        return self.get(win_idx).shift(-self.loc[win_idx, 'ref'])
+        return self.get(win_idx).shift(-self.loc[win_idx, "ref"])
 
     def get_props(self, win_idx=None) -> pd.Series:
         """
@@ -1723,7 +1780,7 @@ class Windows(DataFrameWrapper):
 
         return self.reg.loc[win_idx]
 
-    def crop_df(self, df: pd.DataFrame, reset='ref', by=None, pbar=None) -> dict:
+    def crop_df(self, df: pd.DataFrame, reset="ref", by=None, pbar=None) -> dict:
 
         sections = {}
 
@@ -1739,7 +1796,7 @@ class Windows(DataFrameWrapper):
 
         return sections
 
-    def interp_series(self, s: pd.Series, step: float, reset='ref', pbar=None):
+    def interp_series(self, s: pd.Series, step: float, reset="ref", pbar=None):
 
         sections = {}
 
@@ -1755,7 +1812,7 @@ class Windows(DataFrameWrapper):
 
         return sections
 
-    def interp_df(self, df: pd.DataFrame, step: float, reset='ref', pbar=None):
+    def interp_df(self, df: pd.DataFrame, step: float, reset="ref", pbar=None):
 
         sections = {}
 
@@ -1786,7 +1843,7 @@ class Windows(DataFrameWrapper):
     @property
     def columns_extra(self):
         """return all columns EXCEPT the time windows"""
-        return self.reg.columns.drop(['start', 'stop', 'ref'])
+        return self.reg.columns.drop(["start", "stop", "ref"])
 
     @property
     def loc(self):
@@ -1808,18 +1865,20 @@ class Windows(DataFrameWrapper):
         :param quiet: if True the description is returned otherwise it is printed
         :return:
         """
-        desc_tight = 'tight ' if self.are_tight() else ''
-        desc_exclusive = 'exclusive ' if self.are_exclusive() else 'non-exclusive '
-        desc_uniform = 'uniform ' if self.are_uniform() else ''
+        desc_tight = "tight " if self.are_tight() else ""
+        desc_exclusive = "exclusive " if self.are_exclusive() else "non-exclusive "
+        desc_uniform = "uniform " if self.are_uniform() else ""
 
         desc = (
-            f'{len(self):,g} {desc_tight}{desc_uniform}{desc_exclusive}wins'
-            f' covering {ms_to_str(self.total())}'
+            f"{len(self):,g} {desc_tight}{desc_uniform}{desc_exclusive}wins"
+            f" covering {ms_to_str(self.total())}"
         )
 
-        if 'cat' in self.reg.columns:
-            desc_cats = ', '.join([f'{ms_to_str(v)} {k}' for k, v in self.total_by_cat().items()])
-            desc = f'{desc} ({desc_cats})'
+        if "cat" in self.reg.columns:
+            desc_cats = ", ".join(
+                [f"{ms_to_str(v)} {k}" for k, v in self.total_by_cat().items()]
+            )
+            desc = f"{desc} ({desc_cats})"
 
         if quiet:
             return desc
@@ -1827,7 +1886,7 @@ class Windows(DataFrameWrapper):
             print(desc)
             return None
 
-    def are_uniform(self, atol=1.e-8) -> bool:
+    def are_uniform(self, atol=1.0e-8) -> bool:
         """
         :return:
             wheter all windows are instantiation of the same template Win
@@ -1836,15 +1895,15 @@ class Windows(DataFrameWrapper):
         if len(self) == 0:
             return True
 
-        pre = (self.reg['start'] - self.reg['ref'])
-        post = (self.reg['stop'] - self.reg['ref'])
+        pre = self.reg["start"] - self.reg["ref"]
+        post = self.reg["stop"] - self.reg["ref"]
 
         uni_pre = np.allclose(pre.values, pre.values[0], atol=atol)
         uni_post = np.allclose(post.values, post.values[0], atol=atol)
 
         return uni_pre and uni_post
 
-    def are_alternating(self, col='cat'):
+    def are_alternating(self, col="cat"):
         """
         :return:
             wheter window categories are alternating between two values
@@ -1877,28 +1936,28 @@ class Windows(DataFrameWrapper):
         if length is None:
             length = lengths.median()
 
-        ref = self.relative_time('ref')
+        ref = self.relative_time("ref")
 
-        before = self.reg['start'] - ref
-        after = self.reg['stop'] - ref
+        before = self.reg["start"] - ref
+        after = self.reg["stop"] - ref
 
         prop = length / lengths
 
         result = self.copy()
 
-        result.reg['start'] = prop * before + ref
-        result.reg['stop'] = prop * after + ref
+        result.reg["start"] = prop * before + ref
+        result.reg["stop"] = prop * after + ref
 
         assert result.are_uniform(), result.lengths()
 
         return result
 
     def get_edges(self):
-        return np.sort(np.unique(self.reg[['start', 'stop']].values.flatten()))
+        return np.sort(np.unique(self.reg[["start", "stop"]].values.flatten()))
 
     def get_breaks(self):
         assert self.are_tight()
-        return np.append(self['start'].values, self['stop'].values[-1])
+        return np.append(self["start"].values, self["stop"].values[-1])
 
     def are_exclusive(self) -> bool:
         """
@@ -1907,7 +1966,9 @@ class Windows(DataFrameWrapper):
         if len(self) == 1:
             return True
 
-        edges = self.reg[['start', 'stop']].sort_values(['start', 'stop']).values.flatten()
+        edges = (
+            self.reg[["start", "stop"]].sort_values(["start", "stop"]).values.flatten()
+        )
 
         # noinspection PyTypeChecker
         return np.all(np.diff(edges) >= 0)
@@ -1916,9 +1977,8 @@ class Windows(DataFrameWrapper):
         """
         :return: whether the windows are expressed in integer values. Usually to represent sample indices.
         """
-        return (
-                np.issubdtype(self.reg['start'].dtype, np.integer) and
-                np.issubdtype(self.reg['stop'].dtype, np.integer)
+        return np.issubdtype(self.reg["start"].dtype, np.integer) and np.issubdtype(
+            self.reg["stop"].dtype, np.integer
         )
 
     def are_tight(self, inclusive=None) -> bool:
@@ -1934,27 +1994,36 @@ class Windows(DataFrameWrapper):
             inclusive = True
 
         if inclusive:
-            assert self.are_integer(), 'inclusive windows should be defined with integer edges'
+            assert self.are_integer(), (
+                "inclusive windows should be defined with integer edges"
+            )
 
-        edges = self.reg[['start', 'stop']].sort_values(['start', 'stop'])
-        return (edges['start'].values[1:] - edges['stop'][:-1]).max() <= (1 if inclusive else 0)
+        edges = self.reg[["start", "stop"]].sort_values(["start", "stop"])
+        return (edges["start"].values[1:] - edges["stop"][:-1]).max() <= (
+            1 if inclusive else 0
+        )
 
     def are_in_samples(self) -> bool:
-        """check if current windows are defined in "samples" (integer) rather than "time" (float) """
+        """check if current windows are defined in "samples" (integer) rather than "time" (float)"""
 
         # noinspection PyTypeChecker
-        return np.all([np.issubdtype(t, np.integer) for t in self.reg.dtypes[['start', 'stop', 'ref']]])
+        return np.all(
+            [
+                np.issubdtype(t, np.integer)
+                for t in self.reg.dtypes[["start", "stop", "ref"]]
+            ]
+        )
 
     def is_ref_inside(self) -> pd.Series:
         """check if ref is between start and stop"""
         # noinspection PyTypeChecker
-        return (self['start'] <= self['ref']) & (self['ref'] <= self['stop'])
+        return (self["start"] <= self["ref"]) & (self["ref"] <= self["stop"])
 
     def is_within(self, win: Win) -> pd.Series:
         """check if each window fits within a bigger one (partial overlaps give False)"""
         win = Win(*win)
         # noinspection PyTypeChecker
-        return (win.start <= self['start']) & (self['stop'] <= win.stop)
+        return (win.start <= self["start"]) & (self["stop"] <= win.stop)
 
     def is_within_any(self, other) -> pd.Series:
         """
@@ -1968,7 +2037,7 @@ class Windows(DataFrameWrapper):
         return valid
 
     def is_empty(self) -> bool:
-        return self['stop'] <= self['start']
+        return self["stop"] <= self["start"]
 
     def crop_to_main(self, win_ms, reset=False):  # TODO drop
         return self.crop(win_ms, reset=reset)
@@ -1986,10 +2055,10 @@ class Windows(DataFrameWrapper):
 
         new = self.copy()
 
-        new.reg['start'] = np.maximum(new.reg['start'], win_ms.start)
-        new.reg['stop'] = np.minimum(new.reg['stop'], win_ms.stop)
+        new.reg["start"] = np.maximum(new.reg["start"], win_ms.start)
+        new.reg["stop"] = np.minimum(new.reg["stop"], win_ms.stop)
 
-        new.reg = new.reg[new.reg['start'] <= new.reg['stop']]
+        new.reg = new.reg[new.reg["start"] <= new.reg["stop"]]
 
         if reset:
             new = new.shift(-win_ms.start)
@@ -2010,7 +2079,7 @@ class Windows(DataFrameWrapper):
         """
         assert self.are_exclusive() and others.are_exclusive()
 
-        others_bounds = others.reg[['start', 'stop']].itertuples()
+        others_bounds = others.reg[["start", "stop"]].itertuples()
 
         others_bounds = _optional_pbar(others_bounds, total=len(others), pbar=pbar)
 
@@ -2018,7 +2087,9 @@ class Windows(DataFrameWrapper):
         for _, start, stop in others_bounds:
             cropped = self.crop_to_main((start, stop))
 
-            cropped = cropped.reg.rename_axis(index='original_win_idx').reset_index(drop=drop)
+            cropped = cropped.reg.rename_axis(index="original_win_idx").reset_index(
+                drop=drop
+            )
 
             all_cropped.append(cropped)
 
@@ -2049,18 +2120,18 @@ class Windows(DataFrameWrapper):
         new = self.copy()
 
         win = (
-            (new.reg['ref'] - new.reg['start']).min(),
-            (new.reg['stop'] - new.reg['ref']).min(),
+            (new.reg["ref"] - new.reg["start"]).min(),
+            (new.reg["stop"] - new.reg["ref"]).min(),
         )
 
-        new.reg['start'] = new.reg['ref'] - win[0]
-        new.reg['stop'] = new.reg['ref'] + win[1]
+        new.reg["start"] = new.reg["ref"] - win[0]
+        new.reg["stop"] = new.reg["ref"] + win[1]
 
         assert len(new.lengths().drop_duplicates()) <= 1
 
         return new
 
-    def extract(self, others, align=None, by='exp_name', copy=None):
+    def extract(self, others, align=None, by="exp_name", copy=None):
         """
         Crop all of these windows so they only cover periods covered in 'others'.
         Note that this may drop original windows, reduce their size or even
@@ -2071,18 +2142,17 @@ class Windows(DataFrameWrapper):
 
         if align is not None:
             refs = others.relative_time(align)
-            shifts = extracted['cut_win_idx'].map(refs)
+            shifts = extracted["cut_win_idx"].map(refs)
             extracted = extracted.shift_time(-1 * shifts)
 
         return extracted
 
-    def _extract(self, outer, by='exp_name', copy=None):
+    def _extract(self, outer, by="exp_name", copy=None):
         copy = copy or []
 
         wins_cut = []
 
         for by_val, inner_group in self.iter_groupby(by):
-
             outer_group = outer.sel(**{by: by_val})
 
             for outer_idx, outer_win in outer_group.iter_wins():
@@ -2092,7 +2162,7 @@ class Windows(DataFrameWrapper):
                 for col in copy:
                     cropped[col] = outer.loc[outer_idx, col]
 
-                cropped['cut_win_idx'] = outer_idx
+                cropped["cut_win_idx"] = outer_idx
 
                 wins_cut.append(cropped)
 
@@ -2104,13 +2174,13 @@ class Windows(DataFrameWrapper):
 
     def lengths(self) -> pd.Series:
         """length of each window"""
-        return self.reg['stop'] - self.reg['start']
+        return self.reg["stop"] - self.reg["start"]
 
     def mid(self) -> pd.Series:
         """middle time of each window"""
         return self.quantile_time(0.5)
 
-    def contain(self, t, how='any', pbar=None):
+    def contain(self, t, how="any", pbar=None):
         """
         check if any (or all) of these windows contain t
         :param t: single number, np.ndarray or pd.Series
@@ -2118,10 +2188,10 @@ class Windows(DataFrameWrapper):
         """
         does_it = np.array([w.contains(t) for idx, w in self.iter_wins(pbar=pbar)])
 
-        if how == 'any':
+        if how == "any":
             res = np.any(does_it, axis=0)
         else:
-            assert how == 'all'
+            assert how == "all"
             res = np.all(does_it, axis=0)
 
         if isinstance(t, pd.Series):
@@ -2144,8 +2214,12 @@ class Windows(DataFrameWrapper):
         win = Win(*win)
 
         if fully:
-            start_within = np.array([win.contains(w.start) for idx, w in self.iter_wins()])
-            stop_within = np.array([win.contains(w.stop) for idx, w in self.iter_wins()])
+            start_within = np.array(
+                [win.contains(w.start) for idx, w in self.iter_wins()]
+            )
+            stop_within = np.array(
+                [win.contains(w.stop) for idx, w in self.iter_wins()]
+            )
 
             return start_within & stop_within
 
@@ -2155,17 +2229,16 @@ class Windows(DataFrameWrapper):
 
             return (~start_late) & (~stop_early)
 
-    def contained_in_others(self, outer, by='exp_name', fully=True, how='any'):
+    def contained_in_others(self, outer, by="exp_name", fully=True, how="any"):
         """
         check, for each window, if its contained in ANY of the given ones, after matching them by some property.
         """
 
-        assert how in ('any', 'all')
+        assert how in ("any", "all")
 
         valid = []
 
         for by_val, inner_group in self.iter_groupby(by):
-
             outer_group = outer.sel(**{by: by_val})
 
             masks = []
@@ -2175,7 +2248,7 @@ class Windows(DataFrameWrapper):
 
                 masks.append(mask)
 
-            if how == 'any':
+            if how == "any":
                 joint = np.any(masks, axis=0)
             else:
                 joint = np.all(masks, axis=0)
@@ -2195,7 +2268,7 @@ class Windows(DataFrameWrapper):
         :return:
         """
         # noinspection PyTypeChecker
-        return self.lengths() * q + self.reg['start']
+        return self.lengths() * q + self.reg["start"]
 
     def relative_time(self, q) -> pd.Series:
         """
@@ -2206,7 +2279,7 @@ class Windows(DataFrameWrapper):
         :return:
         """
         if isinstance(q, str):
-            if q == 'mid':
+            if q == "mid":
                 return self.mid()
             else:
                 return self.reg[q]
@@ -2219,28 +2292,28 @@ class Windows(DataFrameWrapper):
         :param q: see relative_time.
         """
         new = self.copy()
-        new['ref'] = new.relative_time(q)
+        new["ref"] = new.relative_time(q)
         return new
 
     def total(self) -> float:
         """total time covered by these windows"""
         return self.lengths().sum()
 
-    def total_by_cat(self, by='cat'):
+    def total_by_cat(self, by="cat"):
         """return a series matching each category to the total time covered by its windows"""
 
         if isinstance(by, str):
             by = self.reg[by]
 
-        return (self.reg['stop'] - self.reg['start']).groupby(by).sum()
+        return (self.reg["stop"] - self.reg["start"]).groupby(by).sum()
 
     def get_global_win(self):
         """
         Get the minimum window that includes all of these windows
         :return:
         """
-        start = self.reg[['start', 'stop']].values.min()
-        stop = self.reg[['start', 'stop']].values.max()
+        start = self.reg[["start", "stop"]].values.min()
+        stop = self.reg[["start", "stop"]].values.max()
         return Win(start, stop)
 
     def get_global_win_grouped(self, by):
@@ -2253,7 +2326,7 @@ class Windows(DataFrameWrapper):
         for by_vals, wins in self.iter_groupby(by):
             global_wins.append(tuple(by_vals) + wins.get_global_win())
 
-        reg = pd.DataFrame(global_wins, columns=by + ['start', 'stop'])
+        reg = pd.DataFrame(global_wins, columns=by + ["start", "stop"])
 
         return self.__class__(reg)
 
@@ -2284,7 +2357,7 @@ class Windows(DataFrameWrapper):
     def sel_length_between(self, vmin=-np.inf, vmax=+np.inf):
         return self.sel_mask(self.lengths().between(vmin, vmax))
 
-    def split(self, length_ms, align='left'):
+    def split(self, length_ms, align="left"):
         """
         Break these windows into smaller ones that fit within.
         This is useful if windows are uneven but we want to compute something evenly.
@@ -2304,17 +2377,16 @@ class Windows(DataFrameWrapper):
         length_ms = to_ms(length_ms)
 
         if isinstance(align, str):
-            assert align in ['left', 'right']
-            align = dict(left=0., right=1.)[align]
+            assert align in ["left", "right"]
+            align = dict(left=0.0, right=1.0)[align]
 
         assert align >= 0
-        assert align <= 1.
+        assert align <= 1.0
 
         all_fragments = []
 
         for idx in self.reg.index:
-
-            rel_win = self.reg.loc[idx, ['start', 'stop']].values
+            rel_win = self.reg.loc[idx, ["start", "stop"]].values
 
             edges = np.arange(*rel_win, length_ms)
 
@@ -2324,12 +2396,12 @@ class Windows(DataFrameWrapper):
                 edges = edges + offset
 
                 all_fragments.append(Windows.build_between(edges).reg)
-                all_fragments[-1]['main_win_idx'] = idx
+                all_fragments[-1]["main_win_idx"] = idx
 
         if len(all_fragments) > 0:
             return self.__class__(pd.concat(all_fragments, ignore_index=True))
         else:
-            return self.__class__(pd.DataFrame(columns=['start', 'stop', 'ref']))
+            return self.__class__(pd.DataFrame(columns=["start", "stop", "ref"]))
 
     def shift_time(self, shifts, dropmissing=True):
         """apply a shift to every window"""
@@ -2348,7 +2420,7 @@ class Windows(DataFrameWrapper):
             shifts = shifts.dropna()
             new = new.reindex(shifts.index)
 
-        for c in 'start', 'stop', 'ref':
+        for c in "start", "stop", "ref":
             new[c] = new[c] + shifts
 
         # note that we can no longer expect them to be exclusive
@@ -2367,17 +2439,21 @@ class Windows(DataFrameWrapper):
         """
 
         last = start
-        cols = ['start', 'stop', 'ref']
+        cols = ["start", "stop", "ref"]
         shifted_wins = {}
 
         for win_idx in self.reg.index:
             shifted_wins[win_idx] = self.reg.loc[win_idx].copy()
 
-            shifted_wins[win_idx][cols] = shifted_wins[win_idx][cols] - shifted_wins[win_idx]['start'] + last
+            shifted_wins[win_idx][cols] = (
+                shifted_wins[win_idx][cols] - shifted_wins[win_idx]["start"] + last
+            )
 
-            last = shifted_wins[win_idx]['stop']
+            last = shifted_wins[win_idx]["stop"]
 
-        df = pd.DataFrame.from_dict(shifted_wins, orient='index').rename_axis(index=self.reg.index.name)
+        df = pd.DataFrame.from_dict(shifted_wins, orient="index").rename_axis(
+            index=self.reg.index.name
+        )
         shifted_wins = self.__class__(df)
 
         assert shifted_wins.are_tight()
@@ -2409,20 +2485,24 @@ class Windows(DataFrameWrapper):
 
         classified_events = self.classify_events(times)
 
-        offsets = shifted_wins.reg['start'].reindex(classified_events['win_idx']).values
+        offsets = shifted_wins.reg["start"].reindex(classified_events["win_idx"]).values
 
-        shifted_times = classified_events['delay'] + offsets
+        shifted_times = classified_events["delay"] + offsets
 
         if push_inbetween:
             inverted_wins = self.invert()
 
-            stop_to_win_idx = self.reg.reset_index().set_index('stop')['win_idx']
-            inverted_win_prev = stop_to_win_idx.reindex(inverted_wins.reg['start'].values).values
+            stop_to_win_idx = self.reg.reset_index().set_index("stop")["win_idx"]
+            inverted_win_prev = stop_to_win_idx.reindex(
+                inverted_wins.reg["start"].values
+            ).values
 
-            inverted_wins.reg['new_stop'] = shifted_wins.reg.loc[inverted_win_prev, 'stop'].values
-            missing = inverted_wins.classify_events(times, merge_wincols=('new_stop',))
+            inverted_wins.reg["new_stop"] = shifted_wins.reg.loc[
+                inverted_win_prev, "stop"
+            ].values
+            missing = inverted_wins.classify_events(times, merge_wincols=("new_stop",))
 
-            extra = missing['new_stop']
+            extra = missing["new_stop"]
             shifted_times = pd.concat([shifted_times, extra])
 
             # preserve original order
@@ -2449,10 +2529,10 @@ class Windows(DataFrameWrapper):
 
         cum_time = 0
         for idx in self.reg.index:
-            section = traces.loc[self.reg.loc[idx, 'start']:self.reg.loc[idx, 'stop']]
+            section = traces.loc[self.reg.loc[idx, "start"] : self.reg.loc[idx, "stop"]]
             section = section.iloc[:-1].copy()
-            section.index = section.index - self.reg.loc[idx, 'start'] + cum_time
-            cum_time += self.reg.loc[idx, 'stop'] - self.reg.loc[idx, 'start']
+            section.index = section.index - self.reg.loc[idx, "start"] + cum_time
+            cum_time += self.reg.loc[idx, "stop"] - self.reg.loc[idx, "start"]
 
             sections.append(section)
 
@@ -2467,7 +2547,7 @@ class Windows(DataFrameWrapper):
 
         return compressed
 
-    def _merge_consecutive(self, criteria, take='first'):
+    def _merge_consecutive(self, criteria, take="first"):
         """
         Merge multiple windows according to some pair-wise criteria.
         The current order of this windows (not of "criteria") is respected.
@@ -2539,13 +2619,12 @@ class Windows(DataFrameWrapper):
         """
         criteria = criteria.reindex(self.reg.index, fill_value=False)
 
-        assert take in ['first', 'last']
+        assert take in ["first", "last"]
         i = 0
 
         rows = {}
 
         while i < len(criteria):
-
             merge_start = None
 
             if not criteria.iloc[i]:
@@ -2553,8 +2632,7 @@ class Windows(DataFrameWrapper):
                 i += 1
 
             else:
-
-                while criteria.iloc[i] and i < len(criteria):
+                while i < len(criteria) and criteria.iloc[i]:
                     if merge_start is None:
                         merge_start = i
                     i += 1
@@ -2562,16 +2640,16 @@ class Windows(DataFrameWrapper):
                 first_row = self.reg.iloc[merge_start]
                 last_row = self.reg.iloc[i]
 
-                idx = criteria.index[merge_start if take == 'first' else i]
+                idx = criteria.index[merge_start if take == "first" else i]
                 rows[idx] = self.reg.loc[idx].copy()
-                rows[idx]['start'] = np.nanmin([first_row['start'], last_row['start']])
-                rows[idx]['stop'] = np.nanmax([first_row['stop'], last_row['stop']])
+                rows[idx]["start"] = np.nanmin([first_row["start"], last_row["start"]])
+                rows[idx]["stop"] = np.nanmax([first_row["stop"], last_row["stop"]])
 
                 i += 1
 
-        return self.__class__(pd.DataFrame.from_dict(rows, orient='index'))
+        return self.__class__(pd.DataFrame.from_dict(rows, orient="index"))
 
-    def merge_tight(self, same_cat=False, take='first'):
+    def merge_tight(self, same_cat=False, take="first"):
         """
         Merge any two windows that share an edge
 
@@ -2579,12 +2657,16 @@ class Windows(DataFrameWrapper):
         :param take: take metadata from first or last window on merge
         :return:
         """
-        sorted_wins = self.reg.sort_values(['start', 'stop'])
+        sorted_wins = self.reg.sort_values(["start", "stop"])
 
-        mergeable = (sorted_wins['start'].iloc[:-1] - sorted_wins['stop'].values[1:]) <= 0
+        mergeable = (
+            sorted_wins["start"].iloc[:-1] - sorted_wins["stop"].values[1:]
+        ) <= 0
 
         if same_cat:
-            same_cat_wins = sorted_wins['cat'].iloc[:-1] == sorted_wins['cat'].values[1:]
+            same_cat_wins = (
+                sorted_wins["cat"].iloc[:-1] == sorted_wins["cat"].values[1:]
+            )
             mergeable = mergeable & same_cat_wins
 
         return self._merge_consecutive(mergeable, take=take)
@@ -2598,9 +2680,9 @@ class Windows(DataFrameWrapper):
         :param same_cat: whether to check the 'cat' column to determine if two windows can be merged
         """
         # TODO change to use _merge_consecutive
-        cat_col = 'cat'
+        cat_col = "cat"
 
-        index = self.reg.sort_values('start').index
+        index = self.reg.sort_values("start").index
 
         pairs = []
 
@@ -2610,12 +2692,14 @@ class Windows(DataFrameWrapper):
         for next_win in index[1:]:
             share_cat = True
             if same_cat:
-                share_cat = self.reg.loc[next_win, cat_col] == self.reg.loc[w_stop, cat_col]
+                share_cat = (
+                    self.reg.loc[next_win, cat_col] == self.reg.loc[w_stop, cat_col]
+                )
 
-            next_range = self.reg.loc[next_win, ['start', 'stop']]
-            current_stop = self.reg.loc[w_stop, 'stop']
+            next_range = self.reg.loc[next_win, ["start", "stop"]]
+            current_stop = self.reg.loc[w_stop, "stop"]
 
-            overlap = next_range['start'] <= current_stop < next_range['stop']
+            overlap = next_range["start"] <= current_stop < next_range["stop"]
 
             if overlap and share_cat:
                 w_stop = next_win
@@ -2630,7 +2714,7 @@ class Windows(DataFrameWrapper):
         pairs = np.array(pairs).T
 
         merged = self.reg.loc[pairs[0]].copy()
-        merged['stop'] = self.reg.loc[pairs[1], 'stop'].values
+        merged["stop"] = self.reg.loc[pairs[1], "stop"].values
 
         merged = self.__class__(merged)
 
@@ -2638,8 +2722,9 @@ class Windows(DataFrameWrapper):
             assert merged.are_exclusive()
 
         if self.are_exclusive():
-            assert np.isclose(self.total(), merged.total()), \
-                f'Expected total time to match before ({self.total()}) and after merge ({self.total()})'
+            assert np.isclose(self.total(), merged.total()), (
+                f"Expected total time to match before ({self.total()}) and after merge ({self.total()})"
+            )
 
         return merged
 
@@ -2648,13 +2733,22 @@ class Windows(DataFrameWrapper):
         Return a boolean series indicating overlaps.
         Note that we are prioritising later windows.
         """
-        self_sorted = self.rename_index('orig_idx').reset_index(drop=False).sort_values(['start', 'stop', 'orig_idx'])
+        self_sorted = (
+            self.rename_index("orig_idx")
+            .reset_index(drop=False)
+            .sort_values(["start", "stop", "orig_idx"])
+        )
 
         # TODO is this the same criterion as in pd.DataFrame.duplicates ?
         # noinspection PyTypeChecker
         overlapping = pd.Series(
-            np.concatenate([self_sorted['stop'].values[:-1] > self_sorted['start'].values[1:], [False]]),
-            index=self_sorted['orig_idx'].values
+            np.concatenate(
+                [
+                    self_sorted["stop"].values[:-1] > self_sorted["start"].values[1:],
+                    [False],
+                ]
+            ),
+            index=self_sorted["orig_idx"].values,
         )
 
         return overlapping.reindex(self.index)
@@ -2664,10 +2758,10 @@ class Windows(DataFrameWrapper):
 
         if not quiet:
             print(
-                'dropping',
-                f'{np.count_nonzero(overlapping)}/{len(self.reg)} '
-                f'({100 * np.count_nonzero(overlapping) / len(self.reg)}%)',
-                'of windows because of overlap'
+                "dropping",
+                f"{np.count_nonzero(overlapping)}/{len(self.reg)} "
+                f"({100 * np.count_nonzero(overlapping) / len(self.reg)}%)",
+                "of windows because of overlap",
             )
 
         # TODO options?
@@ -2682,20 +2776,18 @@ class Windows(DataFrameWrapper):
     def drop_empty(self):
         return self.sel_mask(~self.is_empty())
 
-    def drop_duplicates(self, subset=('start', 'stop')):
-        return Windows(
-            self.reg.drop_duplicates(subset=list(subset))
-        )
+    def drop_duplicates(self, subset=("start", "stop")):
+        return Windows(self.reg.drop_duplicates(subset=list(subset)))
 
-    def prev_cat(self, dim='cat') -> pd.Series:
+    def prev_cat(self, dim="cat") -> pd.Series:
         """return the category of the previous window"""
         return self.reg[dim].shift(1)
 
-    def next_cat(self, dim='cat') -> pd.Series:
+    def next_cat(self, dim="cat") -> pd.Series:
         """return the category of the next window"""
         return self.reg[dim].shift(-1)
 
-    def sandwiched(self, dim='cat', max_length=None, cat=None) -> pd.Series:
+    def sandwiched(self, dim="cat", max_length=None, cat=None) -> pd.Series:
         """
         Return a boolean series indicating which windows are preceded and followed by the same category.
 
@@ -2704,11 +2796,7 @@ class Windows(DataFrameWrapper):
         :param cat: only apply to windows of this category. A list allows for multiple categories.
         """
         next_cats = self.next_cat(dim)
-        bad = (
-                (next_cats == self.prev_cat(dim))
-                &
-                (next_cats != self.reg[dim])
-        )
+        bad = (next_cats == self.prev_cat(dim)) & (next_cats != self.reg[dim])
 
         if max_length is not None:
             bad = bad & (self.lengths() < max_length)
@@ -2721,7 +2809,7 @@ class Windows(DataFrameWrapper):
 
         return bad
 
-    def merge_sandwiched(self, dim='cat', max_length=None, cat=None):
+    def merge_sandwiched(self, dim="cat", max_length=None, cat=None):
         """
         Re-categorize and merge windows that live between two other windows of the same category.
         This is useful to remove small windows are created by noisy data after a simple thresholding.
@@ -2743,19 +2831,21 @@ class Windows(DataFrameWrapper):
 
         while are_sandwiched.any():
             # print(np.count_nonzero(are_sandwiched))
-            wins.reg.loc[are_sandwiched, dim] = wins.next_cat(dim).loc[are_sandwiched].values
+            wins.reg.loc[are_sandwiched, dim] = (
+                wins.next_cat(dim).loc[are_sandwiched].values
+            )
             are_sandwiched = wins.sandwiched(dim=dim, max_length=max_length, cat=cat)
             wins = wins.merge_tight(same_cat=True)
 
         return wins
 
     def invert(
-            self,
-            start=None,
-            stop=None,
-            keep_prev=tuple(),
-            keep_next=tuple(),
-            drop_empty=True,
+        self,
+        start=None,
+        stop=None,
+        keep_prev=tuple(),
+        keep_next=tuple(),
+        drop_empty=True,
     ):
         """
         Select all the time except that covered by the given windows.
@@ -2783,54 +2873,56 @@ class Windows(DataFrameWrapper):
 
         if len(windows) == 0:
             assert start is not None and stop is not None
-            df = pd.DataFrame({'start': [start], 'stop': [stop], 'ref': [start]})
-            df.index.name = 'win_idx'
+            df = pd.DataFrame({"start": [start], "stop": [stop], "ref": [start]})
+            df.index.name = "win_idx"
             return self.__class__(df)
 
-        windows = windows.reg.sort_values('start')
+        windows = windows.reg.sort_values("start")
 
         df = {
-            'start': windows['stop'].values[:-1],
-            'stop': windows['start'].values[1:],
+            "start": windows["stop"].values[:-1],
+            "stop": windows["start"].values[1:],
         }
 
         if start is not None:
             endpoint = windows.start.values[0]
             if start <= endpoint:
-                df['start'] = np.append(start, df['start'])
-                df['stop'] = np.append(endpoint, df['stop'])
+                df["start"] = np.append(start, df["start"])
+                df["stop"] = np.append(endpoint, df["stop"])
 
         if stop is not None:
             endpoint = windows.stop.values[-1]
             if stop >= endpoint:
-                df['start'] = np.append(df['start'], endpoint)
-                df['stop'] = np.append(df['stop'], stop)
+                df["start"] = np.append(df["start"], endpoint)
+                df["stop"] = np.append(df["stop"], stop)
 
         if isinstance(keep_next, str):
             keep_next = [keep_next]
 
         for col in keep_next:
-            df[f'next_{col}'] = windows[col].values[1:]
+            df[f"next_{col}"] = windows[col].values[1:]
 
         if isinstance(keep_prev, str):
             keep_prev = [keep_prev]
 
         for col in keep_prev:
-            df[f'prev_{col}'] = windows[col].values[:-1]
+            df[f"prev_{col}"] = windows[col].values[:-1]
 
         df = pd.DataFrame(df)
 
         if drop_empty:
             df = df[df.start != df.stop].copy()
 
-        df.sort_values('start', inplace=True)
+        df.sort_values("start", inplace=True)
         df.reset_index(drop=True, inplace=True)
-        df['ref'] = df['start']
-        df.index.name = 'win_idx'
+        df["ref"] = df["start"]
+        df.index.name = "win_idx"
 
         return self.__class__(df)
 
-    def classify_events(self, times, ref_col='ref', merge_wincols=None, right=False) -> pd.DataFrame:
+    def classify_events(
+        self, times, ref_col="ref", merge_wincols=None, right=False
+    ) -> pd.DataFrame:
         """
         compute the relative time of each event, depending on which window it falls into
 
@@ -2875,16 +2967,26 @@ class Windows(DataFrameWrapper):
             ewins = Windows(remaining.reg[~overlapping])
             assert ewins.are_exclusive()
 
-            rounds.append(_classify_events_exclusive(
-                ewins.reg, times, ref_col,
-                merge_wincols=merge_wincols, right=right))
+            rounds.append(
+                _classify_events_exclusive(
+                    ewins.reg, times, ref_col, merge_wincols=merge_wincols, right=right
+                )
+            )
 
             remaining = Windows(remaining.reg[overlapping])
 
         return pd.concat(rounds, axis=0)
 
-    def annotate_events(self, events: pd.DataFrame, prefix=None, col='time', drop=False,
-                        ref_col='ref', merge_wincols=None, right=False) -> pd.DataFrame:
+    def annotate_events(
+        self,
+        events: pd.DataFrame,
+        prefix=None,
+        col="time",
+        drop=False,
+        ref_col="ref",
+        merge_wincols=None,
+        right=False,
+    ) -> pd.DataFrame:
         """
         Classify the events and according to these windows and add information about the classification
         to produce a unified table of metadata.
@@ -2904,7 +3006,7 @@ class Windows(DataFrameWrapper):
         assert self.are_exclusive()
 
         if merge_wincols is None:
-            merge_wincols = list(self.reg.columns.difference(['start', 'stop', 'ref']))
+            merge_wincols = list(self.reg.columns.difference(["start", "stop", "ref"]))
 
         classified = self.classify_events(
             events[col],
@@ -2914,24 +3016,26 @@ class Windows(DataFrameWrapper):
         )
 
         if prefix is not None:
-            classified = classified.add_prefix(f'{prefix}_')
+            classified = classified.add_prefix(f"{prefix}_")
 
         overlapping_cols = classified.columns.intersection(events.columns)
 
         if len(overlapping_cols) > 0:
-            logging.warning(f'{len(overlapping_cols)} columns already exist: {list(overlapping_cols)}')
+            logging.warning(
+                f"{len(overlapping_cols)} columns already exist: {list(overlapping_cols)}"
+            )
 
         merged = pd.merge(
             events,
             classified,
             left_index=True,
             right_index=True,
-            how='inner' if drop else 'left',
+            how="inner" if drop else "left",
         )
 
         return merged
 
-    def classify_windows(self, others, align_to='ref', edges='crop') -> dict:
+    def classify_windows(self, others, align_to="ref", edges="crop") -> dict:
         """
         Classify another set of windows within these,
         computing the relative time of start/stop/ref, and cropping if necessary.
@@ -2947,7 +3051,7 @@ class Windows(DataFrameWrapper):
             Note that, if "self" is overlapping, then there may be more windows returned than given.
         """
 
-        assert edges in ('crop', 'drop', 'keep')
+        assert edges in ("crop", "drop", "keep")
 
         if align_to is not None:
             ref_times = self.relative_time(align_to)
@@ -2957,17 +3061,16 @@ class Windows(DataFrameWrapper):
         results = {}
 
         for idx, win in self.iter_wins():
-
-            if edges == 'crop':
+            if edges == "crop":
                 cropped = others.crop_to_main(win)
 
             else:
-                if edges == 'drop':
+                if edges == "drop":
                     fully = others.contained_in(win, fully=True)
                     cropped = others.sel_mask(fully)
 
                 else:
-                    assert edges == 'keep'
+                    assert edges == "keep"
 
                     partial = others.contained_in(win, fully=False)
                     cropped = others.sel_mask(partial)
@@ -2982,10 +3085,12 @@ class Windows(DataFrameWrapper):
         return results
 
     def get_inter_intervals(
-            self,
-            first='stop', second='start', sortby='ref',
-            ascending=True,
-            shift=1,
+        self,
+        first="stop",
+        second="start",
+        sortby="ref",
+        ascending=True,
+        shift=1,
     ) -> pd.Series:
         """
         Get the duration from "this" window to the "next" window.
@@ -3003,11 +3108,15 @@ class Windows(DataFrameWrapper):
         return td
 
     def get_inter_intervals_by(
-            self,
-            cat0, cat1,
-            by='cat',
-            first='ref', second='ref', sortby='ref', ascending=True,
-            reindex=True,
+        self,
+        cat0,
+        cat1,
+        by="cat",
+        first="ref",
+        second="ref",
+        sortby="ref",
+        ascending=True,
+        reindex=True,
     ) -> pd.Series:
         """
         Get the duration from "this" window to the "next" window,
@@ -3033,10 +3142,7 @@ class Windows(DataFrameWrapper):
         reg = self.reg.sort_values(sortby, ascending=ascending)
         reg = reg.loc[reg[by].isin([cat0, cat1])]
 
-        consecutive = (
-                (reg[by].values[:-1] == cat0) &
-                (reg[by].values[1:] == cat1)
-        )
+        consecutive = (reg[by].values[:-1] == cat0) & (reg[by].values[1:] == cat1)
         first_idcs = reg.index[:-1][consecutive]
         second_idcs = reg.index[1:][consecutive]
 
@@ -3064,10 +3170,10 @@ class Windows(DataFrameWrapper):
 
     def get_histogram_length(self, bins) -> pd.Series:
         this = self.copy()
-        this['length'] = self.lengths()
-        return this.get_histogram('length', bins)
+        this["length"] = self.lengths()
+        return this.get_histogram("length", bins)
 
-    def get_histograms_by(self, name, bins=100, by='cat') -> pd.DataFrame:
+    def get_histograms_by(self, name, bins=100, by="cat") -> pd.DataFrame:
 
         if isinstance(bins, int):
             bins = np.linspace(self[name].min(), self[name].max(), bins + 1)
@@ -3081,10 +3187,10 @@ class Windows(DataFrameWrapper):
 
         return dists
 
-    def get_histograms_length_by(self, bins, by='cat') -> pd.DataFrame:
+    def get_histograms_length_by(self, bins, by="cat") -> pd.DataFrame:
         this = self.copy()
-        this['length'] = self.lengths()
-        return this.get_histograms_by('length', bins, by=by)
+        this["length"] = self.lengths()
+        return this.get_histograms_by("length", bins, by=by)
 
     def is_isolated(self, at_least: float) -> pd.Series:
 
@@ -3106,16 +3212,23 @@ class Windows(DataFrameWrapper):
         return np.minimum(to_next, to_prev)
 
     def interval_to_prev(self, shift=1) -> pd.Series:
-        to_prev: pd.Series = self.get_inter_intervals(first='start', second='stop', ascending=False, shift=shift) * -1
+        to_prev: pd.Series = (
+            self.get_inter_intervals(
+                first="start", second="stop", ascending=False, shift=shift
+            )
+            * -1
+        )
         to_prev.fillna(np.inf, inplace=True)
         return to_prev
 
     def interval_to_next(self, shift=1) -> pd.Series:
-        to_next: pd.Series = self.get_inter_intervals(first='stop', second='start', ascending=True, shift=shift)
+        to_next: pd.Series = self.get_inter_intervals(
+            first="stop", second="start", ascending=True, shift=shift
+        )
         to_next.fillna(np.inf, inplace=True)
         return to_next
 
-    def change(self, pre=0., post=0.):
+    def change(self, pre=0.0, post=0.0):
         """
         Add (or remove) time at the start (pre) or the end (post) of the window
         :param pre: time in milliseconds relative to start
@@ -3123,26 +3236,26 @@ class Windows(DataFrameWrapper):
         :return: a new tuple object
         """
         copy = self.copy()
-        copy.reg['start'] += to_ms(pre)
-        copy.reg['stop'] += to_ms(post)
+        copy.reg["start"] += to_ms(pre)
+        copy.reg["stop"] += to_ms(post)
 
         return copy
 
-    def shrink(self, duration=0.):
+    def shrink(self, duration=0.0):
         """shrink this window by the same ammount at start and stop"""
         return self.change(+duration, -duration)
 
-    def expand(self, duration=0.):
+    def expand(self, duration=0.0):
         """expand this window by the same ammount at start and stop"""
         return self.change(-duration, +duration)
 
 
 def _classify_events_exclusive(
-        windows: pd.DataFrame,
-        times,
-        ref_col,
-        merge_wincols,
-        right,
+    windows: pd.DataFrame,
+    times,
+    ref_col,
+    merge_wincols,
+    right,
 ):
     """
     compute the relative time of each event, depending on which window it falls into
@@ -3153,20 +3266,20 @@ def _classify_events_exclusive(
     # clean arguments
 
     if merge_wincols is None:
-        if 'cat' in windows.columns:
-            merge_wincols = ['cat']
+        if "cat" in windows.columns:
+            merge_wincols = ["cat"]
         else:
             merge_wincols = []
 
     merge_wincols = list(merge_wincols)
 
     # non-empty, monotonically increasing, windows
-    windows = windows.sort_values(['start', 'stop'])
-    lengths = windows['stop'] - windows['start']
+    windows = windows.sort_values(["start", "stop"])
+    lengths = windows["stop"] - windows["start"]
     windows = windows[lengths > 0]
 
     # array of [start, stop, start, stop, ..., start, stop]
-    edges = windows[['start', 'stop']].values.flatten()
+    edges = windows[["start", "stop"]].values.flatten()
 
     if not isinstance(times, pd.Series):
         times = pd.Series(np.asarray(times))
@@ -3189,11 +3302,12 @@ def _classify_events_exclusive(
 
     valid = (
         # didn't fall outside our covered time
-            (0 <= edge_idx_per_t) & (edge_idx_per_t < len(edges) - 1) &
-
-            # only even pairs pair of values in "edges" are actual windows:
-            # [start, stop, start, stop, ..., start, stop]
-            ((edge_idx_per_t % 2) == 0)
+        (0 <= edge_idx_per_t)
+        & (edge_idx_per_t < len(edges) - 1)
+        &
+        # only even pairs pair of values in "edges" are actual windows:
+        # [start, stop, start, stop, ..., start, stop]
+        ((edge_idx_per_t % 2) == 0)
     )
 
     # we don't care about rounding for odd numbers,
@@ -3212,14 +3326,14 @@ def _classify_events_exclusive(
 
     wincol_name = windows.index.name
     if wincol_name is None:
-        wincol_name = 'win_idx'
+        wincol_name = "win_idx"
 
     df = {
         wincol_name: win_ids,
     }
 
     for name, d in zip(ref_col, delays):
-        df[f'delay_from_{name}' if name != 'ref' else 'delay'] = d
+        df[f"delay_from_{name}" if name != "ref" else "delay"] = d
 
     df = pd.DataFrame(df, index=times.index)
 
@@ -3229,10 +3343,6 @@ def _classify_events_exclusive(
         # are called the same, even though we specify we want to merge on the index only
         df.index.name = None
 
-    df = pd.merge(
-        df,
-        windows[merge_wincols],
-        left_on=wincol_name,
-        right_index=True)
+    df = pd.merge(df, windows[merge_wincols], left_on=wincol_name, right_index=True)
 
     return df

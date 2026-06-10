@@ -1,6 +1,7 @@
 """
 Common code to load or save ephys data.
 """
+
 import abc
 import logging
 
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class DataLoader(abc.ABC):
-
     ##############################################################
     # Abstract interface
 
@@ -40,7 +40,9 @@ class DataLoader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray:
+    def load(
+        self, sample_idcs: slice, channels: pd.Index, adjust_gain=True
+    ) -> np.ndarray:
         """
         Load as a numpy array some sample range of some channels.
 
@@ -94,9 +96,9 @@ class DataLoader(abc.ABC):
 
     def describe(self, quiet=False):
         desc = (
-            f' {self.sample_count:,d} samples'
-            f' at {self.sampling_rate * MS_TO_S:.2g}kHz'
-            f' between {self.win_ms}'
+            f" {self.sample_count:,d} samples"
+            f" at {self.sampling_rate * MS_TO_S:.2g}kHz"
+            f" between {self.win_ms}"
         )
 
         if quiet:
@@ -104,6 +106,37 @@ class DataLoader(abc.ABC):
         else:
             print(desc)
             return None
+
+    def channel_probes_to_global(self, channels_per_probe: list) -> np.array:
+        """
+        Convert a list of channels per probe to global channel ids
+
+        :param channels_per_probe: list of tuples (probe, local channel) like:
+            [(0, 224), (1, 32)]
+
+        :return: list of global channel ids
+        """
+        collect = []
+        for probe, ch in channels_per_probe:
+            which = (self.channels["probe"] == probe) & (
+                self.channels["local_channel_id"] == ch
+            )
+            local_ids = self.channels.index[which]
+            if len(local_ids) == 0:
+                which = (self.channels["probe"] == probe) & (
+                    self.channels["local_channel_id"] == (ch + 1)
+                )
+                local_ids = self.channels.index[which]
+
+                if len(local_ids) == 0:
+                    raise KeyError(f"Failed to locate probe-{probe} channel-{ch}")
+                else:
+                    logger.error(f"Channel error by 1")
+
+            assert len(local_ids) == 1
+            collect.append(local_ids)
+
+        return np.concatenate(collect)
 
 
 class MultiDataLoader(DataLoader):
@@ -135,36 +168,43 @@ class MultiDataLoader(DataLoader):
             A dictionary of loaders.
             The keys are unique file identifiers (0, 1, 2...) representing probes.
         """
+        if len(loaders) == 0:
+            raise ValueError("No loaders provided to MultiDataLoader")
+
         self.loaders = loaders
 
-        all_channels = {loader_id: loader.channels for loader_id, loader in self.loaders.items()}
-        all_channels = pd.concat(all_channels, names=['loader', 'local_channel_id'])
+        all_channels = {
+            loader_id: loader.channels for loader_id, loader in self.loaders.items()
+        }
+        all_channels = pd.concat(all_channels, names=["loader", "local_channel_id"])
         all_channels = all_channels.sort_index().reset_index()
-        all_channels.index.name = 'channel'
+        all_channels.index.name = "channel"
         assert all_channels.index.is_unique
         self._channels = all_channels
 
-        all_sampling_rates = pd.Series({
-            k: loader.sampling_rate
-            for k, loader in self.loaders.items()
-        })
+        all_sampling_rates = pd.Series(
+            {k: loader.sampling_rate for k, loader in self.loaders.items()}
+        )
 
         sampling_rate = all_sampling_rates.mean()
         if not all_sampling_rates.nunique() == 1:
-            logger.warning(f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}')
+            logger.warning(
+                f"Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}"
+            )
 
-        self._sampling_period = timeslice.SamplingRate(sampling_rate).adjust_sampling_period()
+        self._sampling_period = timeslice.SamplingRate(
+            sampling_rate
+        ).adjust_sampling_period()
 
-        all_sample_counts = pd.Series({
-            k: loader.sample_count
-            for k, loader in self.loaders.items()
-        })
+        all_sample_counts = pd.Series(
+            {k: loader.sample_count for k, loader in self.loaders.items()}
+        )
         self._sample_count = all_sample_counts.min()
         if not all_sample_counts.nunique() == 1:
             max_sample_count = all_sample_counts.max()
             logger.error(
-                f'Different sample counts across loaders. '
-                f'Taking min: {self._sample_count:,g} (loosing {max_sample_count - self._sample_count:,g} samples)'
+                f"Different sample counts across loaders. "
+                f"Taking min: {self._sample_count:,g} (loosing {max_sample_count - self._sample_count:,g} samples)"
             )
 
     def sel_channels(self, which):
@@ -174,11 +214,14 @@ class MultiDataLoader(DataLoader):
         if which=[32, 64] then the result will have: channels.index == [0, 1]
         :return: a reduced copy of this loader
         """
-        new = self.__class__({
-            ld: self.loaders[ld]
-            for ld in self._channels.loc[which, 'loader'].values
-        })
-        new._channels = self._channels.loc[which].reset_index(drop=True).rename_axis(index='channel')
+        new = self.__class__(
+            {ld: self.loaders[ld] for ld in self._channels.loc[which, "loader"].values}
+        )
+        new._channels = (
+            self._channels.loc[which]
+            .reset_index(drop=True)
+            .rename_axis(index="channel")
+        )
         return new
 
     @property
@@ -197,11 +240,11 @@ class MultiDataLoader(DataLoader):
 
         all_traces = []
 
-        for loader_id, ch_sel in self.channels.loc[channels].groupby('loader'):
+        for loader_id, ch_sel in self.channels.loc[channels].groupby("loader"):
             loader = self.loaders[loader_id]
 
             data = loader.load(
-                channels=ch_sel['local_channel_id'].values,
+                channels=ch_sel["local_channel_id"].values,
                 sample_idcs=sample_idcs,
                 adjust_gain=adjust_gain,
             )
@@ -211,37 +254,10 @@ class MultiDataLoader(DataLoader):
 
         return np.vstack(all_traces)
 
-    def channel_probes_to_global(self, channels_per_probe):
-        """
-        Convert a list of channels per probe to global channel ids
-
-        :param channels_per_probe: list of tuples (probe, local channel) like:
-            [(0, 224), (1, 32)]
-
-        :return: list of global channel ids
-        """
-        collect = []
-        for probe, ch in channels_per_probe:
-            which = (self.channels['probe'] == probe) & (self.channels['local_channel_id'] == ch)
-            local_ids = self.channels.index[which]
-            if len(local_ids) == 0:
-                which = (self.channels['probe'] == probe) & (self.channels['local_channel_id'] == (ch + 1))
-                local_ids = self.channels.index[which]
-
-                if len(local_ids) == 0:
-                    raise KeyError(f'Failed to locate probe-{probe} channel-{ch}')
-                else:
-                    logger.error(f'Channel error by 1')
-
-            assert len(local_ids) == 1
-            collect.append(local_ids)
-
-        return np.concatenate(collect)
-
     def describe(self, quiet=False):
 
         desc = super().describe(quiet=True)
-        desc = f'{len(self.channels):,d} channels ({len(self.loaders):,d} files) {desc}'
+        desc = f"{len(self.channels):,d} channels ({len(self.loaders):,d} files) {desc}"
 
         if quiet:
             return desc
