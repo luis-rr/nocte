@@ -38,7 +38,7 @@ def _get_sampling_rate(ks_path):
     return float(meta['imSampRate'])
 
 
-def _load_kilosort4_folder(ks_path: str | Path):
+def _load_kilosort4_folder(ks_path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Returns
     -------
@@ -74,42 +74,51 @@ def _load_kilosort4_folder(ks_path: str | Path):
     # ----------------------------------------------------
     # Units
 
-    # KS tables
-    ks_table = []
-    for fname in [
-        'cluster_group.tsv',
-        'cluster_KSLabel.tsv',
-        'cluster_Amplitude.tsv',
-        'cluster_ContamPct.tsv',
-    ]:
-        f = ks_path / fname
-        if f.exists():
-            df = pd.read_csv(f, sep='\t').set_index('cluster_id')
-            ks_table.append(df)
+    cluster_paths = list(ks_path.glob('cluster_*.tsv'))
+    if not cluster_paths:
+        raise RuntimeError(f'No cluster_*.tsv files found in {ks_path}')
 
-    ks_table = pd.concat(ks_table, axis=1)
-    ks_table.index = ks_table.index.astype(int)
+    cluster_table = pd.concat(
+        {
+            path.name[len('cluster_') : -len('.tsv')]: pd.read_csv(
+                path,
+                sep='\t',
+            ).set_index('cluster_id')
+            for path in cluster_paths
+        },
+        axis=1,
+    )
 
-    # Phy manual curation:
-    info_file = ks_path / 'cluster_info.tsv'
-    phy_table = pd.read_csv(info_file, sep='\t').set_index('cluster_id')
-    phy_table.index = phy_table.index.astype(int)
+    units_cols = {}
+    for col in cluster_table.columns.get_level_values(1).unique():
+        entries: pd.DataFrame = cluster_table.swaplevel(axis=1).loc[:, col]  # type: ignore
 
-    # combine them safely
-    all_ids = np.sort(ks_table.index.union(phy_table.index))
-    ks_table = ks_table.reindex(all_ids)
-    phy_table = phy_table.reindex(all_ids)
+        entries = entries.T.drop_duplicates().T
 
-    units: pd.DataFrame = phy_table.copy()
+        while len(entries.columns) > 1:
+            a = entries.iloc[:, 0]
+            b = entries.iloc[:, 1]
 
-    for col, vals in ks_table.items():
-        if col not in units.columns:
-            units[col] = vals
+            both_present = a.notna() & b.notna()
 
-        else:
-            if not units[col].equals(vals):
-                logging.warning(f'Different contents for Phy and KS column: "{col}"')
-                units[f'{col}_ks'] = vals
+            same_where_present = a[both_present].equals(b[both_present])
+
+            if not same_where_present:
+                logger.warning(
+                    f'Column "{col}" in "{entries.columns[0]}" and "{entries.columns[1]}" disagree where both are present, keeping first.'
+                )
+
+            combined = a.combine_first(b)
+
+            entries = pd.concat(
+                [combined]
+                + [entries.iloc[:, i] for i in range(2, len(entries.columns))],
+                axis=1,
+            )
+
+        units_cols[col] = entries.iloc[:, 0]
+
+    units: pd.DataFrame = pd.concat(units_cols, axis=1)
 
     # ----------------------------------------------------
     # Sanity checks:
