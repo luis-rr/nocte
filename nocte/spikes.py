@@ -2,21 +2,19 @@
 Container for spike trains of multiple cells.
 """
 
-from tqdm.auto import tqdm
-from nocte import timeslice
-
-
 import logging
 from pathlib import Path
 from typing import Self
 
 import numpy as np
 import pandas as pd
+
+from nocte import timeslice
+from nocte.datadict import DataDict
 from nocte.df_wrapper import DataFrameWrapper
 from nocte.events import Events
-from nocte.traces import Traces
-from nocte.datadict import DataDict
 from nocte.timeslice import Win
+from nocte.traces import Traces
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +160,93 @@ class _UnitsView(DataFrameWrapper):
         counts = self._spikes.reg.groupby('unit_id').size()
         counts = counts.reindex(self.index, fill_value=0)
         return counts
+
+    def get_inter_spike_intervals(self) -> dict[int, pd.Series]:
+        """
+        Returns
+        -------
+        dict[int, pd.Series]
+            unit_id -> pd.Series of inter-spike intervals in ms
+        """
+        return {
+            unit_id: times.sort_values().diff().dropna()
+            for unit_id, times in self._spikes.reg.groupby('unit_id')['ref_time']
+        }  # type: ignore
+
+    def get_inter_spike_intervals_dists(self, bins: np.ndarray | None = None) -> Traces:
+
+        isis = self._spikes.by_units.get_inter_spike_intervals()
+
+        if bins is None:
+            tmax = max(isi.max() for isi in isis.values())
+            tbins = np.arange(0, tmax)
+        else:
+            tbins = np.asarray(bins)
+
+        bin_centers = (tbins[:-1] + tbins[1:]) * 0.5
+
+        isi_dists = {
+            unit_id: np.histogram(isi, bins=tbins)[0] for unit_id, isi in isis.items()
+        }
+
+        isi_dists = pd.DataFrame(
+            isi_dists,
+            index=bin_centers,
+        )
+
+        return Traces(reg=self._spikes.units, traces=isi_dists)
+
+    def get_counts_in_bins(self, bins: np.ndarray):
+
+        times = self._spikes.reg['ref_time'].to_numpy()
+        units_all = self._spikes.reg['unit_id'].to_numpy()
+
+        # map spikes to bin indices
+        bin_idcs = np.digitize(times, bins) - 1
+        n_bins = len(bins) - 1
+
+        # validity mask
+        valid = (bin_idcs >= 0) & (bin_idcs < n_bins)
+
+        # ---- warning block ----
+        n_total = len(times)
+        n_invalid = np.count_nonzero(~valid)
+
+        if n_invalid > 0:
+            logging.warning(
+                f'{n_invalid:,d}/{n_total:,d} spikes fell outside bin range [{bins[0]:.6g}, {bins[-1]:.6g})'
+            )
+
+        # keep valid spikes
+        bin_idcs = bin_idcs[valid]
+        unit_ids = units_all[valid]
+
+        # mapping
+        units = np.sort(self._spikes.units.index.to_numpy())
+
+        unit_lookup = np.zeros(units.max() + 1, dtype=np.int32)
+        unit_lookup[units] = np.arange(len(units))
+        unit_idx = unit_lookup[unit_ids]
+
+        # accumulate
+        binned = np.zeros((n_bins, len(units)), dtype=np.int16)
+        np.add.at(binned, (bin_idcs, unit_idx), 1)
+
+        # centers
+        bin_centers = (bins[:-1] + bins[1:]) * 0.5
+
+        binned_df = pd.DataFrame(
+            binned,
+            index=pd.Index(bin_centers, name='ref_time'),
+            columns=pd.Index(units, name='unit_id'),
+        )
+
+        return Traces(
+            reg=self._spikes.units.rename_axis(
+                index='unit_id',
+            ),
+            traces=binned_df,
+        )
 
     def drop_silent(self):
         """
@@ -373,3 +458,60 @@ class Spikes(Events):
             units=cropped.units,
             win_ms=self.win_ms,
         )
+
+    def count_in_wins(self, trials):
+        counts_in_trial = pd.Series(
+            {
+                unit_id: len(trials.classify_events(s['ref_time']))
+                for unit_id, s in self.iter_groupby('unit_id', pbar=False)
+            }
+        )
+        counts_in_trial = counts_in_trial.reindex(self.units.index, fill_value=0)
+
+        return counts_in_trial
+
+    def copy(self):
+        return self.__class__(
+            self.reg.copy(),
+            self.units.copy(),
+            self.win_ms,
+        )
+
+    def relabel_units(self, mapping):
+        spikes = self.copy()
+        assert spikes.units.index.isin(mapping.index).all()
+        assert mapping.index.is_unique
+        assert mapping.is_unique
+
+        spikes.units.index = spikes.units.index.map(mapping)
+        assert spikes.units.index.is_unique
+        spikes.units.sort_index(inplace=True)
+
+        spikes.reg['unit_id'] = mapping.reindex(spikes.reg['unit_id']).values
+
+        return spikes
+
+    def relabel_units_by(self, score: pd.Series, ascending=True):
+        mapping = pd.Series(
+            np.arange(len(score)),
+            index=score.sort_values(ascending=ascending).index,
+        )
+
+        return self.relabel_units(mapping)
+
+    def relabel_units_by_trial_selectivity(self, trials):
+
+        counts = pd.DataFrame(
+            {
+                'in_trial': self.count_in_wins(trials),
+                'in_rest': self.count_in_wins(trials.invert()),
+            }
+        )
+
+        counts['selectivity'] = counts['in_trial'] / counts[
+            ['in_trial', 'in_rest']
+        ].sum(axis=1)
+
+        spikes_sorted = self.relabel_units_by(counts['selectivity'])
+
+        return spikes_sorted

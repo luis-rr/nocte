@@ -6,15 +6,15 @@ Separates layout (Cell/Grid), labeling, and rendering logic.
 Each cell explicitly represents its semantic meaning and edge position.
 """
 
-import numpy as np
-
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
+import matplotlib.cm
 import matplotlib.colors
-
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from matplotlib.gridspec import GridSpec
+
+from nocte import plot as splot
 
 
 def _edges_from_centers(values):
@@ -160,9 +160,6 @@ def dataframe_heatmap(
         ax.figure.colorbar(mesh, ax=ax, **colorbar_kwargs)
 
     return mesh
-
-
-from nocte import plot as splot
 
 
 class Cell:
@@ -451,6 +448,7 @@ class Grid:
         labels: list[str],
         *,
         triangle: str = 'bottom left',
+        show_marginals: bool = True,
         xlabel_side: str | None = None,
         ylabel_side: str | None = None,
         figsize: tuple[float, float] | None = None,
@@ -462,6 +460,8 @@ class Grid:
         Args:
             labels: variable names
             triangle: which cells to show ('bottom left', 'top right', 'bottom right', 'top left')
+            show_marginals: include marginal 1D cells (default: True). If False,
+                build a reduced (n-1)x(n-1) grid with only 2D pairwise cells.
             xlabel_side: x-axis label position (defaults based on triangle)
             ylabel_side: y-axis label position (defaults based on triangle)
             figsize: figure size (default: 0.75*n x 0.75*n)
@@ -471,18 +471,24 @@ class Grid:
             Grid object with 2D pairwise Cell objects
         """
         n = len(labels)
+        grid_n = n if show_marginals else n - 1
+
+        if grid_n <= 0:
+            raise ValueError(
+                'At least 2 labels are required when show_marginals=False.'
+            )
 
         # Create figure
         fig, axes_grid = plt.subplots(
-            n,
-            n,
-            figsize=figsize or (0.75 * n, 0.75 * n),
+            grid_n,
+            grid_n,
+            figsize=figsize or (0.75 * grid_n, 0.75 * grid_n),
             sharex=False,
             sharey=False,
         )
 
         # Handle 1D case
-        if n == 1:
+        if grid_n == 1:
             axes_grid = np.array([[axes_grid]])
 
         # Compute defaults
@@ -492,26 +498,32 @@ class Grid:
 
         # Build cells with standard pairwise semantics
         cells = []
-        cells_by_col = {j: [] for j in range(n)}
-        cells_by_row = {i: [] for i in range(n)}
+        cells_by_col = {j: [] for j in range(grid_n)}
+        cells_by_row = {i: [] for i in range(grid_n)}
 
-        for i in range(n):
-            for j in range(n):
+        for i in range(grid_n):
+            for j in range(grid_n):
                 ax = axes_grid[i, j]
 
-                if not cls._keep_triangle(i, j, n, triangle):
+                if not cls._keep_triangle(i, j, grid_n, triangle):
                     ax.set_visible(False)
                     continue
 
-                # Standard semantics: diagonal = 1D, off-diagonal = 2D
-                if i == j:
+                # Standard semantics:
+                # include_diagonal_1d=True  -> diagonal = 1D, off-diagonal = 2D
+                # include_diagonal_1d=False -> all visible cells are 2D using
+                #                             x from labels[:-1], y from labels[1:]
+                if show_marginals and i == j:
                     variables = (labels[i],)
                 else:
-                    variables = (labels[j], labels[i])  # (x, y)
+                    if show_marginals:
+                        variables = (labels[j], labels[i])  # (x, y)
+                    else:
+                        variables = (labels[j], labels[i + 1])  # (x, y)
 
                 # Compute edge positions
                 x_edge, y_edge = cls._compute_edge_position(
-                    i, j, n, xlabel_side, ylabel_side
+                    i, j, grid_n, xlabel_side, ylabel_side
                 )
 
                 cell = Cell(ax, variables, x_edge=x_edge, y_edge=y_edge)
@@ -524,7 +536,7 @@ class Grid:
         cls._share_xaxes(cells_by_col)
         cls._share_yaxes(cells_by_row)
 
-        grid = cls(fig, cells, n, n)
+        grid = cls(fig, cells, grid_n, grid_n)
 
         # Apply default spine, tick, and axis label settings.
         grid.set_ticks_visible()
@@ -823,6 +835,63 @@ class Grid:
                 **full_kwargs,
             )
 
+    def plot_2d_line_segmented_cmap(self, df, /, c, styles=None, **kwargs):
+        """
+        Segmented line plot in 2D cells of this grid.
+
+        Args:
+            df: DataFrame with variables
+            c: column name for color mapping or array of color values
+            styles: dict mapping (x_var, y_var) -> style kwargs (default: None)
+            **kwargs: additional plot kwargs (override defaults)
+
+        Default style: alpha=0.3, linewidth=0.3, color='k'
+        """
+        defaults = dict(alpha=0.3, linewidth=0.3)
+        styles = styles or {}
+
+        for cell in self.iter_cells(dim=2):
+            x, y = cell.variables
+            style = styles.get((x, y), {})
+            full_kwargs = {**defaults, **style, **kwargs}
+
+            splot.plot_segmented_line_cmap(
+                cell.ax,
+                df[x].values,
+                df[y].values,
+                c=df[c] if isinstance(c, str) else c,
+                **full_kwargs,
+            )
+
+    def plot_2d_line_segmented_highlighted(self, df, /, wins, styles=None, **kwargs):
+        """
+        Segmented line plot in 2D cells of this grid.
+
+        Args:
+            df: DataFrame with variables
+            wins: DataFrame with window definitions
+            styles: dict mapping (x_var, y_var) -> style kwargs (default: None)
+            **kwargs: additional plot kwargs (override defaults)
+
+        Default style: alpha=0.3, linewidth=0.3, color='k'
+        """
+        defaults = dict(alpha=0.3, linewidth=0.3)
+        styles = styles or {}
+
+        for cell in self.iter_cells(dim=2):
+            x, y = cell.variables
+            style = styles.get((x, y), {})
+            full_kwargs = {**defaults, **style, **kwargs}
+
+            splot.plot_segmented_line_highlighted(
+                cell.ax,
+                df[x],
+                df[y],
+                wins=wins,
+                styles=styles,
+                **full_kwargs,
+            )
+
     def plot_3d_scatter(self, df, /, styles=None, **kwargs):
         """
         3D scatter plot in 3D cells of this grid.
@@ -866,3 +935,105 @@ class Grid:
 
             # Simple line plot for 3D
             cell.ax.plot(df[x], df[y], df[z], **full_kwargs)
+
+    def add_colorbar(
+        self,
+        cmap,
+        norm,
+        location='top right',
+        orientation='horizontal',
+        label=None,
+        size=None,
+        pad=0.04,
+        margin=0.04,
+        **colorbar_kwargs,
+    ):
+        """
+        Add a standalone colorbar to a figure.
+
+        Parameters
+        ----------
+        fig:
+            Matplotlib figure.
+        cmap:
+            Colormap.
+        norm:
+            Matplotlib norm.
+        location:
+            One of:
+            'top right', 'top left', 'bottom right', 'bottom left',
+            'right top', 'right bottom', 'left top', 'left bottom'.
+        orientation:
+            'horizontal' or 'vertical'.
+        label:
+            Optional colorbar label.
+        size:
+            Optional tuple specifying the colorbar axes size as
+            (width, height) in figure coordinates.
+        pad:
+            Padding from the figure edge, in figure coordinates.
+        margin:
+            Additional margin from the nearest corner, in figure coordinates.
+        **colorbar_kwargs:
+            Passed to fig.colorbar.
+
+        Returns
+        -------
+        cbar:
+            The created colorbar.
+        """
+
+        if orientation not in {'horizontal', 'vertical'}:
+            raise ValueError("orientation must be 'horizontal' or 'vertical'")
+
+        location = location.lower().strip()
+
+        if size is None:
+            if orientation == 'horizontal':
+                width, height = 0.22, 0.025
+            else:
+                width, height = 0.025, 0.22
+        else:
+            width, height = size
+
+        horizontal_locations = {
+            'top right': (1 - margin - width, 1 - pad - height),
+            'top left': (margin, 1 - pad - height),
+            'bottom right': (1 - margin - width, pad),
+            'bottom left': (margin, pad),
+        }
+
+        vertical_locations = {
+            'right top': (1 - pad - width, 1 - margin - height),
+            'right bottom': (1 - pad - width, margin),
+            'left top': (pad, 1 - margin - height),
+            'left bottom': (pad, margin),
+        }
+
+        if orientation == 'horizontal':
+            valid_locations = horizontal_locations
+        else:
+            valid_locations = vertical_locations
+
+        if location not in valid_locations:
+            options = "', '".join(valid_locations)
+            raise ValueError(f"location must be one of: '{options}'")
+
+        left, bottom = valid_locations[location]
+
+        cax = self.fig.add_axes([left, bottom, width, height])
+
+        sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+
+        cbar = self.fig.colorbar(
+            sm,
+            cax=cax,
+            orientation=orientation,
+            **colorbar_kwargs,
+        )
+
+        if label is not None:
+            cbar.set_label(label)
+
+        return cbar

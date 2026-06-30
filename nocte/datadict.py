@@ -1,10 +1,11 @@
 import functools
-import numpy as np
-import pandas as pd
 from typing import Self
 
-from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
+import numpy as np
+import pandas as pd
+
 import nocte.timeslice
+from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 
 
 class DataDict(DataFrameWrapper):
@@ -100,7 +101,14 @@ class DataDict(DataFrameWrapper):
             data=data,
         )
 
-    def to_hdf(self, filename, key='dd', item_key_fmt='{k}', pbar=None):
+    def to_hdf(
+        self,
+        filename,
+        key='dd',
+        item_key_fmt='{k}',
+        pbar=None,
+        storer=None,
+    ):
         """
         Store data and registry to HDF5.
         Data must implement "to_hdf" or "store_hdf" (e.g. pd.DataFrame)
@@ -117,7 +125,10 @@ class DataDict(DataFrameWrapper):
             item_key = item_key_fmt.format(k=k)
             item_key = f'{key}_{item_key}'
 
-            if hasattr(v, 'to_hdf'):
+            if storer is not None:
+                storer(v, filename, key=item_key)
+
+            elif hasattr(v, 'to_hdf'):
                 v.to_hdf(filename, key=item_key)
 
             elif hasattr(v, 'store_hdf'):
@@ -210,6 +221,12 @@ class DataDict(DataFrameWrapper):
 
     def __len__(self):
         return len(self.reg)
+
+    def replace_data(self, data):
+        return self.__class__(
+            reg=self.reg.copy(),
+            data=data,
+        )
 
     def simplify(self):
         """drop columns with only one value repeated"""

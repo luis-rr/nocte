@@ -7,9 +7,10 @@ import pathlib
 from contextlib import contextmanager
 
 import matplotlib.axes
-import matplotlib.cm
+import matplotlib.collections
 import matplotlib.colors
 import matplotlib.gridspec
+import matplotlib.lines
 import matplotlib.patches
 import matplotlib.ticker
 import matplotlib.transforms
@@ -806,6 +807,21 @@ def plot_wrapped_lines(
                 trace.values,
                 **kwargs,
             )
+
+
+def plot_wrapped_im(
+    axs,
+    all_traces: pd.DataFrame,
+    **kwargs,
+):
+    for i, (tbin, ax) in enumerate(axs.items()):
+        sec = tbin.crop_df(all_traces, reset=True)
+
+        plot_df_as_im(
+            ax,
+            sec,
+            **kwargs,
+        )
 
 
 def plot_wrapped_fills(
@@ -1723,9 +1739,9 @@ def plot_test(
     text_detailed += f'{stat_name}={stat} p={format_p_value(p)}'
 
     if len(ns) > 1:
-        text_detailed += f'\n' + ', '.join([f'n{i}={n:,g}' for i, n in enumerate(ns)])
+        text_detailed += '\n' + ', '.join([f'n{i}={n:,g}' for i, n in enumerate(ns)])
     else:
-        text_detailed += f'\n' + f'n={ns[0]:,g}'
+        text_detailed += '\n' + f'n={ns[0]:,g}'
 
     if desc is not None:
         text_detailed += f'{desc}'
@@ -1878,74 +1894,307 @@ def savefig(f, name, base_path=''):
     f.savefig(full_path, dpi=600)
 
 
-def plot_segmented_line(ax, x, y, num_segments=100, solid_capstyle='butt', **kwargs):
+def plot_segmented_line(
+    ax: matplotlib.axes.Axes,
+    x,
+    y,
+    num_segments=100,
+    **line_kwargs,
+) -> matplotlib.collections.LineCollection:
     """
-    Plots a line in segments to allow alpha stacking on overlap.
+    Plot a line as connected segments using a LineCollection.
+
+    This is useful when you want alpha stacking where the trajectory overlaps
+    itself, while avoiding many separate ax.plot calls.
     """
 
     x = np.asarray(x)
     y = np.asarray(y)
 
-    idcs = np.sort(np.unique(np.linspace(0, len(x) - 1, num_segments).astype(int)))
+    if x.ndim != 1 or y.ndim != 1:
+        raise ValueError('x and y must be 1D arrays')
 
-    for i0, i1 in zip(idcs[:-1], idcs[1:]):
-        ax.plot(
-            x[i0 : i1 + 1],
-            y[i0 : i1 + 1],
-            solid_capstyle=solid_capstyle,  # Ensures clean segment stacking
-            **kwargs,
+    n = len(x)
+
+    if len(y) != n:
+        raise ValueError('x and y must have the same length')
+    if n < 2:
+        raise ValueError('need at least 2 points to draw a line')
+    if num_segments < 1:
+        raise ValueError('num_segments must be at least 1')
+
+    num_segments = min(num_segments, n - 1)
+
+    # Split over index intervals so adjacent segments share one endpoint.
+    edges = np.linspace(0, n - 1, num_segments + 1).round().astype(int)
+    edges = np.unique(edges)
+
+    if len(edges) < 2:
+        edges = np.array([0, n - 1])
+
+    segments = []
+
+    for i0, i1 in zip(edges[:-1], edges[1:]):
+        if i1 <= i0:
+            continue
+
+        segment = np.column_stack([x[i0 : i1 + 1], y[i0 : i1 + 1]])
+        segments.append(segment)
+
+    line_kwargs.setdefault('capstyle', 'butt')
+
+    collection = matplotlib.collections.LineCollection(
+        segments,
+        **line_kwargs,
+    )
+
+    ax.add_collection(collection)
+    ax.autoscale_view()
+
+    return collection
+
+
+def _slice_series_window_interp(
+    x: pd.Series,
+    y: pd.Series,
+    start: float,
+    stop: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Slice aligned x/y time series between start and stop, including linearly
+    interpolated boundary points.
+    """
+
+    if stop <= start:
+        raise ValueError('stop must be greater than start')
+
+    t = x.index.to_numpy(dtype=float)
+    x_values = x.to_numpy(dtype=float)
+    y_values = y.to_numpy(dtype=float)
+
+    if len(t) < 2:
+        raise ValueError('x and y need at least 2 samples')
+
+    if len(y) != len(x):
+        raise ValueError('x and y must have the same length')
+
+    if not np.array_equal(x.index, y.index):
+        raise ValueError('x and y must have aligned indices')
+
+    # Restrict window to available data range.
+    start = max(start, t[0])
+    stop = min(stop, t[-1])
+
+    if stop <= start:
+        return np.array([]), np.array([])
+
+    inside = (t > start) & (t < stop)
+
+    t_win = np.concatenate(
+        [
+            [start],
+            t[inside],
+            [stop],
+        ]
+    )
+
+    x_win = np.interp(t_win, t, x_values)
+    y_win = np.interp(t_win, t, y_values)
+
+    return x_win, y_win
+
+
+def plot_segmented_line_highlighted(
+    ax: matplotlib.axes.Axes,
+    x: pd.Series,
+    y: pd.Series,
+    wins: pd.DataFrame,
+    styles: dict,
+    num_segments=100,
+    default_style=None,
+    start_col='start',
+    stop_col='stop',
+    cat_col='cat',
+    **line_kwargs,
+) -> list[matplotlib.collections.LineCollection]:
+    """
+    Plot selected time windows from an aligned x/y trajectory.
+
+    Parameters
+    ----------
+    ax:
+        Matplotlib axes.
+    x, y:
+        Series containing line coordinates. Their indices are time in ms.
+    wins:
+        DataFrame with window definitions. Must contain start, stop, and cat columns.
+    styles:
+        Mapping from category values to LineCollection kwargs.
+    num_segments:
+        Number of segments per plotted window.
+    default_style:
+        Optional style used when a category is not present in styles.
+        If None, missing categories raise a KeyError.
+    start_col, stop_col, cat_col:
+        Column names in wins.
+
+    Returns
+    -------
+    collections:
+        List of LineCollection objects, one per plotted window.
+    """
+
+    required_cols = {start_col, stop_col, cat_col}
+    missing_cols = required_cols - set(wins.columns)
+    if missing_cols:
+        raise ValueError(f'wins is missing columns: {sorted(missing_cols)}')
+
+    if not isinstance(x, pd.Series) or not isinstance(y, pd.Series):
+        raise TypeError('x and y must be pandas Series')
+
+    if not np.array_equal(x.index, y.index):
+        raise ValueError('x and y must have aligned indices')
+
+    collections = []
+
+    wins_df = wins.reg
+
+    wins_df = wins_df[wins_df['start'] < wins_df['stop']]
+
+    rows = wins_df.iterrows()
+    if len(wins_df) > 1000:
+        rows = tqdm(rows, desc='plot', total=len(wins_df))
+
+    for _, win in rows:
+        start = float(win[start_col])
+        stop = float(win[stop_col])
+        cat = win[cat_col]
+
+        if cat in styles:
+            style = dict(styles[cat])
+        elif default_style is not None:
+            style = dict(default_style)
+        else:
+            raise KeyError(f'no style found for category {cat!r}')
+
+        x_win, y_win = _slice_series_window_interp(
+            x=x,
+            y=y,
+            start=start,
+            stop=stop,
         )
+
+        if len(x_win) < 2:
+            continue
+
+        collection = plot_segmented_line(
+            ax=ax,
+            x=x_win,
+            y=y_win,
+            num_segments=num_segments,
+            **{**style, **line_kwargs},
+        )
+
+        collections.append(collection)
+
+    return collections
 
 
 def plot_segmented_line_cmap(
-    ax,
+    ax: matplotlib.axes.Axes,
     x,
     y,
     c,
     cmap='viridis',
     norm=None,
     num_segments=12,
-    **plot_kwargs,
-) -> list:
+    **line_kwargs,
+) -> matplotlib.collections.LineCollection:
     """
-    Plots a line in segments to produce a color gradient.
+    Plot a line as connected color segments using a LineCollection.
+
+    Parameters
+    ----------
+    ax:
+        Matplotlib axes.
+    x, y:
+        1D coordinates of the line.
+    c:
+        1D values used to assign one color to each coarse segment.
+    cmap:
+        Colormap name or colormap object.
+    norm:
+        Matplotlib norm. If None, inferred from `c`.
+    num_segments:
+        Number of coarse color segments.
+    **line_kwargs:
+        Extra kwargs passed to LineCollection.
+
+    Returns
+    -------
+    collection:
+        The added LineCollection.
     """
 
     x = np.asarray(x)
     y = np.asarray(y)
     c = np.asarray(c)
 
+    if x.ndim != 1 or y.ndim != 1 or c.ndim != 1:
+        raise ValueError('x, y, and c must be 1D arrays')
+
     n = len(x)
 
-    assert n == len(y)
-    assert n == len(c)
-
-    assert num_segments >= 1
+    if len(y) != n or len(c) != n:
+        raise ValueError('x, y, and c must have the same length')
+    if n < 2:
+        raise ValueError('need at least 2 points to draw a line')
+    if num_segments < 1:
+        raise ValueError('num_segments must be at least 1')
 
     if norm is None:
-        norm = matplotlib.colors.Normalize(vmin=np.nanmin(c), vmax=np.nanmax(c))
+        norm = matplotlib.colors.Normalize(
+            vmin=np.nanmin(c),
+            vmax=np.nanmax(c),
+        )
 
     if isinstance(cmap, str):
         cmap = matplotlib.colormaps[cmap]
 
-    lines = []
+    num_segments = min(num_segments, n - 1)
 
-    idx_segments = np.array_split(np.arange(n), num_segments)
+    edges = np.linspace(0, n - 1, num_segments + 1).round().astype(int)
+    edges = np.unique(edges)
 
-    for idx in idx_segments:
-        i0, i1 = idx[0], idx[-1]
+    if len(edges) < 2:
+        edges = np.array([0, n - 1])
 
-        x_segment = x[i0 : i1 + 1]
-        y_segment = y[i0 : i1 + 1]
-        c_segment = c[i0 : i1 + 1]
+    segments = []
+    colors = []
 
-        c_mean = np.nanmean(c_segment)
-        color = cmap(norm(c_mean))
+    for i0, i1 in zip(edges[:-1], edges[1:]):
+        if i1 <= i0:
+            continue
 
-        (line,) = ax.plot(x_segment, y_segment, color=color, **plot_kwargs)
-        lines.append(line)
+        segment = np.column_stack([x[i0 : i1 + 1], y[i0 : i1 + 1]])
+        color_value = np.nanmean(c[i0 : i1 + 1])
+        color = cmap(norm(color_value))
 
-    return lines
+        segments.append(segment)
+        colors.append(color)
+
+    line_kwargs.setdefault('capstyle', 'butt')
+
+    collection = matplotlib.collections.LineCollection(
+        segments,
+        colors=colors,
+        **line_kwargs,
+    )
+
+    ax.add_collection(collection)
+    ax.autoscale_view()
+
+    return collection
 
 
 def _get_index_extent(index) -> tuple:

@@ -1,5 +1,6 @@
 import functools
 import logging
+from typing import Self
 
 import numba as nb
 import numpy as np
@@ -11,7 +12,6 @@ from nocte import datadict as dd
 from nocte import timeslice
 from nocte.analysis import sleep
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
-from typing import Self
 
 
 # @nb.njit(parallel=True)
@@ -592,13 +592,13 @@ class Traces(DataFrameWrapper):
         )
         step = sampling_periods[0]
         assert np.all(sampling_periods == step), (
-            f'Traces with different sampling periods'
+            'Traces with different sampling periods'
         )
 
         starts = np.array([traces.time[0] for traces in traces_dict.values()])
         global_start = np.min(starts)
         assert np.all(((starts - global_start) % sampling_periods[0]) == 0), (
-            f'Traces sampling is misaligned'
+            'Traces sampling is misaligned'
         )
 
         stops = np.array([traces.time[-1] for traces in traces_dict.values()])
@@ -1047,7 +1047,7 @@ class Traces(DataFrameWrapper):
 
     def unwrap(self, period=1, axis=0):
         if np.any(np.isnan(self.traces)):
-            logging.warning(f'Unwrapping does not support nans')
+            logging.warning('Unwrapping does not support nans')
 
         return self.replace_traces(
             np.unwrap(self.traces.values, period=period, axis=axis)
@@ -1526,7 +1526,7 @@ class Traces(DataFrameWrapper):
         dups = reg.columns.duplicated()
         if np.any(dups):
             logging.warning(
-                f'Dropping duplicated columns: '
+                'Dropping duplicated columns: '
                 + ', '.join(list(reg.columns[dups]))
                 + '. Maybe you want cut_merge?'
             )
@@ -1919,6 +1919,9 @@ class Traces(DataFrameWrapper):
     def zscore(self):
         return (self - self.mean()) / self.std()
 
+    def center(self):
+        return self - self.mean()
+
     def resample(self, period, start=None, stop=None):
 
         if start is None:
@@ -1956,13 +1959,21 @@ class Traces(DataFrameWrapper):
 
         return self.downsample_factor(factor)
 
-    def interp(self, times: pd.Series):
+    def interp(
+        self, times: pd.Series, fill_value=None
+    ):  # TODO fill_value should be nan by default
 
         times = np.asarray(times)
 
         interpolated = np.column_stack(
             [
-                np.interp(times, self.time, self.traces[col].values)
+                np.interp(
+                    times,
+                    self.time,
+                    self.traces[col].values,
+                    left=fill_value,
+                    right=fill_value,
+                )
                 for col in self.traces.columns
             ]
         )

@@ -6,7 +6,7 @@ that can be used to cut data.
 import functools
 import logging
 import re
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -1693,7 +1693,7 @@ class Windows(DataFrameWrapper):
         wins_ms = Windows(wins_ms)
 
         if 'cat' in wins_ms.reg.columns:
-            wins_ms.reg['cat'].fillna(cat, inplace=True)
+            wins_ms.reg['cat'] = wins_ms.reg['cat'].fillna(cat)
 
         if 'length' in wins_ms.reg.columns:
             wins_ms.reg['length'] = wins_ms.lengths()
@@ -2421,7 +2421,8 @@ class Windows(DataFrameWrapper):
             new = new.reindex(shifts.index)
 
         for c in 'start', 'stop', 'ref':
-            new[c] = new[c] + shifts
+            if c in new.columns:
+                new[c] = new[c] + shifts
 
         # note that we can no longer expect them to be exclusive
         return Windows(new)
