@@ -1,288 +1,384 @@
-import functools
-import logging
-from typing import Self
+from __future__ import annotations
+
+import abc
+import collections.abc
+import typing
 
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+How = typing.Literal['all', 'any']
 
-class DataFrameWrapper:
-    """
-    Base class for objects that wrap around a pandas DataFrames to keep metadata..
-    Provides common selection methods like `sel()`.
+IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
 
-    All selection converges to "_apply_mask", so subclasses can override that method.
-    This class assumes "inplace" are not used as keyword arguments for simplicity.
-    """
+MaskLike = collections.abc.Sequence[bool] | np.ndarray | pd.Series
 
-    def __init__(self, reg: pd.DataFrame):
-        self.reg = reg
+
+class Collection(abc.ABC):
+    """Common metadata selection API for nocte collections."""
+
+    meta: pd.DataFrame
+
+    @abc.abstractmethod
+    def __len__(self) -> int: ...
+
+    @abc.abstractmethod
+    def _take_pos(self, positions: np.ndarray) -> typing.Self: ...
 
     @property
     def index(self) -> pd.Index:
-        """pd.DataFrame accessor"""
-        return self.reg.index
+        return self.meta.index
 
     @property
     def columns(self) -> pd.Index:
-        """pd.DataFrame accessor"""
-        return self.reg.columns
+        return self.meta.columns
 
-    @functools.wraps(pd.DataFrame.__getitem__)
-    def __getitem__(self, *args, **kwargs):
-        return self.reg.__getitem__(*args, **kwargs)
+    def __getitem__(self, key: typing.Any) -> typing.Any:
+        return self.meta[key]
 
-    @functools.wraps(pd.DataFrame.__setitem__)
-    def __setitem__(self, *args, **kwargs):
-        return self.reg.__setitem__(*args, **kwargs)
+    def __setitem__(self, key: typing.Any, value: typing.Any) -> None:
+        self.meta[key] = value
 
-    @functools.wraps(pd.DataFrame.__str__)
-    def __str__(self):
-        return self.reg.__str__()
-
-    @functools.wraps(pd.DataFrame.__repr__)
-    def __repr__(self):
-        return self.reg.__repr__()
-
-    @property
-    def loc(self):
-        return self.reg.loc
-
-    @property
-    def iloc(self):
-        return self.reg.iloc
-
-    # noinspection PyProtectedMember,PyTypeChecker
-    @functools.wraps(pd.DataFrame._repr_html_)
-    def _repr_html_(self):
-        # noinspection PyCallingNonCallable
-        return self.reg._repr_html_()
-
-    @property
-    def empty(self) -> bool:
-        """pd.DataFrame accessor"""
-        return self.reg.empty
-
-    @functools.wraps(pd.DataFrame.value_counts)
-    def value_counts(self, *args, **kwargs):
-        return self.reg.value_counts(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.sort_values)
-    def sort_values(self, *args, **kwargs):
-        return self.__class__(self.reg.sort_values(*args, **kwargs))
-
-    @functools.wraps(pd.DataFrame.sort_index)
-    def sort_index(self, *args, **kwargs):
-        return self.__class__(self.reg.sort_index(*args, **kwargs))
-
-    def sel(self, rows=None, /, invert=False, **kwargs) -> Self:
-        """
-        Select rows either by index or by matching column values.
-        """
-        if rows is not None and kwargs:
+    def _validate_meta(self) -> None:
+        """Validate the core metadata invariants of a collection."""
+        if len(self.meta) != len(self):
             raise ValueError(
-                'Provide either row indices or keyword arguments for filtering, not both.'
+                f'meta has {len(self.meta)} rows, but the collection has {len(self)} items'
             )
 
-        if rows is not None:
-            return self.sel_rows(rows, invert=invert)
+        if not self.meta.index.is_unique:
+            raise ValueError('collection index must be unique')
 
-        if kwargs:
-            return self.sel_match(**kwargs, invert=invert)
+    def _positions(self, labels: IndexLike) -> np.ndarray:
+        labels = self._as_index(labels)
+        positions = self.index.get_indexer(labels)
 
-        raise ValueError('Must provide either row indices or keyword arguments.')
+        missing = positions < 0
 
-    def sel_rows(self, rows, /, invert=False):
-        if not isinstance(rows, (slice, tuple, list, np.ndarray, pd.Index)):
-            rows = [rows]
+        if missing.any():
+            raise KeyError(f'item labels not found: {labels[missing].tolist()}')
 
-        return self.sel_mask(rows, invert=invert)
-
-    def _apply_mask(self, mask) -> Self:
-        """
-        Final method for applying an index mask to `reg`. Subclasses override this.
-        """
-        return self.__class__(self.reg.loc[mask])
-
-    def _replace_reg(self, reg) -> Self:
-        """
-        Method for replacing the reg without masking the index. Subclasses override this.
-        """
-        return self.__class__(reg)
+        return positions
 
     @staticmethod
-    def _masks(criterias, *, how='all', invert=False):
-        """
-        Combine multiple boolean masks
-        """
-        assert how in ('all', 'any')
+    def _as_index(
+        labels: IndexLike,
+    ) -> pd.Index:
+        if isinstance(labels, pd.Index):
+            return labels
+
+        if isinstance(labels, (int, np.integer)):
+            return pd.Index([labels])
+
+        return pd.Index(labels)
+
+    # ------------------------------------------------------------------
+    # selection
+
+    def sel(
+        self,
+        rows: IndexLike | None = None,
+        /,
+        *,
+        invert: bool = False,
+        **col_values: typing.Any,
+    ) -> typing.Self:
+        if rows is not None and col_values:
+            raise ValueError('provide either item indices or metadata values, not both')
+
+        if rows is not None:
+            return self.sel_index(
+                rows,
+                invert=invert,
+            )
+
+        if col_values:
+            return self.sel_match(
+                invert=invert,
+                **col_values,
+            )
+
+        raise ValueError('provide item indices or metadata values')
+
+    def sel_index(self, labels: IndexLike, /, *, invert: bool = False) -> typing.Self:
+        positions = self._positions(labels)
+
+        if invert:
+            mask = np.ones(len(self), dtype=bool)
+            mask[positions] = False
+            positions = np.flatnonzero(mask)
+
+        return self._take_pos(positions)
+
+    def sel_mask(
+        self,
+        mask: MaskLike,
+        /,
+        *,
+        invert: bool = False,
+    ) -> typing.Self:
+        if isinstance(mask, pd.Series):
+            if not mask.index.equals(self.index):
+                raise ValueError('mask index does not match collection index')
+
+            mask = mask.to_numpy()
+
+        mask = np.asarray(mask)
+
+        if mask.ndim != 1:
+            raise ValueError('mask must be one-dimensional')
+
+        if mask.dtype != bool:
+            raise TypeError('mask must be boolean')
+
+        if len(mask) != len(self):
+            raise ValueError('mask length does not match collection length')
+
+        if invert:
+            mask = ~mask
+
+        return self._take_pos(np.flatnonzero(mask))
+
+    def is_match(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_values: typing.Any,
+    ) -> pd.Series:
+        criteria = []
+
+        for col, value in col_values.items():
+            if not pd.api.types.is_scalar(value):
+                raise TypeError(
+                    f'sel_match expects scalar values, got {type(value).__name__} '
+                    f'for {col!r}; use sel_in() for multiple values'
+                )
+
+            values = self.meta[col]
+
+            if pd.isna(value):
+                criterion = values.isna()
+            else:
+                criterion = values.eq(value)
+
+            criteria.append(criterion)
+
+        return self._combine_masks(
+            criteria,
+            how=how,
+            invert=invert,
+        )
+
+    def sel_match(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_values: typing.Any,
+    ) -> typing.Self:
+        return self.sel_mask(
+            self.is_match(
+                how=how,
+                invert=invert,
+                **col_values,
+            )
+        )
+
+    def is_in(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_values: collections.abc.Iterable[typing.Any],
+    ) -> pd.Series:
+        criteria = [self.meta[col].isin(values) for col, values in col_values.items()]
+
+        return self._combine_masks(
+            criteria,
+            how=how,
+            invert=invert,
+        )
+
+    def sel_in(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_values: collections.abc.Iterable[typing.Any],
+    ) -> typing.Self:
+        return self.sel_mask(
+            self.is_in(
+                how=how,
+                invert=invert,
+                **col_values,
+            )
+        )
+
+    def is_between(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_ranges: tuple[typing.Any, typing.Any],
+    ) -> pd.Series:
+        criteria = [
+            self.meta[col].between(*value_range)
+            for col, value_range in col_ranges.items()
+        ]
+
+        return self._combine_masks(
+            criteria,
+            how=how,
+            invert=invert,
+        )
+
+    def sel_between(
+        self,
+        *,
+        how: How = 'all',
+        invert: bool = False,
+        **col_ranges: tuple[typing.Any, typing.Any],
+    ) -> typing.Self:
+        return self.sel_mask(
+            self.is_between(
+                how=how,
+                invert=invert,
+                **col_ranges,
+            )
+        )
+
+    @staticmethod
+    def _combine_masks(
+        criteria: list[pd.Series],
+        *,
+        how: How,
+        invert: bool,
+    ) -> pd.Series:
+        if not criteria:
+            raise ValueError('at least one selection criterion is required')
 
         if how == 'all':
-            mask = np.all(criterias, axis=0)
+            mask = criteria[0].copy()
+
+            for criterion in criteria[1:]:
+                mask &= criterion
+
+        elif how == 'any':
+            mask = criteria[0].copy()
+
+            for criterion in criteria[1:]:
+                mask |= criterion
+
         else:
-            mask = np.any(criterias, axis=0)
+            raise ValueError("how must be 'all' or 'any'")
 
         if invert:
             mask = ~mask
 
         return mask
 
-    def sel_mask(self, mask, /, invert=False) -> Self:
-        """
-        Select using a boolean mask
-        """
-        if invert:
-            mask = ~mask
+    # ------------------------------------------------------------------
+    # ordering
 
-        return self._apply_mask(mask)
+    def sort_values(
+        self,
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> typing.Self:
+        inplace = kwargs.pop('inplace', False)
+        ignore_index = kwargs.pop('ignore_index', False)
 
-    def is_match(self, *, how='all', invert=False, **col_values) -> pd.Series:
-        """
-        Return a mask of direct comparison of some column.
+        if inplace:
+            raise TypeError("'inplace=True' is not supported")
 
-        We allow to select for missing values by using np.nan.
+        if ignore_index:
+            raise TypeError("'ignore_index=True' is not supported")
 
-        For example:
-            wins.match(cat='baseline')
-        """
-        criterias = [
-            (self.reg[col] == value) if not pd.isna(value) else self.reg[col].isna()
-            for col, value in col_values.items()
-        ]
+        meta = self.meta.sort_values(
+            *args,
+            inplace=False,
+            ignore_index=False,
+            **kwargs,
+        )
 
-        return self._masks(criterias, how=how, invert=invert)
+        return self.sel_index(meta.index)
 
-    def sel_match(self, *, how='all', invert=False, drop=False, **col_values) -> Self:
-        """
-        Select by direct comparison of some column.
+    def sort_index(
+        self,
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> typing.Self:
+        inplace = kwargs.pop('inplace', False)
+        ignore_index = kwargs.pop('ignore_index', False)
 
-        We allow to select for missing values by using np.nan.
+        if inplace:
+            raise TypeError("'inplace=True' is not supported")
 
-        For example:
-            wins.sel(cat='baseline')
-        """
-        mask = self.is_match(how=how, invert=invert, **col_values)
-        sel = self.sel_mask(mask)
+        if ignore_index:
+            raise TypeError("'ignore_index=True' is not supported")
 
-        if drop:
-            sel = sel._replace_reg(sel.reg.drop(list(col_values.keys()), axis=1))
+        meta = self.meta.sort_index(
+            *args,
+            inplace=False,
+            ignore_index=False,
+            **kwargs,
+        )
 
-        return sel
+        return self.sel_index(meta.index)
 
-    def is_between(self, *, how='all', invert=False, **col_ranges) -> pd.Series:
-        """
-        Return a mask that checks that some columns are within the given range.
-        For example:
-            wins.between(duration=(0, 60_000))
-        """
-        criterias = [
-            self.reg[col].between(*vrange) for col, vrange in col_ranges.items()
-        ]
+    def sample(
+        self,
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> typing.Self:
+        ignore_index = kwargs.pop('ignore_index', False)
 
-        return self._masks(criterias, how=how, invert=invert)
+        if ignore_index:
+            raise TypeError("'ignore_index=True' is not supported")
 
-    def sel_between(self, *, invert=False, how='all', **col_ranges) -> Self:
-        """
-        Select by direct comparison of some column where values in a range are acceptable.
-        For example:
-            wins.sel_between(duration=(0, 60_000))
-        """
-        mask = self.is_between(how=how, invert=invert, **col_ranges)
-        return self.sel_mask(mask)
+        if kwargs.get('replace', False):
+            raise TypeError("'replace=True' is not supported")
 
-    def is_in(self, *, how='all', invert=False, **col_values) -> pd.Series:
-        """
-        Return a mask of direct comparison of some column where any of the values are acceptable.
-        For example:
-            wins.isin(cat=['sws', 'rem'])
-        """
-        criterias = [self.reg[col].isin(values) for col, values in col_values.items()]
+        labels = self.meta.sample(
+            *args,
+            ignore_index=False,
+            **kwargs,
+        ).index
 
-        return self._masks(criterias, how=how, invert=invert)
+        return self.sel_index(labels)
 
-    def sel_in(self, *, invert=False, how='all', **col_values) -> Self:
-        """
-        Select by direct comparison of some column where any of the values are acceptable.
-        For example:
-            wins.sel_in(cat=['sws', 'rem'])
-        """
-        mask = self.is_in(invert=invert, how=how, **col_values)
-        return self.sel_mask(mask)
+    def shuffle(self) -> typing.Self:
+        return self.sample(
+            frac=1,
+            replace=False,
+        )
 
-    @functools.wraps(pd.DataFrame.sample)
-    def sample(self, *args, **kwargs):
-        mask = self.reg.sample(*args, **kwargs).index
-        return self._apply_mask(mask)
-
-    def shuffle(self):
-        """Return a shuffled version of reg."""
-        return self.sample(frac=1, replace=False)
-
-    @classmethod
-    def match(
-        cls,
-        left,
-        right,
+    @staticmethod
+    def _optional_pbar(
+        iterable,
         *,
-        left_ref: str,
-        right_ref: str,
-        how='inner',
-        on=None,
-        **merge_kwargs,
-    ) -> pd.DataFrame:
-        """
-        Produce a merged registry matching left and right registries.
+        total: int | None = None,
+        pbar: bool
+        | str
+        | None
+        | collections.abc.Callable[..., typing.Iterable] = False,
+        desc: str | None = None,
+    ):
 
-        The returned DataFrame index uniquely identifies each match.
-        Columns contain references into the left and right registries.
-        """
+        if pbar is None or pbar is False:
+            return iterable
 
-        left_reg = left.reg.copy()
-        if left_ref in left_reg.columns:
-            logging.warning(f'Overriding existing col "{left_ref}" on left reg.')  # noqa: LOG015
-            left_reg = left_reg.drop(left_ref, axis=1)
-        left_reg = left_reg.rename_axis(index=left_ref).reset_index()
+        if isinstance(pbar, str):
+            desc = pbar
+            pbar = True
 
-        right_reg = right.reg.copy()
-        if right_ref in right_reg.columns:
-            logging.warning(f'Overriding existing col "{right_ref}" on right reg.')  # noqa: LOG015
-            right_reg = right_reg.drop(right_ref, axis=1)
-        right_reg = right_reg.rename_axis(index=right_ref).reset_index()
+        if pbar is True:
+            pbar = tqdm
 
-        if on is not None:
-            merge_kwargs = dict(left_on=on, right_on=on, **merge_kwargs)
-
-        # noinspection PyTypeChecker
-        matched = pd.merge(left_reg, right_reg, how=how, **merge_kwargs)
-
-        return matched
-
-    def iter_groupby(self, *args, pbar=None, **kwargs):
-        """Iterate after groupby on reg."""
-        grouped = self.reg.groupby(*args, **kwargs)
-
-        grouped = _optional_pbar(grouped, total=len(grouped), pbar=pbar)
-
-        for key, group in grouped:
-            yield key, self.sel_rows(group.index)
-
-
-def _optional_pbar(iterator, total, pbar, desc=None, many=100):
-    """sensible defaults for iterating with an optional progress bar"""
-
-    if isinstance(pbar, str):
-        desc = pbar
-        pbar = True
-
-    if pbar is None:
-        pbar = total > many
-
-    if pbar is True:
-        pbar = tqdm
-
-    if pbar is not False:
-        return pbar(iterator, total=total, desc=desc)
-
-    else:
-        return iterator
+        return pbar(
+            iterable,
+            total=total,
+            desc=desc,
+        )

@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 from nocte.analysis import sleep
 from nocte.core import datadict as dd
 from nocte.core import windows as timeslice
-from nocte.core.collections import DataFrameWrapper, _optional_pbar
+from nocte.core.collections import Collection
 
 
 # @nb.njit(parallel=True)
@@ -148,7 +148,7 @@ def _rolling_cross_corr_discreete(
     xcorr = np.empty((len(offsets), len(sliding_wins)))
 
     for i, offset in enumerate(
-        _optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')
+        Collection._optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')
     ):
         if pearson:
             value = _cross_corr_shifted_pearsons_nb(s0, s1, sliding_wins, offset=offset)
@@ -208,53 +208,53 @@ def _estimate_sampling_period(times, atol=1.0e-6) -> float:
     return dts[0]
 
 
-class Traces(DataFrameWrapper):
+class Traces(Collection):
     """
     Class for storing time series as a pd.DataFrame (self.traces) with
-    associated metadata as another pd.DataFrame (self.reg).
+    associated metadata as another pd.DataFrame (self.meta).
     """
 
     def __init__(
         self,
-        reg: pd.DataFrame,
+        meta: pd.DataFrame,
         traces: pd.DataFrame,
         copy=True,
     ):
         if copy:
             traces = traces.copy()
-            reg = reg.copy()
+            meta = meta.copy()
 
-        super().__init__(reg.copy())
+        super().__init__(meta.copy())
         self.traces: pd.DataFrame = traces
 
-        assert isinstance(reg, pd.DataFrame)
-        assert reg.index.is_unique
-        assert reg.columns.is_unique
+        assert isinstance(meta, pd.DataFrame)
+        assert meta.index.is_unique
+        assert meta.columns.is_unique
 
-        if self.reg.index.name is None:
+        if self.meta.index.name is None:
             default_index_name = 'trace_idx'
-            if default_index_name in reg.columns:
+            if default_index_name in meta.columns:
                 logging.warning(  # noqa: LOG015
                     f'Default index name "{default_index_name}" already in columns. Drop or rename first?'
                 )
-            self.reg.rename_axis(index=default_index_name, inplace=True)
+            self.meta.rename_axis(index=default_index_name, inplace=True)
 
         assert self.traces.index.is_unique
         assert self.traces.columns.is_unique
         if self.traces.index.name is None:
             self.traces.rename_axis(index='time', inplace=True)
         if self.traces.columns.name is None:
-            self.traces.rename_axis(columns=self.reg.index.name, inplace=True)
+            self.traces.rename_axis(columns=self.meta.index.name, inplace=True)
 
-        assert self.traces.columns.name == self.reg.index.name
+        assert self.traces.columns.name == self.meta.index.name
 
-        assert len(self.reg.index) == len(self.traces.columns), (
-            f'Got {len(self.reg.index)} reg entries but {len(self.traces.columns)} traces'
+        assert len(self.meta.index) == len(self.traces.columns), (
+            f'Got {len(self.meta.index)} meta entries but {len(self.traces.columns)} traces'
         )
 
-        assert np.all(self.reg.index == self.traces.columns)
+        assert np.all(self.meta.index == self.traces.columns)
 
-        self.traces.columns.name = self.reg.index.name
+        self.traces.columns.name = self.meta.index.name
 
     @classmethod
     def load_single(
@@ -279,8 +279,8 @@ class Traces(DataFrameWrapper):
             pbar=pbar,
         )
 
-        if 'win_idx' in result.reg.columns:
-            result.reg.drop('win_idx', axis=1, inplace=True)
+        if 'win_idx' in result.meta.columns:
+            result.meta.drop('win_idx', axis=1, inplace=True)
 
         return result
 
@@ -359,7 +359,7 @@ class Traces(DataFrameWrapper):
         traces.columns = merged_reg.index
 
         return cls.from_df(
-            reg=merged_reg,
+            meta=merged_reg,
             traces=traces,
         )
 
@@ -371,11 +371,11 @@ class Traces(DataFrameWrapper):
 
         return cls.from_df(
             traces=traces,
-            reg=desc,
+            meta=desc,
         )
 
     @classmethod
-    def from_df(cls, traces: pd.DataFrame, reg: pd.DataFrame = None):
+    def from_df(cls, traces: pd.DataFrame, meta: pd.DataFrame = None):
         """
         From a dataframe where index indicates time in milliseconds.
         Optionally provide extra info for the registry (desc), whose index must match the df columns.
@@ -383,16 +383,16 @@ class Traces(DataFrameWrapper):
 
         traces = traces.copy()
 
-        if reg is None:
-            reg = traces.columns.to_frame(index=False)
-            traces.columns = reg.index
+        if meta is None:
+            meta = traces.columns.to_frame(index=False)
+            traces.columns = meta.index
 
         traces.sort_index(inplace=True)
 
-        reg = reg.copy()
+        meta = meta.copy()
 
         return cls(
-            reg=reg,
+            meta=meta,
             traces=traces,
         )
 
@@ -422,7 +422,7 @@ class Traces(DataFrameWrapper):
         start='milliseconds',
         stop=None,
         period=None,
-        reg: pd.DataFrame = None,
+        meta: pd.DataFrame = None,
         pbar=None,
     ):
         assert len(d) > 0
@@ -447,7 +447,7 @@ class Traces(DataFrameWrapper):
         win = timeslice.Win(start, stop)
 
         resampled = {}
-        for k, trace in _optional_pbar(d.items(), total=len(d), pbar=pbar):
+        for k, trace in cls._optional_pbar(d.items(), total=len(d), pbar=pbar):
             if isinstance(trace, pd.Series):
                 resampled[k] = win.interp_series(trace, step=period)
             else:
@@ -470,7 +470,7 @@ class Traces(DataFrameWrapper):
         )
         resampled.index = time
 
-        return cls.from_df(resampled, reg=reg)
+        return cls.from_df(resampled, meta=meta)
 
     @classmethod
     def from_data_dict(
@@ -488,13 +488,13 @@ class Traces(DataFrameWrapper):
         else:
             traces = cls.concat_dict(datadict.data, key_name=[key_name])
 
-        traces = traces.merge_reg(datadict.reg, left_on=[key_name], right_index=True)
+        traces = traces.merge_reg(datadict.meta, left_on=[key_name], right_index=True)
 
         return traces
 
     def store_hdf(self, path, key='traces'):
         path = str(path)
-        self.reg.to_hdf(path, key=f'{key}_reg')
+        self.meta.to_hdf(path, key=f'{key}_reg')
         self.traces.to_hdf(path, key=f'{key}_data')
 
     @classmethod
@@ -502,7 +502,7 @@ class Traces(DataFrameWrapper):
         path = str(path)
         # noinspection PyTypeChecker
         return cls(
-            reg=pd.read_hdf(path, key=f'{key}_reg'),
+            meta=pd.read_hdf(path, key=f'{key}_reg'),
             traces=pd.read_hdf(path, key=f'{key}_data'),
             copy=False,
         )
@@ -521,7 +521,7 @@ class Traces(DataFrameWrapper):
 
     def to_wins(self, ref='ref', tight=True) -> timeslice.Windows:
 
-        reg = self.reg.copy()
+        meta = self.meta.copy()
         if tight:
             start = self.first_valid_index()
             stop = self.last_valid_index()
@@ -530,31 +530,33 @@ class Traces(DataFrameWrapper):
             start, stop = rel_win.start, rel_win.stop
 
         if ref in self.columns:
-            refs = reg[ref]
+            refs = meta[ref]
         else:
             refs = 0
 
-        reg['start'] = refs + start
-        reg['stop'] = refs + stop
+        meta['start'] = refs + start
+        meta['stop'] = refs + stop
 
-        return timeslice.Windows(reg)
+        return timeslice.Windows(meta)
 
     @classmethod
     def concat_dict(cls, traces_dict: dict, key_name=None):
 
-        reg = pd.concat(
-            {k: traces.reg for k, traces in traces_dict.items()}, axis=0, names=key_name
+        meta = pd.concat(
+            {k: traces.meta for k, traces in traces_dict.items()},
+            axis=0,
+            names=key_name,
         )
 
-        reg.reset_index(inplace=True)
-        reg.rename(columns=dict(trace_idx='local_trace_idx'), inplace=True)
+        meta.reset_index(inplace=True)
+        meta.rename(columns=dict(trace_idx='local_trace_idx'), inplace=True)
 
         traces = pd.concat([traces.traces for traces in traces_dict.values()], axis=1)
 
-        traces.columns = reg.index
+        traces.columns = meta.index
 
         return cls(
-            reg=reg,
+            meta=meta,
             traces=traces,
             copy=False,
         )
@@ -562,15 +564,15 @@ class Traces(DataFrameWrapper):
     @classmethod
     def concat_list(cls, traces_list: list):
 
-        reg = pd.concat([traces.reg for traces in traces_list], axis=0)
-        reg = reg.reset_index(drop=True)
+        meta = pd.concat([traces.meta for traces in traces_list], axis=0)
+        meta = meta.reset_index(drop=True)
 
         traces = pd.concat([traces.traces for traces in traces_list], axis=1)
         traces = traces.T.reset_index(drop=True).T
         traces.sort_index(inplace=True)
 
         return cls(
-            reg=reg,
+            meta=meta,
             traces=traces,
             copy=False,
         )
@@ -633,7 +635,7 @@ class Traces(DataFrameWrapper):
             padded_dfs.append(padded)
 
         combined_reg = pd.concat(
-            {k: traces.reg for k, traces in traces_dict.items()}, axis=0, names=names
+            {k: traces.meta for k, traces in traces_dict.items()}, axis=0, names=names
         )
 
         combined_reg.reset_index(inplace=True, drop=False)
@@ -650,23 +652,23 @@ class Traces(DataFrameWrapper):
     @functools.wraps(pd.DataFrame.reset_index)
     def reset_index(self, *args, drop=True, **kwargs):
 
-        reg = self.reg.reset_index(*args, drop=drop, **kwargs)
+        meta = self.meta.reset_index(*args, drop=drop, **kwargs)
 
         traces = self.traces.copy()
-        traces.columns = reg.index
+        traces.columns = meta.index
 
-        return Traces(reg, traces)
+        return Traces(meta, traces)
 
     @functools.wraps(pd.DataFrame.set_index)
     def set_index(self, *args, **kwargs):
 
-        reg = self.reg.set_index(*args, **kwargs)
-        assert reg.index.is_unique
+        meta = self.meta.set_index(*args, **kwargs)
+        assert meta.index.is_unique
 
         traces = self.traces.copy()
-        traces.columns = reg.index
+        traces.columns = meta.index
 
-        return Traces(reg, traces)
+        return Traces(meta, traces)
 
     @functools.wraps(pd.DataFrame.__eq__)
     def __eq__(self, *args, **kwargs):
@@ -787,7 +789,7 @@ class Traces(DataFrameWrapper):
     def get(self, idx=None) -> pd.Series:
         """return a single trace. If no index it's given, we assume there is only one"""
         if idx is None:
-            assert len(self.traces.columns) == 1, f'Found too many traces:\n{self.reg}'
+            assert len(self.traces.columns) == 1, f'Found too many traces:\n{self.meta}'
             idx = self.index[0]
 
         # noinspection PyTypeChecker
@@ -799,7 +801,7 @@ class Traces(DataFrameWrapper):
         """
         traces = self.traces
 
-        new_col = self.reg[col]
+        new_col = self.meta[col]
         assert not expect_unique or new_col.is_unique
         traces = traces.T.set_index(new_col).T
 
@@ -812,17 +814,17 @@ class Traces(DataFrameWrapper):
 
         # if drop is None:
         #     # noinspection PyUnresolvedReferences
-        #     different = (self.reg.groupby(by).nunique() > 1).any()
+        #     different = (self.meta.groupby(by).nunique() > 1).any()
         #     drop = different.index[different]
 
-        by = [self.reg[col] for col in by]
+        by = [self.meta[col] for col in by]
 
         agg_traces = {}
         agg_reg = {}
 
         for k, straces in self.traces.T.groupby(by):
             straces = straces.T
-            sreg = self.reg.loc[straces.columns]
+            sreg = self.meta.loc[straces.columns]
 
             same_values = sreg.nunique(dropna=True) == 1
             none_missing = sreg.isna().sum() == 0
@@ -843,7 +845,7 @@ class Traces(DataFrameWrapper):
         agg_traces.sort_index(inplace=True, axis=1)
 
         return Traces(
-            reg=agg_reg,
+            meta=agg_reg,
             traces=agg_traces,
         )
 
@@ -897,7 +899,7 @@ class Traces(DataFrameWrapper):
         else:
             data = self.traces
 
-        return _optional_pbar(data.items(), total=len(data.columns), pbar=pbar)
+        return self._optional_pbar(data.items(), total=len(data.columns), pbar=pbar)
 
     def histograms2d(self, vbins=None, tbins=None, rolling_win=None, pbar=None):
         """
@@ -945,7 +947,7 @@ class Traces(DataFrameWrapper):
 
             hists[k] = h
 
-        hists = dd.DataDict(self.reg, hists)
+        hists = dd.DataDict(self.meta, hists)
 
         return hists
 
@@ -965,11 +967,13 @@ class Traces(DataFrameWrapper):
 
     def iter_grouped(self, groupby, pbar=None):
 
-        grouped = self.reg.groupby(groupby, sort=False)
+        grouped = self.meta.groupby(groupby, sort=False)
 
-        for k, sub_reg in _optional_pbar(grouped, total=len(grouped.groups), pbar=pbar):
+        for k, sub_reg in self._optional_pbar(
+            grouped, total=len(grouped.groups), pbar=pbar
+        ):
             sub_traces = Traces(
-                reg=sub_reg,
+                meta=sub_reg,
                 traces=self.traces.loc[:, sub_reg.index],
             )
 
@@ -1213,14 +1217,14 @@ class Traces(DataFrameWrapper):
             sort_by = pair_by
 
         def sort_pair(a, b):
-            if self.reg.loc[a, sort_by] < self.reg.loc[b, sort_by]:
+            if self.meta.loc[a, sort_by] < self.meta.loc[b, sort_by]:
                 return a, b
             else:
                 return b, a
 
         groups = {
             pair_idx: sort_pair(a, b)
-            for pair_idx, (a, b) in self.reg.groupby(pair_by).groups.items()
+            for pair_idx, (a, b) in self.meta.groupby(pair_by).groups.items()
         }
 
         pairs = pd.DataFrame.from_dict(
@@ -1259,7 +1263,7 @@ class Traces(DataFrameWrapper):
 
         xcorrs = {}
 
-        for i, k0, k1 in _optional_pbar(to_iter, total=len(pairs), pbar=pbar):
+        for i, k0, k1 in self._optional_pbar(to_iter, total=len(pairs), pbar=pbar):
             xcorr = _rolling_cross_corr_ms(
                 self.traces[k0].values,
                 self.traces[k1].values,
@@ -1308,7 +1312,7 @@ class Traces(DataFrameWrapper):
         if isinstance(template, pd.Series):
             template = template.values
 
-        for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
+        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
             xcorr = _rolling_cross_corr_ms(
                 self.traces[k].values,
                 template,
@@ -1438,16 +1442,16 @@ class Traces(DataFrameWrapper):
         return self.apply(_single_acorr)
 
     @staticmethod
-    def _match_traces_wins(reg: pd.DataFrame, windows, **kwargs):
+    def _match_traces_wins(meta: pd.DataFrame, windows, **kwargs):
 
-        reg: pd.DataFrame = reg.copy()
-        # reg.drop(['ref'], axis=1, inplace=True)
+        meta: pd.DataFrame = meta.copy()
+        # meta.drop(['ref'], axis=1, inplace=True)
 
-        if reg.index.name is None:
-            reg.index.name = 'index_reg'
+        if meta.index.name is None:
+            meta.index.name = 'index_reg'
 
-        reg_index_name = reg.index.name
-        reg.reset_index(inplace=True)
+        reg_index_name = meta.index.name
+        meta.reset_index(inplace=True)
 
         wins = windows.wins.copy()
 
@@ -1458,7 +1462,7 @@ class Traces(DataFrameWrapper):
 
         merged = pd.merge(
             wins,
-            reg,
+            meta,
             how='left',
             **kwargs,
         )
@@ -1517,26 +1521,26 @@ class Traces(DataFrameWrapper):
         wins_reg = windows.wins.reindex(new.iloc[:, 0])
         wins_reg.index = new.index
 
-        traces_reg = self.reg  # .drop(['ref'], axis=1)
+        traces_reg = self.meta  # .drop(['ref'], axis=1)
         traces_reg = traces_reg.reindex(new.iloc[:, 1])
         traces_reg.index = new.index
 
-        reg = pd.concat([wins_reg, traces_reg, new], axis=1)
+        meta = pd.concat([wins_reg, traces_reg, new], axis=1)
 
-        dups = reg.columns.duplicated()
+        dups = meta.columns.duplicated()
         if np.any(dups):
             logging.warning(  # noqa: LOG015
                 'Dropping duplicated columns: '
-                + ', '.join(list(reg.columns[dups]))
+                + ', '.join(list(meta.columns[dups]))
                 + '. Maybe you want cut_merge?'
             )
-            reg = reg.loc[:, ~dups]
+            meta = meta.loc[:, ~dups]
 
-        traces.columns = reg.index
+        traces.columns = meta.index
 
         return self.from_df(
             traces=traces,
-            reg=reg,
+            meta=meta,
         )
 
     def extract(self, wins, align=None, upsampling_ms=None):
@@ -1594,13 +1598,13 @@ class Traces(DataFrameWrapper):
         matched_reg.sort_index(inplace=True)
         multi_cut_traces.sort_index(axis=1, inplace=True)
 
-        result = Traces.from_df(reg=matched_reg, traces=multi_cut_traces)
+        result = Traces.from_df(meta=matched_reg, traces=multi_cut_traces)
 
         return result
 
     def copy(self):
         return self.__class__(
-            reg=self.reg.copy(),
+            meta=self.meta.copy(),
             traces=self.traces.copy(),
         )
 
@@ -1624,7 +1628,7 @@ class Traces(DataFrameWrapper):
     def merge_reg(self, extra: pd.DataFrame, **kwargs):
         return self.__class__(
             pd.merge(
-                self.reg,
+                self.meta,
                 extra,
                 **kwargs,
             ),
@@ -1634,25 +1638,25 @@ class Traces(DataFrameWrapper):
     @functools.wraps(pd.DataFrame.drop)
     def drop(self, *args, **kwargs):
         return self.__class__(
-            self.reg.drop(*args, **kwargs),
+            self.meta.drop(*args, **kwargs),
             self.traces,
         )
 
     def _apply_mask(self, mask) -> Self:
         return self.__class__(
-            reg=self.reg.loc[mask],
+            meta=self.meta.loc[mask],
             traces=self.traces.loc[:, mask],
         )
 
-    def _replace_reg(self, reg) -> Self:
+    def _replace_reg(self, meta) -> Self:
         return self.__class__(
-            reg=reg,
+            meta=meta,
             traces=self.traces,
         )
 
     @property
     def shape(self):
-        return self.reg.shape
+        return self.meta.shape
 
     @property
     def values(self):
@@ -1724,31 +1728,31 @@ class Traces(DataFrameWrapper):
                 columns=self.traces.columns,
             )
 
-        missing = others.columns.difference(self.reg.index)
+        missing = others.columns.difference(self.meta.index)
         if len(missing) > 0:
-            logging.warning(f'Missing reg entries for {len(missing)} traces')  # noqa: LOG015
+            logging.warning(f'Missing meta entries for {len(missing)} traces')  # noqa: LOG015
 
-        common = others.columns.intersection(self.reg.index)
+        common = others.columns.intersection(self.meta.index)
 
         return self.__class__(
-            reg=self.reg.loc[common],
+            meta=self.meta.loc[common],
             traces=others.loc[:, common],
         )
 
     def sort_values(self, *args, **kwargs):
-        reg = self.reg.sort_values(*args, **kwargs)
+        meta = self.meta.sort_values(*args, **kwargs)
 
         return self.__class__(
-            reg=reg,
-            traces=self.traces.reindex(reg.index, axis=1),
+            meta=meta,
+            traces=self.traces.reindex(meta.index, axis=1),
         )
 
     def sort_index(self, *args, **kwargs):
-        reg = self.reg.sort_index(*args, **kwargs)
+        meta = self.meta.sort_index(*args, **kwargs)
 
         return self.__class__(
-            reg=reg,
-            traces=self.traces.reindex(reg.index, axis=1),
+            meta=meta,
+            traces=self.traces.reindex(meta.index, axis=1),
         )
 
     def contains_nan(self):
@@ -1933,13 +1937,13 @@ class Traces(DataFrameWrapper):
         win = timeslice.Win(start, stop)
 
         return self.__class__.from_df(
-            reg=self.reg,
+            meta=self.meta,
             traces=win.interp_df(self.traces, step=period),
         )
 
     def downsample_factor(self, factor, offset=None):
         return self.__class__(
-            reg=self.reg,
+            meta=self.meta,
             traces=self.traces.iloc[offset::factor],
         )
 
@@ -2136,7 +2140,7 @@ class Traces(DataFrameWrapper):
         """
         res = {}
 
-        for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
+        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
             spec = self._spectral_analysis_single(
                 k, spec_func, take_abs=take_abs, **kwargs
             )
@@ -2405,7 +2409,7 @@ class Traces(DataFrameWrapper):
         cols = []
 
         results = []
-        for i in _optional_pbar(
+        for i in self._optional_pbar(
             sliding_steps,
             total=len(sliding_steps),
             desc='sliding win',
@@ -2431,7 +2435,7 @@ class Traces(DataFrameWrapper):
 
         merged_reg = pd.merge(
             new_reg,
-            self.reg,
+            self.meta,
             how='left',
             left_on=self.traces.columns.name,
             right_index=True,
@@ -2442,6 +2446,6 @@ class Traces(DataFrameWrapper):
         results_df.columns = merged_reg.index
 
         return self.from_df(
-            reg=merged_reg,
+            meta=merged_reg,
             traces=results_df,
         )

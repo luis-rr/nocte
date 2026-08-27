@@ -21,7 +21,7 @@ of previous versions of the package (see [background](#background)).
 # Style and conventions
 
 The code makes heavy use of pandas `Series` and `DataFrames` to handle data.
-The main data containers extend `DataFrameWrapper`.
+The main data containers extend `Collection`.
 
 All methods that start with `is_*` return boolean masks (one entry per row). All methods 
 that start with `are_*` return a bool performing a check on the entire object.

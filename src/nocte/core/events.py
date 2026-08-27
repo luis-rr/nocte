@@ -12,8 +12,9 @@ import numpy as np
 import pandas as pd
 
 from nocte.core import datadict as dd
-from nocte.core import stacks, timeslice
-from nocte.core.collections import DataFrameWrapper
+from nocte.core import stacks
+from nocte.core import windows as timeslice
+from nocte.core.collections import Collection
 from nocte.plot import plot as splot
 
 
@@ -202,7 +203,7 @@ def interpolate_traces(data: pd.DataFrame, times: np.ndarray) -> pd.DataFrame:
     return df
 
 
-class Events(DataFrameWrapper):
+class Events(Collection):
     """
     This class acts mostly as a wrapper around a dataframe registry containing
     metadata about LFP events.
@@ -210,10 +211,10 @@ class Events(DataFrameWrapper):
     An event must have a ref_time column and, optionally, a start_time and stop_time.
     """
 
-    def __init__(self, reg: pd.DataFrame):
-        reg: pd.DataFrame = reg.rename_axis(index='event_id')
-        assert reg.index.is_unique
-        super().__init__(reg)
+    def __init__(self, meta: pd.DataFrame):
+        meta: pd.DataFrame = meta.rename_axis(index='event_id')
+        assert meta.index.is_unique
+        super().__init__(meta)
 
     @classmethod
     def from_data_dict(cls, data: dd.DataDict):
@@ -223,14 +224,14 @@ class Events(DataFrameWrapper):
         joint_reg = []
 
         for k, events in data.items():
-            reg = events.reg.copy()
+            meta = events.meta.copy()
 
-            row = data.reg.loc[k]
+            row = data.meta.loc[k]
 
             for col, value in row.items():
-                reg[col] = value
+                meta[col] = value
 
-            joint_reg.append(reg)
+            joint_reg.append(meta)
 
         joint_reg = pd.concat(joint_reg, axis=0, ignore_index=True)
 
@@ -239,16 +240,16 @@ class Events(DataFrameWrapper):
     @property
     def loc(self):
         """pd.DataFrame accessor"""
-        return self.reg.loc
+        return self.meta.loc
 
     @property
     def iloc(self):
         """pd.DataFrame accessor"""
-        return self.reg.iloc
+        return self.meta.iloc
 
     @functools.wraps(pd.DataFrame.drop)
     def drop(self, *args, **kwargs):
-        return self._replace_reg(self.reg.drop(*args, **kwargs))
+        return self._replace_reg(self.meta.drop(*args, **kwargs))
 
     @classmethod
     def from_hdf(cls, path, desc=None):
@@ -257,10 +258,10 @@ class Events(DataFrameWrapper):
 
     def to_hdf(self, path, desc=None):
         # noinspection PyTypeChecker
-        return self.reg.to_hdf(path, key=desc)
+        return self.meta.to_hdf(path, key=desc)
 
     def _time_cols(self) -> pd.Index:
-        return self.reg.columns.intersection(['ref_time', 'start_time', 'stop_time'])
+        return self.meta.columns.intersection(['ref_time', 'start_time', 'stop_time'])
 
     def _time_cols_param(self, cols, strip=False):
         if cols is None:
@@ -275,30 +276,30 @@ class Events(DataFrameWrapper):
         return cols
 
     def set_index(self, idx, sort=True):
-        reg = self.reg.set_index(idx)
+        meta = self.meta.set_index(idx)
         if sort:
-            reg = reg.sort_index()
+            meta = meta.sort_index()
 
-        if not reg.index.is_unique:
+        if not meta.index.is_unique:
             logging.warning('New index is not unique')  # noqa: LOG015
 
-        return self._replace_reg(reg)
+        return self._replace_reg(meta)
 
     def round(self, cols=None, decimals=0):
         cols = self._time_cols_param(cols)
 
-        reg = self.reg.copy()
+        meta = self.meta.copy()
 
         for col in cols:
-            reg[col] = np.round(reg[col], decimals=decimals)
+            meta[col] = np.round(meta[col], decimals=decimals)
 
-        return self._replace_reg(reg)
+        return self._replace_reg(meta)
 
     def __len__(self):
-        return len(self.reg)
+        return len(self.meta)
 
     def to_wins(self):
-        wins = self.reg.copy()
+        wins = self.meta.copy()
 
         if 'start_time' not in wins.columns:
             wins['start_time'] = wins['ref_time']
@@ -321,7 +322,7 @@ class Events(DataFrameWrapper):
         """
         Creates fixed-sized windows around these events.
         """
-        wins = self.reg.copy()
+        wins = self.meta.copy()
 
         if 'start_time' in wins.columns:
             logging.warning('Overwriting event column "start_time"')  # noqa: LOG015
@@ -346,10 +347,10 @@ class Events(DataFrameWrapper):
 
     def _repr_html_(self):
         # noinspection PyProtectedMember,PyCallingNonCallable
-        return self.reg._repr_html_()
+        return self.meta._repr_html_()
 
     def sample_uniformly(self, on, count=10, jitter=0):
-        values = self.reg[on]
+        values = self.meta[on]
 
         refs = np.linspace(values.min(), values.max(), count)
 
@@ -380,7 +381,7 @@ class Events(DataFrameWrapper):
         A series with index matching these events and value extracted from the trace.
 
         """
-        values = interpolate_trace(trace, self.reg[col].values).values
+        values = interpolate_trace(trace, self.meta[col].values).values
         return pd.Series(values, index=self.index)
 
     def lookup_traces(self, traces, pbar=None) -> pd.DataFrame:
@@ -391,7 +392,7 @@ class Events(DataFrameWrapper):
 
         values = pd.DataFrame(values)
 
-        values.columns = pd.MultiIndex.from_frame(traces.reg)
+        values.columns = pd.MultiIndex.from_frame(traces.meta)
 
         return values
 
@@ -411,17 +412,17 @@ class Events(DataFrameWrapper):
                 f'{col}_{name}': self.lookup(data, col=f'{col}_{by}').values
                 for col in cols
             },
-            index=self.reg.index,
+            index=self.meta.index,
         )
 
-        joint = pd.concat([self.reg, new_cols], axis=1)
+        joint = pd.concat([self.meta, new_cols], axis=1)
         assert joint.columns.is_unique
 
         return self._replace_reg(joint)
 
     def combine(self, other):
         return self.__class__(
-            pd.concat([self.reg, other.reg], axis=0, sort=True, ignore_index=True)
+            pd.concat([self.meta, other.meta], axis=0, sort=True, ignore_index=True)
         )
 
     def get_time_to_closest(
@@ -440,7 +441,7 @@ class Events(DataFrameWrapper):
             }
         )
 
-        times = df.min(axis=1).reindex(self.reg.index)
+        times = df.min(axis=1).reindex(self.meta.index)
 
         bad = np.count_nonzero(times < 0)
         if bad > 0:
@@ -461,43 +462,43 @@ class Events(DataFrameWrapper):
         assert len(ts) == len(self)
 
         # noinspection PyTypeChecker
-        return ts.reindex(self.reg.index)
+        return ts.reindex(self.meta.index)
 
     def get_inter_event_intervals(
         self, first='ref', second='ref', sortby='ref', ascending=True
     ) -> pd.Series:
 
-        reg = self.reg.sort_values(f'{sortby}_time', ascending=ascending)
-        td = reg[f'{second}_time'].values[1:] - reg[f'{first}_time'].values[:-1]
-        td = pd.Series(td, reg.index[:-1])
+        meta = self.meta.sort_values(f'{sortby}_time', ascending=ascending)
+        td = meta[f'{second}_time'].values[1:] - meta[f'{first}_time'].values[:-1]
+        td = pd.Series(td, meta.index[:-1])
 
-        return td.reindex(self.reg.index)
+        return td.reindex(self.meta.index)
 
     def get_inter_event_intervals_between_channels(
         self, first='ref', second='ref', sortby='ref', first_ch=0, second_ch=1
     ) -> pd.Series:
 
-        reg = self.reg.sort_values(f'{sortby}_time')
-        reg = reg.loc[reg['channel'].isin([first_ch, second_ch])]
+        meta = self.meta.sort_values(f'{sortby}_time')
+        meta = meta.loc[meta['channel'].isin([first_ch, second_ch])]
 
-        consecutive = (reg['channel'].values[:-1] == first_ch) & (
-            reg['channel'].values[1:] == second_ch
+        consecutive = (meta['channel'].values[:-1] == first_ch) & (
+            meta['channel'].values[1:] == second_ch
         )
-        first_idcs = reg.index[:-1][consecutive]
-        second_idcs = reg.index[1:][consecutive]
+        first_idcs = meta.index[:-1][consecutive]
+        second_idcs = meta.index[1:][consecutive]
 
         assert len(first_idcs) == len(second_idcs)
 
         td = (
-            reg.loc[second_idcs, f'{second}_time'].values
-            - reg.loc[first_idcs, f'{first}_time'].values
+            meta.loc[second_idcs, f'{second}_time'].values
+            - meta.loc[first_idcs, f'{first}_time'].values
         )
 
         return pd.Series(td, first_idcs)
 
     def get_counts_in_bins(self, bins, by='ref_time') -> pd.Series:
 
-        counts, edges = np.histogram(self.reg[by], bins)
+        counts, edges = np.histogram(self.meta[by], bins)
 
         # noinspection PyUnresolvedReferences
         counts = pd.Series(
@@ -550,13 +551,13 @@ class Events(DataFrameWrapper):
         cols = self._time_cols_param(cols)
 
         if copy:
-            reg = self.reg.copy()
+            meta = self.meta.copy()
         else:
-            reg = self.reg
+            meta = self.meta
 
         cols = list(cols)
-        reg[cols] = reg[cols] + ts[:, np.newaxis]
-        return self._replace_reg(reg)
+        meta[cols] = meta[cols] + ts[:, np.newaxis]
+        return self._replace_reg(meta)
 
     def count_rolling(
         self,
@@ -568,7 +569,7 @@ class Events(DataFrameWrapper):
         """Calculate how many items are in a sliding window over time (by)"""
         valid_win = self.get_global_win(by) if valid_win is None else valid_win
 
-        time = self.reg[by].values
+        time = self.meta[by].values
 
         win = timeslice.Win.build_centered(0, sliding_win)
         new_time = valid_win.arange(step)
@@ -694,8 +695,8 @@ class Events(DataFrameWrapper):
         """
         valid_win = self.get_global_win(by) if valid_win is None else valid_win
 
-        x = self.reg[by].values
-        y = self.reg[on].values
+        x = self.meta[by].values
+        y = self.meta[on].values
 
         win = timeslice.Win.build_centered(0, sliding_win)
         xvals = valid_win.arange(step)
@@ -767,11 +768,11 @@ class Events(DataFrameWrapper):
 
         locs = locs.dropna()
 
-        reg = self.reg.loc[locs.index].copy()
+        meta = self.meta.loc[locs.index].copy()
 
-        reg['win_idx'] = locs['win_idx'].astype(wins.index.dtype)
+        meta['win_idx'] = locs['win_idx'].astype(wins.index.dtype)
 
-        extracted = self.__class__(reg)
+        extracted = self.__class__(meta)
 
         if align is not None:
             refs = wins.relative_time(align)
@@ -793,7 +794,7 @@ class Events(DataFrameWrapper):
         return sel
 
     def get_global_win(self, by='ref_time') -> timeslice.Win:
-        return timeslice.Win(self.reg[by].min(), self.reg[by].max())
+        return timeslice.Win(self.meta[by].min(), self.meta[by].max())
 
     def plot_traces_highlighted(self, ax, traces: stacks.Stack):
         """

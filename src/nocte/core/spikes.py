@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from nocte.core import windows as timeslice
-from nocte.core.collections import DataFrameWrapper
+from nocte.core.collections import Collection
 from nocte.core.datadict import DataDict
 from nocte.core.events import Events
 from nocte.core.traces import Traces
@@ -128,7 +128,7 @@ def _load_kilosort4_folder(ks_path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     return spikes, units
 
 
-class _UnitsView(DataFrameWrapper):
+class _UnitsView(Collection):
     """
     Relational view over units inside a Spikes object.
 
@@ -136,28 +136,28 @@ class _UnitsView(DataFrameWrapper):
     a new Spikes object with both units and spikes filtered.
     """
 
-    def __init__(self, reg, spikes: 'Spikes'):
+    def __init__(self, meta, spikes: 'Spikes'):
         self._spikes = spikes
-        super().__init__(reg)
+        super().__init__(meta)
 
     def _apply_mask(self, mask) -> 'Spikes':
         """
         Apply a unit-level mask and return a new Spikes
         with both units and spikes filtered accordingly.
         """
-        new_units = self.reg.loc[mask]
+        new_units = self.meta.loc[mask]
 
-        spikes_mask = self._spikes.reg['unit_id'].isin(new_units.index)
+        spikes_mask = self._spikes.meta['unit_id'].isin(new_units.index)
         new_spikes = self._spikes.sel_mask(spikes_mask)
 
         return self._spikes.__class__(
-            reg=new_spikes.reg,
+            meta=new_spikes.meta,
             units=new_units,
             win_ms=new_spikes.win_ms,
         )
 
     def get_counts(self) -> pd.Series:
-        counts = self._spikes.reg.groupby('unit_id').size()
+        counts = self._spikes.meta.groupby('unit_id').size()
         counts = counts.reindex(self.index, fill_value=0)
         return counts
 
@@ -170,7 +170,7 @@ class _UnitsView(DataFrameWrapper):
         """
         return {
             unit_id: times.sort_values().diff().dropna()
-            for unit_id, times in self._spikes.reg.groupby('unit_id')['ref_time']
+            for unit_id, times in self._spikes.meta.groupby('unit_id')['ref_time']
         }  # type: ignore
 
     def get_inter_spike_intervals_dists(self, bins: np.ndarray | None = None) -> Traces:
@@ -194,12 +194,12 @@ class _UnitsView(DataFrameWrapper):
             index=bin_centers,
         )
 
-        return Traces(reg=self._spikes.units, traces=isi_dists)
+        return Traces(meta=self._spikes.units, traces=isi_dists)
 
     def get_counts_in_bins(self, bins: np.ndarray):
 
-        times = self._spikes.reg['ref_time'].to_numpy()
-        units_all = self._spikes.reg['unit_id'].to_numpy()
+        times = self._spikes.meta['ref_time'].to_numpy()
+        units_all = self._spikes.meta['unit_id'].to_numpy()
 
         # map spikes to bin indices
         bin_idcs = np.digitize(times, bins) - 1
@@ -242,7 +242,7 @@ class _UnitsView(DataFrameWrapper):
         )
 
         return Traces(
-            reg=self._spikes.units.rename_axis(
+            meta=self._spikes.units.rename_axis(
                 index='unit_id',
             ),
             traces=binned_df,
@@ -256,24 +256,24 @@ class _UnitsView(DataFrameWrapper):
         return self.sel_mask(counts > 0)
 
     def set_index(self, idx):
-        old_idcs = self.reg.index
-        new_units = self.reg.set_index(idx)
+        old_idcs = self.meta.index
+        new_units = self.meta.set_index(idx)
 
         mapping = pd.Series(new_units.index, index=old_idcs)
-        new_spikes = self._spikes.reg.copy()
+        new_spikes = self._spikes.meta.copy()
         new_spikes['unit_id'] = new_spikes['unit_id'].map(mapping)
 
         if new_spikes['unit_id'].isna().any():
             raise ValueError('Unit ID remapping produced NaNs')
 
         return self._spikes.__class__(
-            reg=new_spikes,
+            meta=new_spikes,
             units=new_units,
             win_ms=self._spikes.win_ms,
         )
 
     def reset_index(self):
-        return self.set_index(np.arange(len(self.reg.index)))
+        return self.set_index(np.arange(len(self.meta.index)))
 
     def rate_rolling_gauss(
         self,
@@ -308,7 +308,7 @@ class _UnitsView(DataFrameWrapper):
 
         dd_rates = dd_rates.set_index('unit_id')
 
-        traces_reg = dd_rates.reg.join(self.reg)
+        traces_reg = dd_rates.meta.join(self.meta)
 
         return Traces(
             traces_reg,
@@ -321,34 +321,34 @@ class Spikes(Events):
     Collection of spikes and associated units.
     """
 
-    def __init__(self, reg: pd.DataFrame, units: pd.DataFrame, win_ms: Win | tuple):
+    def __init__(self, meta: pd.DataFrame, units: pd.DataFrame, win_ms: Win | tuple):
 
         win_ms = Win(*win_ms)
 
         if win_ms.length < 0:
             raise ValueError(f'Negative extaction window: {win_ms}')
 
-        missing = set(reg['unit_id'].unique()) - set(units.index)
+        missing = set(meta['unit_id'].unique()) - set(units.index)
         if missing:
             raise ValueError(f'Spikes reference unknown unit_id(s): {missing}')
 
-        inside = reg['ref_time'].between(*win_ms)
+        inside = meta['ref_time'].between(*win_ms)
         if not inside.all():
-            actual_win = Win(reg['ref_time'].min(), reg['ref_time'].max())
+            actual_win = Win(meta['ref_time'].min(), meta['ref_time'].max())
             logger.error(
                 f'Events outside extraction window. Found: {actual_win} Expected: {win_ms}'
             )
 
         self.units = units
         self.win_ms = Win(*win_ms)
-        super().__init__(reg)
+        super().__init__(meta)
 
-    def _replace_reg(self, reg) -> Self:
+    def _replace_reg(self, meta) -> Self:
         """
         Make a copy and pass over metadata.
         """
         return self.__class__(
-            reg,
+            meta,
             units=self.units,
             win_ms=self.win_ms,
         )
@@ -376,7 +376,7 @@ class Spikes(Events):
         valid_win = Win(0, sample_count / sampling_rate * 1000)
 
         return cls(
-            reg=spikes_df,
+            meta=spikes_df,
             units=units_df,
             win_ms=valid_win,
         )
@@ -391,13 +391,13 @@ class Spikes(Events):
     @classmethod
     def load_hdf(cls, path, key='sp'):
         return cls(
-            reg=pd.read_hdf(path, key=f'{key}_spikes'),
+            meta=pd.read_hdf(path, key=f'{key}_spikes'),
             units=pd.read_hdf(path, key=f'{key}_units'),
             win_ms=tuple(pd.read_hdf(path, key=f'{key}_win_ms')),
         )
 
     def store_hdf(self, path, key='sp'):
-        self.reg.to_hdf(path, key=f'{key}_spikes')
+        self.meta.to_hdf(path, key=f'{key}_spikes')
         self.units.to_hdf(path, key=f'{key}_units')
         pd.Series(self.win_ms).to_hdf(path, key=f'{key}_win_ms')
 
@@ -412,10 +412,10 @@ class Spikes(Events):
         Note this leves behind units with potentially
         zero spikes by design. Use by_unit.drop_silent() to remove those.
         """
-        sel_spikes = self.reg.loc[mask]
+        sel_spikes = self.meta.loc[mask]
 
         return self.__class__(
-            reg=sel_spikes,
+            meta=sel_spikes,
             units=self.units,
             win_ms=self.win_ms,
         )
@@ -454,7 +454,7 @@ class Spikes(Events):
         cropped = self.sel_between(**{on: win})
 
         return self.__class__(
-            reg=cropped.reg,
+            meta=cropped.meta,
             units=cropped.units,
             win_ms=self.win_ms,
         )
@@ -472,7 +472,7 @@ class Spikes(Events):
 
     def copy(self):
         return self.__class__(
-            self.reg.copy(),
+            self.meta.copy(),
             self.units.copy(),
             self.win_ms,
         )
@@ -487,7 +487,7 @@ class Spikes(Events):
         assert spikes.units.index.is_unique
         spikes.units.sort_index(inplace=True)
 
-        spikes.reg['unit_id'] = mapping.reindex(spikes.reg['unit_id']).values
+        spikes.meta['unit_id'] = mapping.reindex(spikes.meta['unit_id']).values
 
         return spikes
 

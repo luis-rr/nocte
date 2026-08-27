@@ -20,7 +20,7 @@ from tqdm.auto import tqdm
 import nocte.core.events
 import nocte.core.traces
 from nocte.core import windows as timeslice
-from nocte.core.collections import DataFrameWrapper, _optional_pbar
+from nocte.core.collections import Collection
 from nocte.core.datadict import DataDict
 from nocte.core.stacks import Stack
 
@@ -82,15 +82,15 @@ def _download_contents(url: str):
 
 
 class Entry:
-    def __init__(self, reg, exp_name):
-        self._reg = reg
+    def __init__(self, meta, exp_name):
+        self._reg = meta
         self.name = exp_name
 
     @staticmethod
-    def _simplify_probe_cols(reg):
+    def _simplify_probe_cols(meta):
         probe_info = {}
 
-        for idx, row in reg.iterrows():
+        for idx, row in meta.iterrows():
             k = row['probe_idx']
             row = row[['probe_idx', f'probe{k}', f'side{k}', f'ch{k}']].copy()
             row.index = ['ch', 'area', 'side', 'channel']
@@ -106,7 +106,7 @@ class Entry:
 
         probe_info = pd.concat(
             [
-                reg.drop(probe_columns, axis=1),
+                meta.drop(probe_columns, axis=1),
                 probe_info,
             ],
             axis=1,
@@ -336,21 +336,21 @@ class Entry:
             traces[k] = v
 
         if simplify:
-            traces.reg = Entry._simplify_probe_cols(traces.reg)
+            traces.meta = Entry._simplify_probe_cols(traces.meta)
 
-        traces.reg.dropna(axis=1, how='all', inplace=True)
+        traces.meta.dropna(axis=1, how='all', inplace=True)
 
         return traces
 
 
-class Registry(DataFrameWrapper):
+class Registry(Collection):
     def __init__(self, df: pd.DataFrame, subfolder='swsort'):
         assert df.index.is_unique, df.index[df.index.duplicated()]
 
         super().__init__(df.copy())
 
-        if self.reg.index.name is None:
-            self.reg.index.name = 'name'
+        if self.meta.index.name is None:
+            self.meta.index.name = 'name'
 
         self._paths_cleanup()
         self._fill_optional_cols()
@@ -358,10 +358,10 @@ class Registry(DataFrameWrapper):
         self._warn_missing_entries()
 
         self.subfolder = subfolder
-        self.reg = self.reg.copy()
+        self.meta = self.meta.copy()
 
     def copy(self):
-        return self.__class__(self.reg.copy())
+        return self.__class__(self.meta.copy())
 
     def sel_expected(self, required_cols, quiet=False):
         """
@@ -394,13 +394,13 @@ class Registry(DataFrameWrapper):
         expected_cols = ['raw_path']
 
         for col in expected_cols:
-            valid_path = self.reg[col].notna()
+            valid_path = self.meta[col].notna()
 
-            for k in self.reg.index[~valid_path]:
+            for k in self.meta.index[~valid_path]:
                 logger.warning(f'{k} is missing entry "{col}".')
 
     def _warn_invalid_probe_info(self):
-        probe_info = self.reg[
+        probe_info = self.meta[
             [
                 'probe0',
                 'probe1',
@@ -448,25 +448,25 @@ class Registry(DataFrameWrapper):
             )
 
     def _paths_cleanup(self):
-        path_cols = self.reg.columns[self.reg.columns.str.endswith('path')]
+        path_cols = self.meta.columns[self.meta.columns.str.endswith('path')]
 
         for col in path_cols:
-            paths = self.reg[col]
+            paths = self.meta[col]
 
             paths = Registry._paths_patch(paths)
             paths = Registry._paths_abs(paths)
             paths = Registry._paths_ensure(paths)
 
-            self.reg[col] = paths.copy()
+            self.meta[col] = paths.copy()
 
         essential_cols = []
         for col in essential_cols:
-            valid_path = self.reg[col].notna()
+            valid_path = self.meta[col].notna()
 
-            for k in self.reg.index[~valid_path]:
-                logger.error(f'Dropping {k}: missing {col}:\n{self.reg.loc[k]}')
+            for k in self.meta.index[~valid_path]:
+                logger.error(f'Dropping {k}: missing {col}:\n{self.meta.loc[k]}')
 
-            self.reg = self.reg.loc[valid_path]
+            self.meta = self.meta.loc[valid_path]
 
     @staticmethod
     def _paths_patch(paths):
@@ -556,8 +556,8 @@ class Registry(DataFrameWrapper):
             'ch3',
         ]
         for col in optional_cols:
-            if col not in self.reg.columns:
-                self.reg[col] = np.nan
+            if col not in self.meta.columns:
+                self.meta[col] = np.nan
 
     @classmethod
     def read_online(cls, url: str, sheet_name='swr'):
@@ -571,9 +571,9 @@ class Registry(DataFrameWrapper):
             reg_path = get_root() / 'spikes/registry_merged.xlsx'
 
         # noinspection PyTypeChecker
-        reg = pd.read_excel(reg_path, index_col='name', sheet_name=sheet_name)
+        meta = pd.read_excel(reg_path, index_col='name', sheet_name=sheet_name)
 
-        df = reg.dropna(how='all')
+        df = meta.dropna(how='all')
 
         to_ignore = df['ignore'].fillna(False).astype(bool)
         df = df[~to_ignore]
@@ -581,7 +581,7 @@ class Registry(DataFrameWrapper):
         return cls(df)
 
     def is_bilat(self, area: str) -> pd.Series:
-        count = np.zeros(len(self.reg))
+        count = np.zeros(len(self.meta))
         for col in ['probe0', 'probe1', 'probe2', 'probe3']:
             # noinspection PyUnresolvedReferences
             count = count + (self[col].str.lower() == area.lower()).astype(int)
@@ -601,7 +601,7 @@ class Registry(DataFrameWrapper):
         return self['lesion'].str.lower().str.contains(which.lower()).fillna(False)
 
     def __len__(self):
-        return len(self.reg)
+        return len(self.meta)
 
     def get_entry(self, exp_name):
         return Entry(self, exp_name)
@@ -689,7 +689,7 @@ class Registry(DataFrameWrapper):
             probe_idcs = self._get_valid_probe_idcs(exp_name, areas=areas)
 
             for idx in probe_idcs:
-                ch = self.reg.loc[exp_name, f'ch{idx}']
+                ch = self.meta.loc[exp_name, f'ch{idx}']
                 if np.isnan(ch):
                     logger.error(f'Missing channel {idx} for {exp_name}')
                     continue
@@ -727,8 +727,8 @@ class Registry(DataFrameWrapper):
             import itertools
 
             for a, b in itertools.combinations(probe_idcs, 2):
-                ch_a = self.reg.loc[exp_name, f'ch{a}']
-                ch_b = self.reg.loc[exp_name, f'ch{b}']
+                ch_a = self.meta.loc[exp_name, f'ch{a}']
+                ch_b = self.meta.loc[exp_name, f'ch{b}']
 
                 if not np.isnan(ch_a) and not np.isnan(ch_b):
                     ch_a = int(ch_a)
@@ -761,7 +761,7 @@ class Registry(DataFrameWrapper):
 
             for idx in probe_idcs:
                 if self.loc[exp_name, f'probe{idx}'] in ['CLA', 'BST']:
-                    ch = int(self.reg.loc[exp_name, f'ch{idx}'])
+                    ch = int(self.meta.loc[exp_name, f'ch{idx}'])
 
                     results_path = self.get_path_sne(exp_name, idx, ch, suffix=suffix)
 
@@ -815,7 +815,7 @@ class Registry(DataFrameWrapper):
         return self._collect_paths_glob('DeepLabCut/*.csv')
 
     def _get_valid_probe_idcs(self, exp_name, areas=None):
-        probes = self.reg.loc[
+        probes = self.meta.loc[
             exp_name, ['probe0', 'probe1', 'probe2', 'probe3']
         ].dropna()
 
@@ -828,7 +828,7 @@ class Registry(DataFrameWrapper):
 
     @property
     def experiment_names(self):
-        return self.reg.index
+        return self.meta.index
 
     def group_exps(
         self, names=None, by=('state', 'lesion'), count_label=True
@@ -845,7 +845,7 @@ class Registry(DataFrameWrapper):
 
         by = list(by)
 
-        entries = self.reg.loc[names].fillna('none').copy()
+        entries = self.meta.loc[names].fillna('none').copy()
         # allow grouping by the name
         entries = entries[pd.Index(by).difference(['name'])]
 
@@ -883,16 +883,16 @@ class Registry(DataFrameWrapper):
 
     def iter_groupby(self, *args, pbar=None, **kwargs):
 
-        grouped = self.reg.groupby(*args, **kwargs)
+        grouped = self.meta.groupby(*args, **kwargs)
 
-        grouped = _optional_pbar(list(grouped), total=len(grouped), pbar=pbar)
+        grouped = self._optional_pbar(list(grouped), total=len(grouped), pbar=pbar)
 
         for k, sreg in grouped:
             yield k, self.__class__(sreg)
 
     def get_exp_short_desc(self, exp_name, cols=('probe', 'lesion', 'stim', 'state')):
         """get a short string description of this experiment"""
-        return ', '.join(self.reg.loc[exp_name, list(cols)].dropna())
+        return ', '.join(self.meta.loc[exp_name, list(cols)].dropna())
 
     def get_loader(self, exp_name, *args, **kwargs):
         return self.get_entry(exp_name).get_loader(*args, **kwargs)
@@ -983,7 +983,7 @@ class Registry(DataFrameWrapper):
 
         to_load = self.experiment_names
 
-        to_load = _optional_pbar(
+        to_load = self._optional_pbar(
             to_load, desc='load beta', pbar=pbar, total=len(to_load)
         )
 
@@ -1158,7 +1158,9 @@ class Registry(DataFrameWrapper):
         """Attempt to extract solar offsets from the loaders of each recording"""
         offsets = {}
 
-        for exp_name in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
+        for exp_name in self._optional_pbar(
+            self.index, total=len(self.index), pbar=pbar
+        ):
             loader = self.get_loader(exp_name)
             first_timestamp = loader.get_first_timestamp()
 
@@ -1167,6 +1169,6 @@ class Registry(DataFrameWrapper):
         return pd.Series(offsets)
 
     def drop_empty_columns(self):
-        not_empty = self.reg.notna().any()
+        not_empty = self.meta.notna().any()
 
-        return self.__class__(self.reg.loc[:, not_empty].copy())
+        return self.__class__(self.meta.loc[:, not_empty].copy())

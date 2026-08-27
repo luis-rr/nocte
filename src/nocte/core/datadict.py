@@ -5,34 +5,34 @@ import numpy as np
 import pandas as pd
 
 import nocte.core.windows
-from nocte.core.collections import DataFrameWrapper, _optional_pbar
+from nocte.core.collections import Collection
 
 
-class DataDict(DataFrameWrapper):
+class DataDict(Collection):
     """
     A set of data with some metadata for each one.
-    Metadata is stored as a pd.DF table (reg) with one row per data.
-    Data are stored as a dictionary with each key being the index in reg.
+    Metadata is stored as a pd.DF table (meta) with one row per data.
+    Data are stored as a dictionary with each key being the index in meta.
     Data values are of arbitrary type.
     Useful to select different conditions or experiments.
     """
 
-    def __init__(self, reg: pd.DataFrame, data: dict):
-        assert np.all(np.isin(reg.index, list(data.keys())))
+    def __init__(self, meta: pd.DataFrame, data: dict):
+        assert np.all(np.isin(meta.index, list(data.keys())))
 
-        super().__init__(reg)
+        super().__init__(meta)
         self.data = data
 
     def _apply_mask(self, mask):
         """
-        Final method for applying a mask to `reg`. Subclasses override this.
+        Final method for applying a mask to `meta`. Subclasses override this.
         """
-        reg = self.reg.loc[mask]
-        assert reg.index.is_unique
+        meta = self.meta.loc[mask]
+        assert meta.index.is_unique
 
         return self.__class__(
-            reg=reg,
-            data={k: self.data[k] for k in reg.index},
+            meta=meta,
+            data={k: self.data[k] for k in meta.index},
         )
 
     def apply(self, function, pbar=None, **kwargs):
@@ -40,48 +40,48 @@ class DataDict(DataFrameWrapper):
 
         processed = {k: function(v, **kwargs) for k, v in self.items(pbar=pbar)}
 
-        return self.__class__(self.reg, processed)
+        return self.__class__(self.meta, processed)
 
     @classmethod
     def from_dict(cls, data: dict, names=None):
-        reg = pd.DataFrame.from_records(list(data.keys()), columns=names)
-        data_mapped = {uid: data[tuple(k)] for uid, *k in reg.itertuples()}
-        return cls(reg, data_mapped)
+        meta = pd.DataFrame.from_records(list(data.keys()), columns=names)
+        data_mapped = {uid: data[tuple(k)] for uid, *k in meta.itertuples()}
+        return cls(meta, data_mapped)
 
     @classmethod
     def from_split(
         cls,
-        obj: DataFrameWrapper,
+        obj: Collection,
         *,
         by: str | list[str],
         sort: bool = False,
     ) -> 'DataDict':
         """
-        Split a DataFrameWrapper into a DataDict by one or more columns
+        Split a Collection into a DataDict by one or more columns
         in its registry.
 
         Each split becomes one object in `data`
         The DataDict registry contains group-level invariant metadata
         """
 
-        reg = obj.reg
+        meta = obj.meta
 
         if isinstance(by, str):
             by = [by]
 
         for col in by:
-            if col not in reg.columns:
+            if col not in meta.columns:
                 raise KeyError(f"Column '{col}' not found in registry")
 
         data = {}
         reg_rows = []
 
-        gb = reg.groupby(by, sort=sort)
+        gb = meta.groupby(by, sort=sort)
 
         for new_id, (_, idx) in enumerate(gb.groups.items()):
             subset = obj.sel_mask(idx)
 
-            subreg = reg.loc[idx]
+            subreg = meta.loc[idx]
 
             # find invariant columns within this group
             meta = {}
@@ -97,7 +97,7 @@ class DataDict(DataFrameWrapper):
         dd_reg.index.name = 'id'
 
         return cls(
-            reg=dd_reg,
+            meta=dd_reg,
             data=data,
         )
 
@@ -113,9 +113,9 @@ class DataDict(DataFrameWrapper):
         Store data and registry to HDF5.
         Data must implement "to_hdf" or "store_hdf" (e.g. pd.DataFrame)
         """
-        self.reg.to_hdf(filename, key=f'{key}_reg')
+        self.meta.to_hdf(filename, key=f'{key}_reg')
 
-        index = _optional_pbar(
+        index = self._optional_pbar(
             self.index, total=len(self.index), desc='storing', pbar=pbar
         )
 
@@ -148,11 +148,11 @@ class DataDict(DataFrameWrapper):
         Load data and registry from HDF5.
         """
         # noinspection PyTypeChecker
-        reg: pd.DataFrame = pd.read_hdf(filename, key=f'{key}_reg')
+        meta: pd.DataFrame = pd.read_hdf(filename, key=f'{key}_reg')
 
         data = {}
-        index = _optional_pbar(
-            reg.index, total=len(reg.index), desc='loading', pbar=pbar
+        index = cls._optional_pbar(
+            meta.index, total=len(meta.index), desc='loading', pbar=pbar
         )
 
         for k in index:
@@ -161,7 +161,7 @@ class DataDict(DataFrameWrapper):
 
             data[k] = loader(filename, key=item_key)
 
-        return cls(reg, data)
+        return cls(meta, data)
 
     def flatten(
         self,
@@ -178,10 +178,10 @@ class DataDict(DataFrameWrapper):
             if not isinstance(inner, DataDict):
                 raise TypeError('flatten() requires all items to be DataDicts')
 
-            outer_meta = self.reg.loc[outer_key]
+            outer_meta = self.meta.loc[outer_key]
 
             for inner_key, item in inner.items():
-                inner_meta = inner.reg.loc[inner_key]
+                inner_meta = inner.meta.loc[inner_key]
 
                 meta = {}
 
@@ -214,23 +214,23 @@ class DataDict(DataFrameWrapper):
                 reg_rows.append(meta)
                 new_id += 1
 
-        reg = pd.DataFrame.from_records(reg_rows)
-        reg.index.name = 'id'
+        meta = pd.DataFrame.from_records(reg_rows)
+        meta.index.name = 'id'
 
-        return self.__class__(reg=reg, data=data)
+        return self.__class__(meta=meta, data=data)
 
     def __len__(self):
-        return len(self.reg)
+        return len(self.meta)
 
     def replace_data(self, data):
         return self.__class__(
-            reg=self.reg.copy(),
+            meta=self.meta.copy(),
             data=data,
         )
 
     def simplify(self):
         """drop columns with only one value repeated"""
-        simpler = self.reg[[c for c, s in self.reg.items() if s.nunique() > 1]]
+        simpler = self.meta[[c for c, s in self.meta.items() if s.nunique() > 1]]
 
         return self.__class__(
             simpler,
@@ -240,7 +240,7 @@ class DataDict(DataFrameWrapper):
     def get(self, idx=None):
         """return a single item. If no index it's given, we assume there is only one"""
         if idx is None:
-            assert len(self.index) == 1, f'Found too many traces:\n{self.reg}'
+            assert len(self.index) == 1, f'Found too many traces:\n{self.meta}'
             idx = self.index[0]
 
         return self.data[idx]
@@ -256,24 +256,24 @@ class DataDict(DataFrameWrapper):
 
         """
         # Note we want to respect the order of the registry, not of the dict
-        for k in _optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            idx = k if col is None else self.loc[k, col]
+        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
+            idx = k if col is None else self.meta.loc[k, col]
             yield idx, self.data[k]
 
     def sort_values(self, *args, **kwargs):
-        reg = self.reg.sort_values(*args, **kwargs)
+        meta = self.meta.sort_values(*args, **kwargs)
 
         return self.__class__(
-            reg=reg,
-            data={k: self.data[k] for k in reg.index},
+            meta=meta,
+            data={k: self.data[k] for k in meta.index},
         )
 
     def sort_index(self, *args, **kwargs):
-        reg = self.reg.sort_index(*args, **kwargs)
+        meta = self.meta.sort_index(*args, **kwargs)
 
         return self.__class__(
-            reg=reg,
-            data={k: self.data[k] for k in reg.index},
+            meta=meta,
+            data={k: self.data[k] for k in meta.index},
         )
 
     def extract_df(self, func, pbar=None, **kwargs) -> pd.DataFrame:
@@ -290,19 +290,19 @@ class DataDict(DataFrameWrapper):
             axis=1,
         )
 
-        names = list(self.reg.columns) + df.columns.names[len(self.reg.columns) :]
+        names = list(self.meta.columns) + df.columns.names[len(self.meta.columns) :]
         df.rename_axis(columns=names, inplace=True)
 
         return df
 
     def iterby(self, by, pbar=None):  # TODO homogenize names
-        groups = self.reg.groupby(by).groups.items()
+        groups = self.meta.groupby(by).groups.items()
 
-        for k, uids in _optional_pbar(
+        for k, uids in self._optional_pbar(
             groups, total=len(groups), desc=str(by), pbar=pbar
         ):
             subset = self.sel_mask(uids)
-            subset.reg.drop(by, axis=1, inplace=True)
+            subset.meta.drop(by, axis=1, inplace=True)
             yield k, subset
 
     @classmethod
@@ -315,7 +315,7 @@ class DataDict(DataFrameWrapper):
         global_id = 0
 
         for key, s in stackset_dict.items():
-            merged_reg[key] = s.reg.rename_axis(index='local_id')
+            merged_reg[key] = s.meta.rename_axis(index='local_id')
 
             for data in s.data.values():
                 merged_data[global_id] = data
@@ -364,24 +364,24 @@ class DataDict(DataFrameWrapper):
     @functools.wraps(pd.DataFrame.reset_index)
     def reset_index(self, *args, drop=True, **kwargs):
 
-        reg = self.reg.reset_index(*args, drop=drop, **kwargs)
+        meta = self.meta.reset_index(*args, drop=drop, **kwargs)
 
-        mapping = pd.Series(reg.index, index=self.reg.index)
+        mapping = pd.Series(meta.index, index=self.meta.index)
 
         data = {mapping[k]: d for k, d in self.data.items()}
 
-        return self.__class__(reg, data)
+        return self.__class__(meta, data)
 
     @functools.wraps(pd.DataFrame.set_index)
     def set_index(self, *args, **kwargs):
 
-        reg = self.reg.set_index(*args, **kwargs)
+        meta = self.meta.set_index(*args, **kwargs)
 
-        mapping = pd.Series(reg.index, index=self.reg.index)
+        mapping = pd.Series(meta.index, index=self.meta.index)
 
         data = {mapping[k]: d for k, d in self.data.items()}
 
-        return self.__class__(reg, data)
+        return self.__class__(meta, data)
 
     def _extract(self, wins: nocte.core.windows.Windows):
         paired = self._combine_idcs(
@@ -400,7 +400,7 @@ class DataDict(DataFrameWrapper):
         }
 
         result = self.__class__(
-            paired.reg,
+            paired.meta,
             result,
         )
 
@@ -415,7 +415,7 @@ class DataDict(DataFrameWrapper):
             for k, data in self.items()
         }
 
-        result = self.__class__(self.reg, result)
+        result = self.__class__(self.meta, result)
 
         return result
 
@@ -446,7 +446,7 @@ class DataDict(DataFrameWrapper):
             for k, item in self.items()
         }
 
-        return self.__class__(self.reg, result)
+        return self.__class__(self.meta, result)
 
     @staticmethod
     def _shift_time_item(item, dt):
