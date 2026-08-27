@@ -13,7 +13,7 @@ import pandas as pd
 
 from nocte.core import datadict as dd
 from nocte.core import stacks, timeslice
-from nocte.core.df_wrapper import DataFrameWrapper
+from nocte.core.collections import DataFrameWrapper
 from nocte.plot import plot as splot
 
 

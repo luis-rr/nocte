@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 
 from nocte.core import windows as timeslice
+from nocte.core.collections import DataFrameWrapper
 from nocte.core.datadict import DataDict
-from nocte.core.df_wrapper import DataFrameWrapper
 from nocte.core.events import Events
 from nocte.core.traces import Traces
 from nocte.core.windows import Win

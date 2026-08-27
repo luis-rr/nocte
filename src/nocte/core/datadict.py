@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 import nocte.core.windows
-from nocte.core.df_wrapper import DataFrameWrapper, _optional_pbar
+from nocte.core.collections import DataFrameWrapper, _optional_pbar
 
 
 class DataDict(DataFrameWrapper):

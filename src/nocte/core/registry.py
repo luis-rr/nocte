@@ -20,8 +20,8 @@ from tqdm.auto import tqdm
 import nocte.core.events
 import nocte.core.traces
 from nocte.core import windows as timeslice
+from nocte.core.collections import DataFrameWrapper, _optional_pbar
 from nocte.core.datadict import DataDict
-from nocte.core.df_wrapper import DataFrameWrapper, _optional_pbar
 from nocte.core.stacks import Stack
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte.core.df_wrapper import DataFrameWrapper, _optional_pbar
+from nocte.core.collections import DataFrameWrapper, _optional_pbar
 
 S_TO_MS = 1e3
 MS_TO_S = 1.0 / S_TO_MS
