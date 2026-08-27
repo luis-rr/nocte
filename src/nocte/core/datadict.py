@@ -4,8 +4,8 @@ from typing import Self
 import numpy as np
 import pandas as pd
 
-import nocte.timeslice
-from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
+import nocte.core.windows
+from nocte.core.df_wrapper import DataFrameWrapper, _optional_pbar
 
 
 class DataDict(DataFrameWrapper):
@@ -383,7 +383,7 @@ class DataDict(DataFrameWrapper):
 
         return self.__class__(reg, data)
 
-    def _extract(self, wins: nocte.timeslice.Windows):
+    def _extract(self, wins: nocte.core.windows.Windows):
         paired = self._combine_idcs(
             self,
             wins,
@@ -406,7 +406,7 @@ class DataDict(DataFrameWrapper):
 
         return result
 
-    def crop(self, win: nocte.timeslice.Win):
+    def crop(self, win: nocte.core.windows.Win):
         result = {
             k: DataDict._crop_item(
                 data,
@@ -420,7 +420,7 @@ class DataDict(DataFrameWrapper):
         return result
 
     @staticmethod
-    def _crop_item(item, window: nocte.timeslice.Win):
+    def _crop_item(item, window: nocte.core.windows.Win):
         if hasattr(item, 'crop'):
             return item.crop(window)
 
@@ -460,7 +460,7 @@ class DataDict(DataFrameWrapper):
 
         raise TypeError(f'Object of type {type(item)} cannot be time-shifted')
 
-    def extract(self, wins: nocte.timeslice.Windows, align=None):
+    def extract(self, wins: nocte.core.windows.Windows, align=None):
 
         extracted = self._extract(wins)
 

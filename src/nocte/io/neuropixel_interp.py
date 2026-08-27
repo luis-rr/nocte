@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import timeslice
+from nocte.core import windows as timeslice
 from nocte.io import neuropixel
 
 # TODO: we should look up channel index by type. We are after SY0, which can be looked up in channel map.

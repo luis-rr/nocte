@@ -10,9 +10,9 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
-from nocte import events, stacks, timeslice
-from nocte import plot as splot
-from nocte.timeslice import ms
+from nocte.core import events, stacks, timeslice
+from nocte.core.windows import ms
+from nocte.plot import plot as splot
 
 
 def extract_lead_traces(xcorr, rem_wins, all_beta, lag_modes):

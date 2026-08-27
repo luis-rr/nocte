@@ -6,11 +6,11 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import plot as splot
-from nocte import timeslice
-from nocte import traces as tr
 from nocte.analysis import stim
-from nocte.timeslice import MS_TO_S, Win, ms
+from nocte.core import traces as tr
+from nocte.core import windows as timeslice
+from nocte.core.windows import MS_TO_S, Win, ms
+from nocte.plot import plot as splot
 
 PROT_COLORS = pd.Series(
     {

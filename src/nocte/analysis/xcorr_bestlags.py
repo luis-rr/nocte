@@ -11,10 +11,10 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from nocte import plot as splot
-from nocte.datadict import DataDict
-from nocte.stacks import Stack
-from nocte.timeslice import ms
+from nocte.core.datadict import DataDict
+from nocte.core.stacks import Stack
+from nocte.core.windows import ms
+from nocte.plot import plot as splot
 
 
 class XCorrBestLags:

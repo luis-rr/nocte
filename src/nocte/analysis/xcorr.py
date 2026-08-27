@@ -16,9 +16,9 @@ import numpy as np
 from numba import njit, prange
 from tqdm.auto import tqdm
 
-from nocte import timeslice
-from nocte.stacks import Stack
-from nocte.timeslice import MS_TO_S
+from nocte.core import windows as timeslice
+from nocte.core.stacks import Stack
+from nocte.core.windows import MS_TO_S
 
 
 @njit(parallel=True)

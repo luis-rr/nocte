@@ -31,9 +31,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from nocte import timeslice
+from nocte.core import windows as timeslice
+from nocte.core.windows import MS_TO_S
 from nocte.io import common
-from nocte.timeslice import MS_TO_S
 
 logger = logging.getLogger(__name__)
 

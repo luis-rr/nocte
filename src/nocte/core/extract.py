@@ -11,10 +11,10 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import stacks, timeslice
 from nocte.analysis import sleep, sne, sne_matching
+from nocte.core import stacks, timeslice
+from nocte.core.windows import Win, Windows
 from nocte.paths import Registry
-from nocte.timeslice import Win, Windows
 
 
 class ChunkedExperiment:

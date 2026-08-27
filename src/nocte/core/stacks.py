@@ -7,13 +7,13 @@ For example, a stack of spike waveforms extracted from the data for a single cel
 
 Build a new stack by loading a stored one:
 
-    from nocte import stacks as st
+    from nocte.core import stacks as st
     stack = st.load_hdf_stack('GL881_2020803_sleep_g0/swsort/swsort_power.h5', 'power_multichan')
 
 or by extracting it from saved data:
 
     import nocte.io.neuropixels as npix
-    from nocte import stacks as st
+    from nocte.core import stacks as st
 
     data = npix.DataLoader.load_spikegl(meta_path, bin_path)
 
@@ -43,8 +43,8 @@ import xarray as xr
 import xarray.core.coordinates
 from tqdm.auto import tqdm
 
-from nocte import timeslice
-from nocte.timeslice import MS_TO_S, S_TO_MS
+from nocte.core import windows as timeslice
+from nocte.core.windows import MS_TO_S, S_TO_MS
 
 
 def _expose(parent_method):

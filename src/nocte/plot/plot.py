@@ -20,8 +20,8 @@ import scipy.stats
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
-from nocte import timeslice
-from nocte.timeslice import ms
+from nocte.core import windows as timeslice
+from nocte.core.windows import ms
 
 COLORS_SIDE = dict(
     left='#0053A3',  # blue

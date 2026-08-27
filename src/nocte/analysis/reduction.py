@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.linalg
 
-from nocte import traces as tr
+from nocte.core import traces as tr
 
 
 def _take_pca(traces: pd.DataFrame, n_components: int | None = None):

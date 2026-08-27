@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import stacks, timeslice
-from nocte import traces as tr
+from nocte.core import stacks, timeslice
+from nocte.core import traces as tr
 from nocte.io import neuralynx
 
 MICROS_TO_MS = 0.001

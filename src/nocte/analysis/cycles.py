@@ -8,10 +8,10 @@ from matplotlib import pyplot as plt
 from sklearn.mixture import GaussianMixture
 from tqdm.auto import tqdm
 
-from nocte import plot as splot
-from nocte import timeslice
-from nocte import traces as tr
-from nocte.timeslice import Win, ms
+from nocte.core import traces as tr
+from nocte.core import windows as timeslice
+from nocte.core.windows import Win, ms
+from nocte.plot import plot as splot
 
 
 def classify_by_gm(beta, max_detours=ms(seconds=10)):

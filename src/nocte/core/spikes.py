@@ -9,12 +9,12 @@ from typing import Self
 import numpy as np
 import pandas as pd
 
-from nocte import timeslice
-from nocte.datadict import DataDict
-from nocte.df_wrapper import DataFrameWrapper
-from nocte.events import Events
-from nocte.timeslice import Win
-from nocte.traces import Traces
+from nocte.core import windows as timeslice
+from nocte.core.datadict import DataDict
+from nocte.core.df_wrapper import DataFrameWrapper
+from nocte.core.events import Events
+from nocte.core.traces import Traces
+from nocte.core.windows import Win
 
 logger = logging.getLogger(__name__)
 

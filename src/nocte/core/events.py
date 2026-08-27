@@ -10,10 +10,10 @@ import numba as nb
 import numpy as np
 import pandas as pd
 
-from nocte import datadict as dd
-from nocte import plot as splot
-from nocte import stacks, timeslice
-from nocte.df_wrapper import DataFrameWrapper
+from nocte.core import datadict as dd
+from nocte.core import stacks, timeslice
+from nocte.core.df_wrapper import DataFrameWrapper
+from nocte.plot import plot as splot
 
 
 @nb.njit(parallel=True)

@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import scipy
 
-import nocte.traces
-from nocte import stacks
-from nocte.timeslice import ms
+import nocte.core.traces
+from nocte.core import stacks
+from nocte.core.windows import ms
 
 
 def get_hilbert_transform(
@@ -65,8 +65,8 @@ def get_phase_norm(trace, **kwargs):
     return phase_norm
 
 
-def collect_beta_phases(exp_beta: nocte.traces.Traces, unwrap=True, **kwargs):
-    exp_phase: nocte.traces.Traces = exp_beta.apply(
+def collect_beta_phases(exp_beta: nocte.core.traces.Traces, unwrap=True, **kwargs):
+    exp_phase: nocte.core.traces.Traces = exp_beta.apply(
         lambda beta: get_phase_norm(beta.dropna(), **kwargs)
     )
 

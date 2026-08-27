@@ -38,8 +38,8 @@ import scipy.stats
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
-from nocte import timeslice
-from nocte import traces as tr
+from nocte.core import traces as tr
+from nocte.core import windows as timeslice
 
 
 @nb.njit(parallel=True)

@@ -8,8 +8,8 @@ import logging
 import numpy as np
 import pandas as pd
 
-from nocte import timeslice
-from nocte.timeslice import MS_TO_S, S_TO_MS
+from nocte.core import windows as timeslice
+from nocte.core.windows import MS_TO_S, S_TO_MS
 
 logger = logging.getLogger(__name__)
 

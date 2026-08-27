@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.gridspec import GridSpec
 
-from nocte import plot as splot
+from nocte.plot import plot as splot
 
 
 def _edges_from_centers(values):

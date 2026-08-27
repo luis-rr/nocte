@@ -17,12 +17,12 @@ import pandas as pd
 import requests
 from tqdm.auto import tqdm
 
-import nocte.events
-import nocte.traces
-from nocte import timeslice
-from nocte.datadict import DataDict
-from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
-from nocte.stacks import Stack
+import nocte.core.events
+import nocte.core.traces
+from nocte.core import windows as timeslice
+from nocte.core.datadict import DataDict
+from nocte.core.df_wrapper import DataFrameWrapper, _optional_pbar
+from nocte.core.stacks import Stack
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,7 @@ class Entry:
 
         loaded = self.load_all_beta(simplify=simplify, *args, **kwargs)
 
-        traces: nocte.traces.Traces = nocte.traces.Traces.from_df(
+        traces: nocte.core.traces.Traces = nocte.core.traces.Traces.from_df(
             loaded,
         )
 
@@ -903,7 +903,7 @@ class Registry(DataFrameWrapper):
     def get_loader_simplified(self, exp_name, *args, **kwargs):
         return self.get_entry(exp_name).get_loader_simplified(*args, **kwargs)
 
-    def load_timestamps(self, col, rename='ref_time') -> nocte.events.Events:
+    def load_timestamps(self, col, rename='ref_time') -> nocte.core.events.Events:
 
         def parse_entry(string):
 
@@ -934,9 +934,9 @@ class Registry(DataFrameWrapper):
             table, columns=['exp_name', 'desc', rename, f'{col}_idx']
         )
 
-        return nocte.events.Events(events_reg)
+        return nocte.core.events.Events(events_reg)
 
-    def load_wins(self, col, name='cat', copy=None) -> nocte.timeslice.Windows:
+    def load_wins(self, col, name='cat', copy=None) -> nocte.core.windows.Windows:
 
         copy = copy or []
 
@@ -994,7 +994,7 @@ class Registry(DataFrameWrapper):
 
             all_traces.append(traces)
 
-        all_traces = nocte.traces.Traces.concat_list(all_traces)
+        all_traces = nocte.core.traces.Traces.concat_list(all_traces)
 
         return all_traces
 

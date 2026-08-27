@@ -10,10 +10,10 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
-from nocte import plot as splot
 from nocte.analysis.sne import SharpNegativeEvents
-from nocte.stacks import Stack
-from nocte.timeslice import Win, Windows, ms
+from nocte.core.stacks import Stack
+from nocte.core.windows import Win, Windows, ms
+from nocte.plot import plot as splot
 
 
 def _extract_event_pairs_dag(

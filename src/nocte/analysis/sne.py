@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from nocte.analysis import wave_detection
-from nocte.events import Events
+from nocte.core.events import Events
 
 
 class SharpNegativeEvents(Events):
