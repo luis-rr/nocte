@@ -3,574 +3,455 @@ Manage conversion between timescales & sampling rates, as well as defining windo
 that can be used to cut data.
 """  # noqa: EXE002
 
+import dataclasses
 import functools
 import logging
-from datetime import timedelta
+import typing
 
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+import nocte.core.time
 from nocte.core import time
 from nocte.core.collections import Collection
-from nocte.core.sampling import SamplingRate
+
+WinPoint = typing.Literal['start', 'mid', 'ref', 'stop']
 
 
-class Win(tuple):
+@dataclasses.dataclass(frozen=True, slots=True)
+class Win:
     """
-    A fancy tuple object to define a single start-stop period with extra methods
+    A temporal window expressed in milliseconds.
 
-    to generate a simple copy of this object you can do:
+    `start` and `stop` are offsets relative to `ref`, while `ref` locates
+    the window in its enclosing temporal coordinate system.
 
-        win_ms = Win(*win_ms)
+    The represented interval is always half-open:
 
+        [ref + start, ref + stop)
+
+    All values are stored as float milliseconds. `ref` is always present
+    and defaults to zero, which makes `Win(start, stop)` convenient for
+    defining windows relative to an external event or marker.
+
+    Examples
+    --------
+    A 30-minute window around an external reference:
+
+        Win.in_units(-10, 20, 'minutes')
+
+    The same geometry anchored at 2 hours:
+
+        Win.in_units(-10, 20, 'minutes').shift(
+            nocte.core.time.ms(hours=2)
+        )
+
+    A `(start, stop)` pair can be converted directly:
+
+        pair = (-100.0, 500.0)
+        win = Win(*pair)
     """
 
-    def __new__(cls, start, stop):
-        """
-        build a relative window in ms
-        :param start: TimeDelta. If float, assuming it is in MILLISECONDS.
-        :param stop: TimeDelta. If float, assuming it is in MILLISECONDS.
-        :return: tuple object
-        """
-        start = time.to_ms(start)
-        stop = time.to_ms(stop)
+    start: float
+    stop: float
+    ref: float = dataclasses.field(default=0.0, kw_only=True)
 
-        # noinspection PyTypeChecker
-        return super().__new__(cls, (start, stop))
+    def __post_init__(self) -> None:
+        start = float(self.start)
+        stop = float(self.stop)
+        ref = float(self.ref)
 
-    @classmethod
-    def build_around(cls, ref, pre=0, post=0):
-        """
-        build a relative window in ms
-        """
-        # noinspection PyArgumentList
-        return cls(ref, ref).change(pre=pre, post=post)
+        if not np.all(np.isfinite([start, stop, ref])):
+            raise ValueError('Window times must be finite')
 
-    @classmethod
-    def build_centered(cls, ref, duration):
-        """
-        build a relative window in ms
-        """
-        ref = time.to_ms(ref)
-        duration = time.to_ms(duration)
-        # noinspection PyArgumentList
-        return cls(ref - duration * 0.5, ref + duration * 0.5)
+        if stop < start:
+            raise ValueError(
+                f'Window stop ({stop}) must be greater than or equal to start ({start})'
+            )
+
+        object.__setattr__(self, 'start', start)
+        object.__setattr__(self, 'stop', stop)
+        object.__setattr__(self, 'ref', ref)
 
     @classmethod
-    def from_str(cls, s: str):
-        start, stop = s.split('-')
-        start = time.str_to_ms(start.strip())
-        stop = time.str_to_ms(stop.strip())
-        return cls(start, stop)
+    def in_units(
+        cls,
+        start: float,
+        stop: float,
+        unit: nocte.core.time.TimeScale,
+    ) -> typing.Self:
+        """Build a window whose start and stop are expressed in the given unit."""
+        scale = nocte.core.time.scale_to_ms(unit)
+
+        return cls(
+            start=float(start) * scale,
+            stop=float(stop) * scale,
+        )
+
+    @classmethod
+    def from_center(
+        cls,
+        center: float,
+        duration: float,
+        *,
+        ref: float = 0.0,
+    ) -> typing.Self:
+        """Build a window of a given duration centered on a time point."""
+        center = float(center)
+        duration = float(duration)
+        ref = float(ref)
+
+        if duration < 0:
+            raise ValueError('Duration must be non-negative')
+
+        center_offset = center - ref
+        half_duration = duration * 0.5
+
+        return cls(
+            center_offset - half_duration,
+            center_offset + half_duration,
+            ref=ref,
+        )
 
     @property
-    def start(self):
-        """get the start time in milliseconds"""
-        return self[0]
-
-    @property
-    def start_s(self):
-        """get the start time in seconds"""
-        return self.start * time.MS_TO_S
-
-    @property
-    def start_td(self):
-        """get the start time as a timedelta object"""
-        return timedelta(milliseconds=self.start)
-
-    @property
-    def stop(self):
-        """get the stop time in milliseconds"""
-        return self[1]
-
-    @property
-    def stop_s(self):
-        """get the stop time in seconds"""
-        return self.stop * time.MS_TO_S
-
-    @property
-    def stop_td(self):
-        """get the stop time as a timedelta object"""
-        return timedelta(milliseconds=self.stop)
-
-    @property
-    def length(self):
-        """get the length in milliseconds"""
+    def length(self) -> float:
+        """Window duration in milliseconds."""
         return self.stop - self.start
 
     @property
-    def length_s(self):
-        """get the length in seconds"""
-        return self.stop_s - self.start_s
-
-    @property
-    def length_td(self):
-        """get the length in seconds"""
-        return self.stop_td - self.start_td
-
-    @property
-    def mid(self):
-        """get the mid point of the window"""
-        return self.quantile_time(0.5)
+    def mid(self) -> float:
+        """Midpoint of the window in the enclosing temporal coordinate."""
+        return self.time_at(0.5)
 
     def is_empty(self) -> bool:
-        return self.stop <= self.start
+        """Return whether the window has zero duration."""
+        return self.start == self.stop
 
-    def before(self, duration, offset=0):
+    def time_at(self, q: float | WinPoint) -> float:
         """
-        Define a window immediately before this one with the given duration
+        Return a time point in the enclosing temporal coordinate.
 
-        :param duration:
-        :param offset:
-        Pad the period between the new window and this one.
-        If this number is negative, the windows will overlap.
-        :return:
-        """
-        stop = self.start - offset
-        return self.__class__(stop - duration, stop)
-
-    def after(self, duration, offset=0):
-        """
-        Define a window immediately after this one with the given duration
-
-        :param duration:
-        :param offset:
-        Pad the period between the new window and this one.
-        If this number is negative, the windows will overlap.
-        :return:
-        """
-        start = self.stop + offset
-        return self.__class__(start, start + duration)
-
-    def centered(self, duration, q='mid'):
-        """build a new window centered in the middle of this one"""
-        return self.__class__.build_centered(self.relative_time(q), duration)
-
-    def arange(self, step):
-        assert step > 0
-        return np.arange(self.start, self.stop + step * 0.5, step)
-
-    def contains(self, t):
-        """check if a time stamp is contained in [start, stop]"""
-        return (self.start <= t) & (t <= self.stop)
-
-    def contained_in(self, win, fully=True) -> bool:
-        """
-        check if this window is contained in the given one
-
-        :param win:
-
-        :param fully: if True, window must be fully inside the given one to be considered contained.
-            If False, a partial overlap is enough.
-
-        :returns: a boolean series
-        """
-        win = Win(*win)
-
-        if fully:
-            start_within = win.contains(self.start)
-            stop_within = win.contains(self.stop)
-
-            return start_within & stop_within
-
-        else:
-            return self.overlaps(win)
-
-    def overlaps(self, win) -> bool:
-        """Check if this window and another one overlap"""
-        start_late = win.stop <= self.start
-        stop_early = self.stop <= win.start
-
-        return (~start_late) & (~stop_early)
-
-    def quantile_time(self, q: float) -> float:
-        """
-        Select a reference time as a quantile of the duration.
-
-        :param q: float between 0 and 1. If 0 then time will be the 'start'. If 1, it will be 'stop'.
-        :return:
-        """
-        return self.length * q + self.start
-
-    def relative_time(self, q) -> float:
-        """
-        Get a time that is expressed relative to the window.
-        :param q:
-            If float, must be between 0 and 1. See quantile_time.
-            If str, must be start, stop, mid, or ref.
-        :return:
+        A numeric value is interpreted as a fractional position through the
+        window, where 0 is the start and 1 is the stop.
         """
         if isinstance(q, str):
+            if q == 'start':
+                return self.ref + self.start
+
             if q == 'mid':
-                # noinspection PyTypeChecker
-                return self.mid
-            elif q == 'start':
-                return self.start
-            elif q == 'zero':
-                return 0
+                q = 0.5
+
+            elif q == 'ref':
+                return self.ref
+
+            elif q == 'stop':
+                return self.ref + self.stop
+
             else:
-                assert q == 'stop', f'Unknown time "{q}"'
-                return self.stop
+                typing.assert_never(q)
 
-        else:
-            # noinspection PyTypeChecker
-            return self.quantile_time(q)
+        q = float(q)
 
-    def to_relative_time(self, time: float) -> float:
-        """
-        Get a time in relative time
+        if not 0.0 <= q <= 1.0:
+            raise ValueError('Window position must be between 0 and 1')
 
-        :param time:
-        :return: float between 0 and 1. If 0 then time will be the 'start'. If 1, it will be 'stop'.
-        """
-        return (time - self.start) / self.length
+        return self.ref + self.start + self.length * q
 
-    def assert_positive(self):
-        """check stop comes after start"""
-        assert self.length >= 0
+    def contains(
+        self,
+        t: float | np.ndarray,
+    ) -> bool | np.ndarray:
+        """Return whether time points fall within this `[start, stop)` window."""
+        values = np.asarray(t)
 
-    def to_str(self, plus_sign=False, strip=True, show_days=True):
-        """pretty str format"""
+        contained = (self.ref + self.start <= values) & (values < self.ref + self.stop)
+
+        if contained.ndim == 0:
+            return bool(contained.item())
+
+        return contained
+
+    def contained_in(self, other: typing.Self) -> bool:
+        """Return whether this window is fully contained in another window."""
         return (
-            f'({time.ms_to_str(self.start, plus_sign=plus_sign, strip=strip, show_days=show_days)},'
-            f' {time.ms_to_str(self.stop, plus_sign=plus_sign, strip=strip, show_days=show_days)})'
+            other.ref + other.start <= self.ref + self.start
+            and self.ref + self.stop <= other.ref + other.stop
         )
 
-    def __str__(self):
-        """pretty str format"""
-        return self.to_str()
+    def overlaps(self, other: typing.Self) -> bool:
+        """Return whether this window overlaps another window."""
+        return (
+            self.ref + self.start < other.ref + other.stop
+            and other.ref + other.start < self.ref + self.stop
+        )
 
-    def _repr_html_(self):
-        """pretty str format"""
-        return self.__str__()
-
-    def change(self, pre=0.0, post=0.0):
+    def before(
+        self,
+        duration: float,
+        *,
+        offset: float = 0.0,
+    ) -> typing.Self:
         """
-        Add (or remove) time at the start (pre) or the end (post) of the window
-        :param pre: time in milliseconds relative to start
-        :param post: time in milliseconds relative to stop
-        :return: a new tuple object
-        """
-        return Win(self.start + time.to_ms(pre), self.stop + time.to_ms(post))
+        Return a window immediately before this one.
 
-    def shrink(self, duration=0.0):
-        """shrink this window by the same ammount at start and stop"""
+        Positive `offset` leaves a gap; negative `offset` creates overlap.
+        """
+        duration = float(duration)
+        offset = float(offset)
+
+        if duration < 0:
+            raise ValueError('Duration must be non-negative')
+
+        stop = self.start - offset
+
+        return self.__class__(
+            stop - duration,
+            stop,
+            ref=self.ref,
+        )
+
+    def after(
+        self,
+        duration: float,
+        *,
+        offset: float = 0.0,
+    ) -> typing.Self:
+        """
+        Return a window immediately after this one.
+
+        Positive `offset` leaves a gap; negative `offset` creates overlap.
+        """
+        duration = float(duration)
+        offset = float(offset)
+
+        if duration < 0:
+            raise ValueError('Duration must be non-negative')
+
+        start = self.stop + offset
+
+        return self.__class__(
+            start,
+            start + duration,
+            ref=self.ref,
+        )
+
+    def centered(
+        self,
+        duration: float,
+        q: float | WinPoint = 'mid',
+    ) -> typing.Self:
+        """Return a window of the given duration centered on a point in this window."""
+        return self.__class__.from_center(
+            self.time_at(q),
+            duration,
+            ref=self.ref,
+        )
+
+    def change(
+        self,
+        pre: float = 0.0,
+        post: float = 0.0,
+    ) -> typing.Self:
+        """
+        Adjust the relative start and stop offsets.
+
+        `pre` is added to `start` and `post` is added to `stop`.
+        The reference is unchanged.
+        """
+        return dataclasses.replace(
+            self,
+            start=self.start + float(pre),
+            stop=self.stop + float(post),
+        )
+
+    def shrink(self, duration: float = 0.0) -> typing.Self:
+        """Shrink both sides by the same duration."""
         return self.change(+duration, -duration)
 
-    def expand(self, duration=0.0):
-        """expand this window by the same ammount at start and stop"""
+    def expand(self, duration: float = 0.0) -> typing.Self:
+        """Expand both sides by the same duration."""
         return self.change(-duration, +duration)
 
-    def subtract(self, exclusion_win):
+    def shift(self, by: float = 0.0) -> typing.Self:
         """
-        Exclude a window of time from the current window.
-        The result is 2 windows, potentially empty, before and after the exclusion_win
-        :param exclusion_win:
-        :return: a pair of Win corresponding to valid time before and after the exclusion win
+        Shift the complete window in time without changing its geometry.
+
+        Only the reference changes; start and stop remain unchanged.
         """
-        pre = Win(
-            min(self.start, exclusion_win.start),
-            min(self.stop, exclusion_win.start),
+        return dataclasses.replace(
+            self,
+            ref=self.ref + float(by),
         )
 
-        post = Win(
-            max(self.start, exclusion_win.stop),
-            max(self.stop, exclusion_win.stop),
+    def crop(self, other: typing.Self) -> typing.Self:
+        """
+        Crop this window to another window.
+
+        The returned window keeps this window's reference. If the windows do
+        not overlap, the result is an empty window at the nearest boundary
+        of `other`.
+        """
+        self_start = self.ref + self.start
+        self_stop = self.ref + self.stop
+
+        other_start = other.ref + other.start
+        other_stop = other.ref + other.stop
+
+        start = min(max(self_start, other_start), other_stop)
+        stop = max(min(self_stop, other_stop), other_start)
+
+        return self.__class__(
+            start - self.ref,
+            stop - self.ref,
+            ref=self.ref,
         )
 
-        return pre, post
-
-    def split(self, length_ms):
+    def shift_to_fit(self, other: typing.Self) -> typing.Self:
         """
-        Break this window into multiple smaller ones that fit within.
+        Shift this window so it fits entirely within another window.
+
+        The window duration and relative geometry are preserved.
         """
-        breaks = self.arange(length_ms)
-        return Windows.build_between(breaks)
+        if self.length > other.length:
+            raise ValueError(f'Window {self} cannot fit within {other}')
 
-    def shift(self, by=0.0):
-        """
-        Shift the window without changing the duration
-        :return: a new tuple object
-        """
-        return self.change(pre=by, post=by)
+        self_start = self.ref + self.start
+        self_stop = self.ref + self.stop
 
-    def shift_to_fit(self, other):
-        """
-        Shift this window so it fits within another window.
-        This doesn't change the window duration.
-        If 'other' is not big enough, a ValueError is raised.
-        If this window is already within other, nothing is changed.
+        other_start = other.ref + other.start
+        other_stop = other.ref + other.stop
 
-        This is useful when we want to load an example trace
-        while making sure that the load window is within valid recording:
+        if self_start < other_start:
+            return self.shift(other_start - self_start)
 
-            load_win = load_win.shift_to_fit(raw.win_ms)
-
-        :param other:
-        :return:
-        """
-        left_shift = other[0] - self.start
-        right_shift = other[1] - self.stop
-
-        if left_shift > 0 > right_shift:
-            raise ValueError(f'Window {self} can not be fit in {other}')
-
-        elif left_shift > 0:
-            return self.shift(left_shift)
-
-        elif right_shift < 0:
-            return self.shift(right_shift)
+        if self_stop > other_stop:
+            return self.shift(other_stop - self_stop)
 
         return self
 
-    def take_centered(self, max_duration):
-        """
-        Take a window within this window,
-        centered in its middle and up to the given duration.
+    def take_centered(self, max_duration: float) -> typing.Self:
+        """Return the centered portion of this window up to a maximum duration."""
+        max_duration = float(max_duration)
 
-        This is useful when we want to load a reference trace
-        around the middle of the experiment but we have experiments
-        of various durations.
-        """
-        new = self.build_centered(ref=self.mid, duration=max_duration)
-        return new.clip(self)
+        if max_duration < 0:
+            raise ValueError('Maximum duration must be non-negative')
+
+        return self.centered(min(self.length, max_duration))
+
+    def arange(self, step: float) -> np.ndarray:
+        """Return regularly spaced times across the half-open window."""
+        step = float(step)
+
+        if step <= 0:
+            raise ValueError('Step must be positive')
+
+        return np.arange(
+            self.time_at('start'),
+            self.time_at('stop'),
+            step,
+        )
 
     def round(
-        self, decimals=0, start=True, stop=True, scale: time.TimeScale = 'milliseconds'
-    ):
-        """round this window"""
-        return self.__class__(
-            time.ms_round(self.start, scale=scale, decimals=decimals)
-            if start
-            else self.start,
-            time.ms_round(self.stop, scale=scale, decimals=decimals)
-            if stop
-            else self.stop,
-        )
-
-    def floor(self, start=True, stop=True, scale: time.TimeScale = 'milliseconds'):
-        """round down to the closest integer for the given scale"""
-        return self.__class__(
-            time.ms_floor(self.start, scale=scale) if start else self.start,
-            time.ms_floor(self.stop, scale=scale) if stop else self.stop,
-        )
-
-    def ceil(self, start=True, stop=True, scale: time.TimeScale = 'milliseconds'):
-        """round down to the closest integer for the given scale"""
-        return self.__class__(
-            time.ms_ceil(self.start, scale=scale) if start else self.start,
-            time.ms_ceil(self.stop, scale=scale) if stop else self.stop,
-        )
-
-    def floor_ceil(self, scale: time.TimeScale = 'milliseconds'):
-        """
-        Round start down and stop up.
-        Useful to get a round window that for sure includes this one.
-        """
-        w = self
-        w = w.floor(scale=scale, start=True, stop=False)
-        w = w.ceil(scale=scale, start=False, stop=True)
-        return w
-
-    def ceil_floor(self, scale: time.TimeScale = 'milliseconds'):
-        """
-        Round start up and stop down.
-        Useful to get a round window that for sure is included in this one (for example has valid data).
-        """
-        w = self
-        w = w.ceil(scale=scale, start=True, stop=False)
-        w = w.floor(scale=scale, start=False, stop=True)
-        return w
-
-    def round_loose(self, scale: time.TimeScale = 'milliseconds'):
-        """Round start down and stop up, making the window looser"""
-        return self.floor_ceil(scale)
-
-    def round_tight(self, scale: time.TimeScale = 'milliseconds'):
-        """Round start up and stop down, making the window tighter"""
-        return self.ceil_floor(scale)
-
-    def clip(self, other):
-        """
-        Clip this window so it fits within another window.
-        If this window is already within other, nothing is changed.
-        :param other:
-        :return:
-        """
-        other = Win(*other)
-        new = self.__class__(
-            min(max(self.start, other.start), other.stop),
-            max(min(self.stop, other.stop), other.start),
-        )
-
-        assert self.start <= self.stop
-        assert self.length >= 0
-
-        return new
-
-    def to_slice_idx(self, stored_hz, load_hz=None):
-        """
-        Convert this window (in milliseconds) to a slice object of indices
-        assuming a given sampling rate
-
-        :param stored_hz: sampling rate of the stored data (typically 30kHz).
-
-        :param load_hz: sampling rate that we want to load.
-        This should be a divisor of the stored rate (defaults to the same).
-
-        :return: slice object
-        """
-        if load_hz is None:
-            load_hz = stored_hz
-
-        SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
-
-        from_i = int(np.round(stored_hz * self.start_s))
-        to_i = int(np.round(stored_hz * self.stop_s))
-        stride_i = SamplingRate(stored_hz).get_stride(load_hz)
-
-        return slice(from_i, to_i, stride_i)
-
-    def to_slice_ms(self, step=None):
-        """
-        Convert this window to a slice object
-        in milliseconds.
-
-        This is useful to cut a pd.Series where the index is time:
-            series.loc[win.to_slice_ms()]
-
-        :return: slice object
-        """
-        return slice(self.start, self.stop, step)
-
-    def crop_df(
-        self, df: pd.DataFrame | pd.Series, reset=None, by=None
-    ) -> pd.DataFrame:
-        """
-        :param df:
-        :param reset:
-            Time to shift the df time window.
-            It can be 'start' or 'stop'.
-            Ff a float, it will be understood as a relative_time
-        :param by:
-        :return:
-        """
-
-        if by is None:
-            time = df.index
-        else:
-            time = df[by].values
-
-        mask = self.contains(time)
-        df = df[mask].copy()
-
-        if isinstance(reset, bool):
-            reset = None if not reset else 'start'
-
-        if reset is not None:
-            reset = self.relative_time(reset)
-
-            if by is None:
-                df.index = df.index - reset
-            else:
-                df[by] = df[by] - reset
-
-        return df
-
-    def crop_ts(self, ts: np.ndarray, reset=None) -> np.array:
-        """select from ts the times contained in this window"""
-        new_ts = ts[self.contains(ts)]
-
-        if isinstance(reset, bool):
-            reset = None if not reset else 'start'
-
-        if reset is not None:
-            reset = self.relative_time(reset)
-            new_ts = new_ts - reset
-
-        return new_ts
-
-    def interp_series(
         self,
-        series: pd.Series,
-        step,
-        reset=None,
-        shift=0,
-        bounds_error=False,
-    ) -> pd.Series:
-        """
-        Resample the data within the given window using linear interpolation.
-        The result is similar to crop_df but the values are the result
-        of an interpolation and the sampling rate of the result will be determined by this window,
-        instead of being predetermined by the data original sampling.
-        """
-
-        assert np.all(series.index[:-1] < series.index[1:]), (
-            f'Index should be monotonic. Got: {series.index}'
+        decimals: int = 0,
+        *,
+        start: bool = True,
+        stop: bool = True,
+        scale: nocte.core.time.TimeScale = 'milliseconds',
+    ) -> typing.Self:
+        """Round relative start and/or stop offsets."""
+        return dataclasses.replace(
+            self,
+            start=(
+                nocte.core.time.ms_round(
+                    self.start,
+                    scale=scale,
+                    decimals=decimals,
+                )
+                if start
+                else self.start
+            ),
+            stop=(
+                nocte.core.time.ms_round(
+                    self.stop,
+                    scale=scale,
+                    decimals=decimals,
+                )
+                if stop
+                else self.stop
+            ),
         )
 
-        # for very long series, we can just cut it before doing any checks
-        # noinspection PyTypeChecker
-        idx_start: int = np.searchsorted(series.index, self.start) - 1
-        idx_start = max(idx_start, 0)
-
-        # noinspection PyTypeChecker
-        idx_stop: int = np.searchsorted(series.index, self.stop) + 1
-        idx_stop = min(idx_stop, len(series))
-
-        series = series.iloc[idx_start:idx_stop]
-
-        series = series.dropna()
-        new_time = self.arange(step)
-
-        if len(series) == 0:
-            new_series = np.nan
-
-        else:
-            old_time = series.index.values - shift
-
-            new_series = np.interp(
-                new_time,
-                old_time,
-                series.values,
-                left=np.nan if not bounds_error else None,
-                right=np.nan if not bounds_error else None,
-            )
-
-        if isinstance(reset, bool):
-            reset = None if not reset else 'start'
-
-        if reset is not None:
-            reset = self.relative_time(reset)
-            new_time = new_time - reset
-
-        return pd.Series(new_series, index=new_time)
-
-    def interp_df(self, df: pd.DataFrame, step, pbar=None, **kwargs) -> pd.DataFrame:
-        """
-        Resample the data within the given window using linear interpolation.
-
-        Note: need to do series by series because scipy.interp gets confused if a matrix
-        contains nans
-        """
-        if isinstance(df, pd.Series):
-            # noinspection PyTypeChecker
-            return self.interp_series(
-                df,
-                step,
-                **kwargs,
-            )
-
-        df_iter = self._optional_pbar(
-            df.items(), total=len(df.columns), desc='interp', pbar=pbar
+    def floor(
+        self,
+        *,
+        start: bool = True,
+        stop: bool = True,
+        scale: nocte.core.time.TimeScale = 'milliseconds',
+    ) -> typing.Self:
+        """Round relative start and/or stop offsets down."""
+        return dataclasses.replace(
+            self,
+            start=(
+                nocte.core.time.ms_floor(self.start, scale=scale)
+                if start
+                else self.start
+            ),
+            stop=(
+                nocte.core.time.ms_floor(self.stop, scale=scale) if stop else self.stop
+            ),
         )
 
-        new_df = {
-            k: self.interp_series(series, step, **kwargs) for k, series in df_iter
-        }
+    def ceil(
+        self,
+        *,
+        start: bool = True,
+        stop: bool = True,
+        scale: nocte.core.time.TimeScale = 'milliseconds',
+    ) -> typing.Self:
+        """Round relative start and/or stop offsets up."""
+        return dataclasses.replace(
+            self,
+            start=(
+                nocte.core.time.ms_ceil(self.start, scale=scale)
+                if start
+                else self.start
+            ),
+            stop=(
+                nocte.core.time.ms_ceil(self.stop, scale=scale) if stop else self.stop
+            ),
+        )
 
-        return pd.DataFrame(new_df, columns=df.columns)
+    def round_loose(
+        self,
+        scale: nocte.core.time.TimeScale = 'milliseconds',
+    ) -> typing.Self:
+        """Round start down and stop up."""
+        return self.floor(
+            start=True,
+            stop=False,
+            scale=scale,
+        ).ceil(
+            start=False,
+            stop=True,
+            scale=scale,
+        )
+
+    def round_tight(
+        self,
+        scale: nocte.core.time.TimeScale = 'milliseconds',
+    ) -> typing.Self:
+        """Round start up and stop down."""
+        return self.ceil(
+            start=True,
+            stop=False,
+            scale=scale,
+        ).floor(
+            start=False,
+            stop=True,
+            scale=scale,
+        )
 
 
 class Windows(Collection):

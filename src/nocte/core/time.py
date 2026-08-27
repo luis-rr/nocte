@@ -58,7 +58,7 @@ def ms(
     )
 
 
-def _ms_scale(scale: TimeScale | float) -> float:
+def scale_to_ms(scale: TimeScale | float) -> float:
     """Resolve a named or numeric time scale to milliseconds."""
     if isinstance(scale, str):
         scale_ms = _MS_PER_SCALE[scale]
@@ -77,7 +77,7 @@ def ms_round(
     decimals: int = 0,
 ) -> float:
     """Round a millisecond value to a given time scale."""
-    scale_ms = _ms_scale(scale)
+    scale_ms = scale_to_ms(scale)
     return float(np.round(value / scale_ms, decimals=decimals) * scale_ms)
 
 
@@ -86,7 +86,7 @@ def ms_floor(
     scale: TimeScale | float = 'milliseconds',
 ) -> float:
     """Round a millisecond value down to a given time scale."""
-    scale_ms = _ms_scale(scale)
+    scale_ms = scale_to_ms(scale)
     return float(np.floor(value / scale_ms) * scale_ms)
 
 
@@ -95,7 +95,7 @@ def ms_ceil(
     scale: TimeScale | float = 'milliseconds',
 ) -> float:
     """Round a millisecond value up to a given time scale."""
-    scale_ms = _ms_scale(scale)
+    scale_ms = scale_to_ms(scale)
     return float(np.ceil(value / scale_ms) * scale_ms)
 
 
