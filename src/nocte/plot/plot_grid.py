@@ -417,7 +417,7 @@ class Grid:
     @staticmethod
     def _share_yaxes(cells, exclude_3d=True, exclude_1d=True):
         """Share y within rows"""
-        for _, row in cells.items():
+        for row in cells.values():
             if exclude_3d:
                 row = [cell for cell in row if not cell.is_3d]
 
@@ -431,7 +431,7 @@ class Grid:
     @staticmethod
     def _share_xaxes(cells, exclude_3d=True, exclude_1d=False):
         """Share x within columns"""
-        for _, col in cells.items():
+        for col in cells.values():
             if exclude_3d:
                 col = [cell for cell in col if not cell.is_3d]
 
@@ -727,7 +727,6 @@ class Grid:
             cell.ax.plot(df[x], df[y], **full_kwargs)
 
     def plot_2d_heatmap(self, df, /, which, func='mean', styles=None, **kwargs):
-        """ """
         if isinstance(func, str):
             func = getattr(pd.api.typing.DataFrameGroupBy, func)
 

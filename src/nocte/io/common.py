@@ -183,7 +183,7 @@ class MultiDataLoader(DataLoader):
         )
 
         sampling_rate = all_sampling_rates.mean()
-        if not all_sampling_rates.nunique() == 1:
+        if all_sampling_rates.nunique() != 1:
             logger.warning(
                 f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}'
             )
@@ -196,7 +196,7 @@ class MultiDataLoader(DataLoader):
             {k: loader.sample_count for k, loader in self.loaders.items()}
         )
         self._sample_count = all_sample_counts.min()
-        if not all_sample_counts.nunique() == 1:
+        if all_sample_counts.nunique() != 1:
             max_sample_count = all_sample_counts.max()
             logger.error(
                 f'Different sample counts across loaders. '

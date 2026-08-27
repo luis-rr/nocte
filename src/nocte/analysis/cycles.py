@@ -100,7 +100,7 @@ def estimate_interval(
 
 def plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None):
     if axs is None:
-        f, axs = plt.subplots(nrows=2, sharex='all', figsize=(2.5, 2.5))
+        _f, axs = plt.subplots(nrows=2, sharex='all', figsize=(2.5, 2.5))
 
     zoom_win = Win(ms(minutes=-1), ms(minutes=4))
 

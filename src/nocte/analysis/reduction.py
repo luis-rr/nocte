@@ -123,11 +123,6 @@ def _take_jpca(
     # Fit unconstrained linear dynamics: dX = X M
     M, *_ = np.linalg.lstsq(X, dX, rcond=None)
 
-    dX_hat = X @ M
-    ss_res = np.sum((dX - dX_hat) ** 2)
-    ss_tot = np.sum((dX - dX.mean(axis=0, keepdims=True)) ** 2)
-    dynamics_r2 = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
-
     # Keep only rotational part.
     M_skew = 0.5 * (M - M.T)
 
@@ -183,7 +178,7 @@ def _take_jpca(
     transformed = pd.DataFrame(Y, index=latent.index, columns=cols)
 
     # Variance captured by each projected axis.
-    total_var = np.sum(np.var(X, axis=0, ddof=1))
+    np.sum(np.var(X, axis=0, ddof=1))
     axis_var = np.var(Y, axis=0, ddof=1)
     explained_variance = pd.Series(
         axis_var,
@@ -281,7 +276,7 @@ def _take_tica(
     )
 
     dt = np.median(np.diff(time.astype(float)))
-    lag_samples = int(round(float(lag) / dt))
+    lag_samples = round(float(lag) / dt)
 
     if lag_samples <= 0:
         raise ValueError('lag must correspond to at least one sample.')
@@ -434,7 +429,7 @@ def _take_jpca_lagged(
     )
 
     dt = np.median(np.diff(time.astype(float)))
-    lag_samples = int(round(float(lag) / dt))
+    lag_samples = round(float(lag) / dt)
 
     if lag_samples <= 0:
         raise ValueError('lag must correspond to at least one sample.')
@@ -757,8 +752,8 @@ def _reduced_rank_regression(
     full_behavior_prediction = neural_data @ full_regression_weights
 
     # SVD of predicted behavior to find dominant behavioral subspace
-    left_singular_vectors, singular_values, right_singular_vectors_t = scipy.linalg.svd(
-        full_behavior_prediction, full_matrices=False
+    _left_singular_vectors, _singular_values, right_singular_vectors_t = (
+        scipy.linalg.svd(full_behavior_prediction, full_matrices=False)
     )
 
     # Top behavioral directions

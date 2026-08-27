@@ -457,7 +457,7 @@ class Traces(DataFrameWrapper):
         lengths = np.array([trace.shape[0] for trace in resampled.values()])
         assert np.all(lengths[0] == lengths)
 
-        time = pd.Index(list(resampled.values())[0].index)
+        time = pd.Index(next(iter(resampled.values())).index)
         for df in resampled.values():
             df.reset_index(drop=True, inplace=True)
 
@@ -474,7 +474,7 @@ class Traces(DataFrameWrapper):
 
     @classmethod
     def from_data_dict(
-        cls, datadict: dd.DataDict, key_name: str = None, pre_aligned=False
+        cls, datadict: dd.DataDict, key_name: str | None = None, pre_aligned=False
     ):
         """Assuming each entry is a traces object"""
 
@@ -1239,7 +1239,7 @@ class Traces(DataFrameWrapper):
         pairs: pd.DataFrame,
         lags_ms: np.ndarray,
         sliding_win_ms: float,
-        sliding_step_ms: float = None,
+        sliding_step_ms: float | None = None,
         pbar=None,
         pbar_single=None,
         pearson=True,
@@ -1290,7 +1290,7 @@ class Traces(DataFrameWrapper):
         template: np.ndarray,
         lags_ms: np.ndarray,
         sliding_win_ms: float,
-        sliding_step_ms: float = None,
+        sliding_step_ms: float | None = None,
         pbar=None,
         pbar_single=None,
         pearson=True,
@@ -1338,7 +1338,7 @@ class Traces(DataFrameWrapper):
         self,
         lags_ms: np.ndarray,
         sliding_win_ms: float,
-        sliding_step_ms: float = None,
+        sliding_step_ms: float | None = None,
         pbar=None,
         pbar_each=None,
         pearson=True,

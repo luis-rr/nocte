@@ -68,7 +68,7 @@ class XCorrBestLags:
         **kwargs,
     ):
         if ax is None:
-            f, ax = plt.subplots(constrained_layout=True)
+            _f, ax = plt.subplots(constrained_layout=True)
 
         bins = []
         for c in [c0, c1]:
@@ -85,7 +85,7 @@ class XCorrBestLags:
                 bins.append(np.linspace(self.reg[c].min(), self.reg[c].max(), 101))
 
         # noinspection PyTypeChecker
-        h, xedges, yedges, im = ax.hist2d(
+        _h, _xedges, _yedges, im = ax.hist2d(
             self.reg[c0],
             self.reg[c1],
             bins=bins,
@@ -128,7 +128,7 @@ class XCorrBestLags:
         self, ax=None, lag_bins=None, orientation='vertical', facecolor='k', **kwargs
     ):
         if ax is None:
-            f, ax = plt.subplots(constrained_layout=True)
+            _f, ax = plt.subplots(constrained_layout=True)
 
         if lag_bins is None:
             lag_bins = np.arange(

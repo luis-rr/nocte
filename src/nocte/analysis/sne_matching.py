@@ -373,7 +373,7 @@ def plot_xcorr_diag(
     events = events.sel_between(ref_time=zoom_win)
     diagmat = xcorr_to_diagmat(xcorr)
 
-    f, axs = plt.subplots(
+    _f, axs = plt.subplots(
         nrows=2,
         ncols=1,
         sharex='col',

@@ -3,6 +3,7 @@ General utility code to plot traces and spike trains
 """
 
 import colorsys
+import itertools
 import pathlib
 from contextlib import contextmanager
 
@@ -101,10 +102,7 @@ def _make_ch_cmaps(seq=('_light', '', '_dark')) -> dict:
     return {
         ch: matplotlib.colors.LinearSegmentedColormap.from_list(
             ch,
-            [
-                COLORS[f'{ch}{shade}'] if f'{ch}{shade}' in COLORS else shade
-                for shade in seq
-            ],
+            [COLORS.get(f'{ch}{shade}', shade) for shade in seq],
             N=256,
         )
         for ch in ['ch0', 'ch1', 'ch2', 'ch3']
@@ -690,7 +688,7 @@ def make_axs_long_experiment(
     if suptitle is not None:
         f.suptitle(suptitle)
 
-    for i, tbin in enumerate(zip(t_edges[:-1], t_edges[1:])):
+    for i, tbin in enumerate(itertools.pairwise(t_edges)):
         tbin = timeslice.Win(tbin[0], tbin[1])
 
         ax = axs.ravel()[i]
@@ -736,9 +734,7 @@ def make_axs_long_experiment(
     ax.tick_params(bottom=True, which='minor', length=2)
     ax.spines['bottom'].set_visible(True)
 
-    tbins = [
-        timeslice.Win(start, stop) for start, stop in zip(t_edges[:-1], t_edges[1:])
-    ]
+    tbins = [timeslice.Win(start, stop) for start, stop in itertools.pairwise(t_edges)]
     return dict(zip(tbins, axs.ravel()))
 
 
@@ -793,7 +789,7 @@ def plot_wrapped_lines(
 
             trace = tbin.crop_df(trace, reset=True)
 
-            plot_kwargs = {
+            {
                 **dict(
                     color=colors.get(name, f'C{j}'),
                     label=str(name).replace('_', ' '),
@@ -1328,7 +1324,7 @@ def plot_scat_with_marginals(
 
 
 def plot_trace_highlighted(
-    ax, trace: pd.Series, wins: timeslice.Windows, styles: dict = None, **kwargs
+    ax, trace: pd.Series, wins: timeslice.Windows, styles: dict | None = None, **kwargs
 ):
     """
     Plot a trace in sections given by some windows.
@@ -1934,7 +1930,7 @@ def plot_segmented_line(
 
     segments = []
 
-    for i0, i1 in zip(edges[:-1], edges[1:]):
+    for i0, i1 in itertools.pairwise(edges):
         if i1 <= i0:
             continue
 
@@ -2172,7 +2168,7 @@ def plot_segmented_line_cmap(
     segments = []
     colors = []
 
-    for i0, i1 in zip(edges[:-1], edges[1:]):
+    for i0, i1 in itertools.pairwise(edges):
         if i1 <= i0:
             continue
 
@@ -2320,7 +2316,7 @@ def plot_scatter_many(
     if figsize is None:
         figsize = (min(2 * len(dfs), 8), 2)
 
-    f, axs = plt.subplots(
+    _f, axs = plt.subplots(
         figsize=figsize, ncols=len(dfs), sharex='all', sharey='all', squeeze=False
     )
 

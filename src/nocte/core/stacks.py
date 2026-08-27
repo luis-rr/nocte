@@ -87,7 +87,7 @@ class Stack:
 
     def __init__(self, data: xr.DataArray):
         # make sure index name matches dim name.
-        for k in data.coords.indexes.keys():
+        for k in data.coords.indexes:
             data.coords.indexes[k].rename(k, inplace=True)
 
         self.data = data
@@ -768,14 +768,14 @@ class Stack:
         with h5py.File(path, mode='a') as f:
             for dim_idx, (dim_name, dim_values) in enumerate(self.coords.items()):
                 idx_key = f'{key}_index_{dim_idx:06d}'
-                if idx_key in f.keys() and overwrite:
+                if idx_key in f and overwrite:
                     del f[idx_key]
 
                 dset = f.create_dataset(idx_key, data=dim_values)
                 dset.attrs['name'] = dim_name
 
             values_key = f'{key}_values'
-            if values_key in f.keys() and overwrite:
+            if values_key in f and overwrite:
                 del f[values_key]
 
             _ = f.create_dataset(values_key, data=self.values)
@@ -1252,7 +1252,7 @@ class Stack:
         for i in tqdm(idcs, desc='slide'):
             candidate = self.values[i : i + slice_length]
 
-            r, p_value = scipy.stats.pearsonr(candidate, ref.values)
+            r, _p_value = scipy.stats.pearsonr(candidate, ref.values)
 
             scores[i] = r
 
@@ -1278,8 +1278,8 @@ class Stack:
 
         assert self.ndim == 1
 
-        coord_name = list(self.coords.keys())[0]
-        coord = list(self.coords.values())[0]
+        coord_name = next(iter(self.coords.keys()))
+        coord = next(iter(self.coords.values()))
 
         refs = np.searchsorted(coord, times)
 
@@ -1473,7 +1473,7 @@ class Stack:
         """
         masks = {}
 
-        for dim, coord in self.coords.items():
+        for dim in self.coords:
             dim: str
 
             mask = np.ones(len(self.coords[dim]), dtype=np.bool_)

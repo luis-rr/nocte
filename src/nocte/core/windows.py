@@ -1679,7 +1679,7 @@ class Windows(DataFrameWrapper):
 
         wins = self.copy()
 
-        wins.reg[col] = wins.reg[col].map(lambda x: renaming[x] if x in renaming else x)
+        wins.reg[col] = wins.reg[col].map(lambda x: renaming.get(x, x))
 
         return wins
 
@@ -1917,10 +1917,7 @@ class Windows(DataFrameWrapper):
             return False
 
         prev_prev_win = prev_win.shift(1)
-        if not np.all(this_win.iloc[2:] == prev_prev_win.iloc[2:]):
-            return False
-
-        return True
+        return np.all(this_win.iloc[2:] == prev_prev_win.iloc[2:])
 
     def force_uniform(self, length=None):
         """

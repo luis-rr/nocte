@@ -7,6 +7,7 @@ The recorded square signal is common to everyone and is assumed here to be exact
 The times of this reference are extracted in "extract_onsets" and stored as a csv.
 """
 
+import itertools
 import logging
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def extract_onsets(
         np.unique(np.append(np.arange(*load_win_idcs, chunk_length), load_win_idcs[-1]))
     )
 
-    chunks = zip(breaks[:-1], breaks[1:])
+    chunks = itertools.pairwise(breaks)
 
     chunks = tqdm(chunks, desc='onsets', total=len(breaks) - 1)
 

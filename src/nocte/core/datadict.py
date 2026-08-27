@@ -166,8 +166,8 @@ class DataDict(DataFrameWrapper):
     def flatten(
         self,
         *,
-        inner_name: str = None,
-        outer_name: str = None,
+        inner_name: str | None = None,
+        outer_name: str | None = None,
     ) -> Self:
 
         data = {}
@@ -317,7 +317,7 @@ class DataDict(DataFrameWrapper):
         for key, s in stackset_dict.items():
             merged_reg[key] = s.reg.rename_axis(index='local_id')
 
-            for local_id, data in s.data.items():
+            for data in s.data.values():
                 merged_data[global_id] = data
                 global_id += 1
 

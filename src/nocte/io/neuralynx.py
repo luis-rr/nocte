@@ -448,7 +448,7 @@ class NCSLoader(common.DataLoader):
         to_drop = int(to_drop)
         data = data[: len(data) - to_drop]
 
-        desired_scaling, desired_unit = MICROVOLT_SCALING
+        desired_scaling, _desired_unit = MICROVOLT_SCALING
 
         # data comes in "ADC counts"
         # header specifies the conversion factor between the ADC counts and Volts
@@ -498,7 +498,7 @@ class NCSLoader(common.DataLoader):
         loaded = loaded.reshape(1, -1)
 
         expected = common.DataLoader.slice_size(valid_idcs, self.sample_count)
-        if not loaded.shape[1] == expected:
+        if loaded.shape[1] != expected:
             logger.error(f'Asked to load {expected} samples but got {loaded.shape}')
 
         return loaded
@@ -569,7 +569,7 @@ class NCSLoaderUneven(NCSLoader):
             ]
         )
 
-        desired_scaling, desired_unit = MICROVOLT_SCALING
+        desired_scaling, _desired_unit = MICROVOLT_SCALING
 
         if adjust_gain:
             ad_bit_volts = np.float64(self.header['ADBitVolts'])
@@ -677,7 +677,7 @@ class NEVLoader:
     def to_df(self):
         data = {
             name: self.records[name]
-            for name in self.records.dtype.fields.keys()
+            for name in self.records.dtype.fields
             if self.records[name].ndim == 1
         }
         return pd.DataFrame(data)

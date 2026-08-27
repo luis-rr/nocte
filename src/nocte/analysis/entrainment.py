@@ -66,7 +66,7 @@ def group_pulses(light_wins, max_interval=ms(minutes=5)):
 
 
 def group_pulses_multi(exp_light_wins):
-    for exp_name in exp_light_wins.keys():
+    for exp_name in exp_light_wins:
         light_wins = exp_light_wins[exp_name]
         light_wins['train'] = group_pulses(
             light_wins,

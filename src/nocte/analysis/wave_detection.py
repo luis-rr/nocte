@@ -494,7 +494,7 @@ def find_waves_in_recording(
 
 
 def make_scatter_matrix_fig(cols, figsize=(4, 4)):
-    f, axs = plt.subplots(
+    _f, axs = plt.subplots(
         ncols=len(cols),
         nrows=len(cols),
         sharex='col',
@@ -535,7 +535,7 @@ def plot_scatter_matrix(axs, df, *, max_scatter=10_000, alpha=0.25, s=10, **kwar
 
 
 def make_hists_fig(cols, figsize=(9, 1.5)):
-    f, axs = plt.subplots(ncols=len(cols), figsize=figsize)
+    _f, axs = plt.subplots(ncols=len(cols), figsize=figsize)
 
     for ax, col in zip(axs, cols):
         ax.set_xlabel(col)

@@ -29,3 +29,6 @@ where = ["src"]
 
 [tool.ruff.format]
 quote-style = "single"
+
+[tool.ruff.lint]
+ignore = ["C408"]

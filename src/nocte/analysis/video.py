@@ -205,7 +205,7 @@ def get_frame_idx_by_fps(avi_path, time_ms) -> int:
     frame_count = frame_count - 1
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    start_idx, stop_idx = 0, frame_count
+    start_idx, _stop_idx = 0, frame_count
 
     time_idx = int(np.round(time_ms * timeslice.MS_TO_S * fps))
     assert 0 <= start_idx < frame_count, (
@@ -223,7 +223,7 @@ def load_movie_frame_idx(avi_path, idx) -> stacks.Stack:
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
 
-    ret, frame_data = cap.read()
+    _ret, frame_data = cap.read()
 
     coords = {
         'height': pd.RangeIndex(stop=frame_height),
@@ -356,7 +356,7 @@ def extract_light_wins(lum: pd.Series, high_q=0.99, low_q=0.1, merge_length=1_00
 def get_first_timestamp(loader) -> float:
     timestamps = []
 
-    for idx, lo in loader.loaders.items():
+    for lo in loader.loaders.values():
         with open(lo.header['full_path'], 'rb') as fid:
             recs = neuralynx.NeuralynxBaseLoader.read_records(
                 fid, neuralynx.NCSLoader.RECORD, 0, 1

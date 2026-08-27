@@ -4,6 +4,7 @@ Internally stored as a simple pd.DataFrame.
 """
 
 import functools
+import itertools
 import logging
 
 import numba as nb
@@ -523,7 +524,7 @@ class Events(DataFrameWrapper):
 
         hists = []
 
-        for t0, t1 in zip(tbins[:-1], tbins[1:]):
+        for t0, t1 in itertools.pairwise(tbins):
             sel = self.sel_between(**{by: (t0, t1)})
             h, _ = np.histogram(sel[col], bins=vbins)
             hists.append(h)

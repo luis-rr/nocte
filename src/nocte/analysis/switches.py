@@ -227,7 +227,7 @@ def plot_lead_state_cycle_counts(counts, suptitle=''):
     for i, (a, b) in enumerate(combs2d):
         ax = axs[1 + i]
 
-        h, _, _, im = ax.hist2d(
+        _h, _, _, im = ax.hist2d(
             counts[a],
             counts[b],
             bins=[np.arange(-0.5, 9, 1)] * 2,
