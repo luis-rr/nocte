@@ -23,7 +23,6 @@ import logging
 import os.path
 import re
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -258,7 +257,7 @@ class NeuralynxBaseLoader:
         chan_number_candidates = chan_number_candidates[chan_number_candidates != -1]
 
         if len(chan_number_candidates) == 0:
-            logger.error(f'No channel number')
+            logger.error('No channel number')
             return None
 
         chan_number_candidates = np.unique(chan_number_candidates)
@@ -760,7 +759,7 @@ class MultiNCSLoader(common.MultiDataLoader):
         return time_created
 
     @classmethod
-    def from_paths(cls, paths: List[str], loader_class=NCSLoader):
+    def from_paths(cls, paths: list[str], loader_class=NCSLoader):
         """collect all loaders in a dict with channel id as the key"""
 
         loaders = {}

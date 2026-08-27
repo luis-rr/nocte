@@ -10,8 +10,7 @@ from nocte import plot as splot
 from nocte import timeslice
 from nocte import traces as tr
 from nocte.analysis import stim
-from nocte.timeslice import Win
-from nocte.timeslice import ms, MS_TO_S
+from nocte.timeslice import MS_TO_S, Win, ms
 
 PROT_COLORS = pd.Series(
     {

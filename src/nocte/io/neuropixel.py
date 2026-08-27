@@ -33,7 +33,7 @@ import pandas as pd
 
 from nocte import timeslice
 from nocte.io import common
-from nocte.timeslice import MS_TO_S, S_TO_MS
+from nocte.timeslice import MS_TO_S
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def read_meta(meta_path: Path):
 
     else:
         logger.warning(
-            f'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.'
+            'Missing "fileSizeBytes" in meta file. Attempting to take value from file system.'
         )
         assert str(meta_path).endswith('.meta')
         bin_path = str(meta_path)[: -len('meta')] + 'bin'
@@ -89,7 +89,7 @@ def read_meta(meta_path: Path):
         ).astype(int)
 
     else:
-        logger.warning(f'Missing "snsShankMap" in meta file.')
+        logger.warning('Missing "snsShankMap" in meta file.')
 
     return processed
 
@@ -219,7 +219,7 @@ def _process_meta_imec(meta, prefix='im'):
             gain = processed['chan_gains']['LF'][chan_id - ap_count]
             if gain == 0:
                 gain = 1
-                logger.warning(f'Why is gain 0 ?')
+                logger.warning('Why is gain 0 ?')
             conv = i2v / gain
         else:
             conv = 1
@@ -468,7 +468,7 @@ class DataLoader(common.DataLoader):
         meta_path = list(probe_path.glob('*.ap.meta'))
         if len(meta_path) == 0:
             if accept_lf:
-                logger.warning(f'Failed to find ap, trying lf')
+                logger.warning('Failed to find ap, trying lf')
                 meta_path = list(probe_path.glob('*.lf.meta'))
             else:
                 raise FileNotFoundError(
@@ -485,7 +485,7 @@ class DataLoader(common.DataLoader):
         bin_path = list(probe_path.glob('*.ap.bin'))
         if len(bin_path) == 0:
             if accept_lf:
-                logger.warning(f'Failed to find ap, trying lf')
+                logger.warning('Failed to find ap, trying lf')
                 bin_path = list(probe_path.glob('*.lf.bin'))
             else:
                 raise FileNotFoundError(
@@ -606,7 +606,7 @@ class DataLoaderBaseline(DataLoader):
 
         self.ref_channels = ref_channels
         if 768 in self.ref_channels:
-            logger.warning(f'Sys channel in ref channels for baseline extraction')
+            logger.warning('Sys channel in ref channels for baseline extraction')
 
         self.channel_offsets = self._calibrate_channels(
             ref_time_ms,

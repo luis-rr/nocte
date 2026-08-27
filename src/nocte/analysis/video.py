@@ -367,7 +367,7 @@ def get_first_timestamp(loader) -> float:
     timestamps = np.asarray(timestamps)
 
     assert np.all(timestamps[0] == timestamps), (
-        f'Different starting timestamps for different sub-loaders'
+        'Different starting timestamps for different sub-loaders'
     )
 
     return np.min(timestamps) * MICROS_TO_MS
@@ -394,7 +394,7 @@ def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
 
     if len(new_time) == len(lum) - 1:
         # in some versions of the data, we stored info about a dummy last frame that doesn't really exist
-        logging.warning(f'Skipping last entry (missing 1 timestamp)')
+        logging.warning('Skipping last entry (missing 1 timestamp)')
         lum = lum.iloc[:-1]
 
     assert len(new_time) == len(lum), (
@@ -440,7 +440,7 @@ def adjust_frame_times_multiple_tries(exp_info, lum: pd.Series):
             if i == len(to_try) - 1:
                 raise
             else:
-                logging.info(f'Try different camera label')
+                logging.info('Try different camera label')
 
 
 ########################################################################################################################

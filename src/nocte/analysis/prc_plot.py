@@ -5,14 +5,12 @@ Plotting code for beta phase analysis.
 import matplotlib.colors
 import matplotlib.patheffects
 import matplotlib.ticker
-import matplotlib.ticker
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
 from nocte import plot as splot
-from nocte.timeslice import Windows
-from nocte.timeslice import ms
+from nocte.timeslice import Windows, ms
 
 PHASE_CAT_COLORS = {
     'early sws': 'C0',
@@ -489,7 +487,7 @@ def plot_phase_dependency(beta_comb_cut, phase_comb_cut, class_by='phase_single_
         class_by=class_by,
         shaded=False,
     )
-    ax.set_title(f'seeing claustrum', color=CAP_COLORS['seeing'])
+    ax.set_title('seeing claustrum', color=CAP_COLORS['seeing'])
 
     ax = axs[1]
     plot_phases_grouped_single(
@@ -498,7 +496,7 @@ def plot_phase_dependency(beta_comb_cut, phase_comb_cut, class_by='phase_single_
         class_by=class_by,
         shaded=False,
     )
-    ax.set_title(f'blind claustrum', color=CAP_COLORS['blind'])
+    ax.set_title('blind claustrum', color=CAP_COLORS['blind'])
 
     ax = axs[2]
     plot_betas_grouped_single(

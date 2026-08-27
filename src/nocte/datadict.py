@@ -431,7 +431,7 @@ class DataDict(DataFrameWrapper):
 
         raise TypeError(f'Object of type {type(item)} cannot be cropped')
 
-    def shift_time(self, ts: pd.Series | np.ndarray | int | float):
+    def shift_time(self, ts: pd.Series | np.ndarray | float):
         if isinstance(ts, (int, float, np.ndarray)):
             ts = pd.Series(ts, index=self.index)
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-
 import timeslice
+
 from nocte.timeslice import Windows, _classify_events_exclusive
 
 

@@ -204,7 +204,7 @@ class SpikeTrains:
         if not np.allclose(all_start, all_start[0]) or not np.allclose(
             all_stop, all_stop[0]
         ):
-            logging.warning(f'Spike trains cover different time windows')
+            logging.warning('Spike trains cover different time windows')
 
         win_ms = timeslice.Win(np.min(all_start), np.max(all_stop))
 
@@ -247,7 +247,7 @@ class SpikeTrains:
 
         all_spikes = []
 
-        for ks_path in base_path.glob(f'catgt_*/*_imec*/imec*_ks2'):
+        for ks_path in base_path.glob('catgt_*/*_imec*/imec*_ks2'):
             probe = int(str(ks_path)[-(1 + len('_ks2')) : -len('_ks2')])
 
             spikes = cls.load_ks2_single(

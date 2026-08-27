@@ -114,10 +114,10 @@ class XCorrBestLags:
             bins = np.arange(self.reg['lag'].min() - 0.5, self.reg['lag'].max() + 1, 1)
 
         if self.reg['lag'].min() < np.min(bins):
-            logging.warning(f'Lags below lowest bin')
+            logging.warning('Lags below lowest bin')
 
         if self.reg['lag'].max() > np.max(bins):
-            logging.warning(f'Lags above highest bin')
+            logging.warning('Lags above highest bin')
 
         h, edges = np.histogram(self.reg['lag'], bins=bins)
 

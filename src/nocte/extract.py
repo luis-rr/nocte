@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte import timeslice, stacks
-from nocte.analysis import sne, sleep, sne_matching
+from nocte import stacks, timeslice
+from nocte.analysis import sleep, sne, sne_matching
 from nocte.paths import Registry
 from nocte.timeslice import Win, Windows
 

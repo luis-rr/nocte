@@ -7,13 +7,13 @@ mechanism.
 """
 
 import logging
-
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-from nocte.io import common
+import numpy as np
 import open_ephys.analysis
+import pandas as pd
+
+from nocte.io import common
 
 logger = logging.getLogger(__name__)
 

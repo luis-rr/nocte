@@ -542,12 +542,10 @@ class Stack:
     @_expose
     def __len__(self, *args, **kwargs):
         """returns the length along the first dimension"""
-        pass
 
     @_expose
     def __array__(self, *args, **kwargs):
         """compatibility with numpy.asarray"""
-        pass
 
     ######################################################################
     # Convenient data access via DataArray core api
@@ -918,7 +916,7 @@ class Stack:
             combs = tqdm(combs, desc='load trace')
 
         if (windows['start'] < 0).any() or (windows['stop'] < 0).any():
-            logging.warning(f'Negative indices. Too close to edge?')
+            logging.warning('Negative indices. Too close to edge?')
 
         try:
             for (i, chan), (j, (win_idx, start, stop)) in combs:
@@ -1237,7 +1235,7 @@ class Stack:
         assert ref.ndim == 1
 
         assert self.estimate_sampling_period() == ref.estimate_sampling_period(), (
-            f'Sampling periods should match for template detection.'
+            'Sampling periods should match for template detection.'
         )
 
         dim = self.get_coords_names()[0]
@@ -1480,7 +1478,7 @@ class Stack:
 
             mask = np.ones(len(self.coords[dim]), dtype=np.bool_)
 
-            if dim in sel.keys():
+            if dim in sel:
                 mask[sel[dim] :] = False
                 np.random.shuffle(mask)
 

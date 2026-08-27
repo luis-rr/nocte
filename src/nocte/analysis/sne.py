@@ -2,12 +2,11 @@
 Code to handle samples, events and collections of events
 """
 
-import numba
 import numpy as np
 import pandas as pd
 
-from nocte.events import Events
 from nocte.analysis import wave_detection
+from nocte.events import Events
 
 
 class SharpNegativeEvents(Events):
@@ -103,7 +102,7 @@ class SharpNegativeEvents(Events):
 
     def add_details(self, all_beta):
         beta_max = all_beta.max(axis=1)
-        copy = self.lookup_and_set(f'beta_max', beta_max, cols=['ref'], by='time')
+        copy = self.lookup_and_set('beta_max', beta_max, cols=['ref'], by='time')
 
         for ch, beta in all_beta.items():
             copy = copy.lookup_and_set(f'beta_ch{ch}', beta, cols=['ref'], by='time')

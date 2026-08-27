@@ -10,8 +10,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
+from nocte import events, stacks, timeslice
 from nocte import plot as splot
-from nocte import stacks, timeslice, events
 from nocte.timeslice import ms
 
 

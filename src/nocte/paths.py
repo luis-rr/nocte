@@ -5,25 +5,24 @@ All partial results and processed data are stored in HDF5 files within a folder 
 """
 
 import datetime
+import io
 import itertools
 import logging
 import os
-import io
-import requests
 from pathlib import Path
 from socket import gethostname
 
 import numpy as np
 import pandas as pd
+import requests
 from tqdm.auto import tqdm
 
+import nocte.events
 import nocte.traces
 from nocte import timeslice
-import nocte.events
 from nocte.datadict import DataDict
 from nocte.df_wrapper import DataFrameWrapper, _optional_pbar
 from nocte.stacks import Stack
-
 
 logger = logging.getLogger(__name__)
 

@@ -10,10 +10,10 @@ import numba as nb
 import numpy as np
 import pandas as pd
 
-from nocte import plot as splot
-from nocte import timeslice, stacks
-from nocte.df_wrapper import DataFrameWrapper
 from nocte import datadict as dd
+from nocte import plot as splot
+from nocte import stacks, timeslice
+from nocte.df_wrapper import DataFrameWrapper
 
 
 @nb.njit(parallel=True)
@@ -279,7 +279,7 @@ class Events(DataFrameWrapper):
             reg = reg.sort_index()
 
         if not reg.index.is_unique:
-            logging.warning(f'New index is not unique')
+            logging.warning('New index is not unique')
 
         return self._replace_reg(reg)
 
@@ -323,12 +323,12 @@ class Events(DataFrameWrapper):
         wins = self.reg.copy()
 
         if 'start_time' in wins.columns:
-            logging.warning(f'Overwriting event column "start_time"')
+            logging.warning('Overwriting event column "start_time"')
 
         wins['start_time'] = wins[col] + win_ms[0]
 
         if 'stop_time' in wins.columns:
-            logging.warning(f'Overwriting event column "start_time"')
+            logging.warning('Overwriting event column "start_time"')
 
         wins['stop_time'] = wins[col] + win_ms[1]
 

@@ -22,13 +22,11 @@ class DataLoader(abc.ABC):
     @abc.abstractmethod
     def sample_count(self) -> int:
         """The total number of samples in this loader"""
-        pass
 
     @property
     @abc.abstractmethod
     def sampling_period(self) -> float:
         """The inter-sample interval in ms"""
-        pass
 
     @property
     @abc.abstractmethod
@@ -37,7 +35,6 @@ class DataLoader(abc.ABC):
         A DataFrame with metadata about the channels that this loader can load from.
         Index must be unique and will be used to select channels to load.
         """
-        pass
 
     @abc.abstractmethod
     def load(
@@ -53,7 +50,6 @@ class DataLoader(abc.ABC):
         """
         # TODO: most implementations ignore "sample_idcs.stride",
         #  so this should instead be just a pair of [start, stop) params
-        pass
 
     ##############################################################
     # Convenience methods
@@ -131,7 +127,7 @@ class DataLoader(abc.ABC):
                 if len(local_ids) == 0:
                     raise KeyError(f'Failed to locate probe-{probe} channel-{ch}')
                 else:
-                    logger.error(f'Channel error by 1')
+                    logger.error('Channel error by 1')
 
             assert len(local_ids) == 1
             collect.append(local_ids)

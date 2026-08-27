@@ -6,12 +6,12 @@ format that is transparent for the rest of the pipeline.
 Code is very simplified and does not support full npix format potential.
 """
 
-from tqdm.auto import tqdm
-
 import logging
 import math
 from pathlib import Path
+
 import numpy as np
+from tqdm.auto import tqdm
 
 INT16_MIN = -32768
 INT16_MAX = 32767
@@ -183,7 +183,7 @@ def store_neuropixels_data(
     meta_path = output_folder / f'{stem}.ap.meta'
 
     if (bin_path.exists() or meta_path.exists()) and not overwrite:
-        logging.warning(f'Files exist. Skipping')
+        logging.warning('Files exist. Skipping')
         return
 
     assert all(chunk.ndim == 2 for chunk in chunks)

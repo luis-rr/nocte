@@ -344,7 +344,7 @@ def _take_tica(
 
 def take_tica(
     traces: tr.Traces,
-    lag: float | int,
+    lag: float,
     n_components: int | None = None,
 ) -> tr.Traces:
     transformed, explained_variance, components = _take_tica(
@@ -533,7 +533,7 @@ def _take_jpca_lagged(
 
 def take_jpca_lagged(
     traces: tr.Traces,
-    lag: float | int,
+    lag: float,
     n_components: int | None = None,
 ) -> tr.Traces:
     transformed, explained_variance, components = _take_jpca_lagged(
@@ -698,7 +698,7 @@ def _take_cca_lagged(
 
 def take_cca_lagged(
     traces: tr.Traces,
-    lag: float | int,
+    lag: float,
     n_components: int | None = None,
 ) -> tr.Traces:
     transformed, explained_variance, components = _take_cca_lagged(

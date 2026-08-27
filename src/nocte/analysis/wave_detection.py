@@ -35,13 +35,11 @@ import numpy as np
 import pandas as pd
 import scipy.signal
 import scipy.stats
-
+from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
 from nocte import timeslice
 from nocte import traces as tr
-
-from matplotlib import pyplot as plt
 
 
 @nb.njit(parallel=True)
