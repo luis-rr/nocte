@@ -335,3 +335,25 @@ def test_round_tight():
     rounded = win.round_tight('minutes')
 
     assert rounded == Win(-60_000, 60_000, ref=123)
+
+
+def test_empty_win_contains_no_time():
+    win = Win(5, 5)
+
+    assert not win.contains(5)
+
+
+@pytest.mark.parametrize(
+    'empty',
+    [
+        Win(0, 0),
+        Win(5, 5),
+        Win(10, 10),
+        Win(0, 0, ref=5),
+    ],
+)
+def test_empty_win_does_not_overlap(empty):
+    win = Win(0, 10)
+
+    assert not empty.overlaps(win)
+    assert not win.overlaps(empty)

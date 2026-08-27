@@ -14,7 +14,7 @@ class _DummyCollection(nocte.core.collections.Collection):
         self.data = np.asarray(data)
         self.meta = meta.copy()
 
-        self._validate_meta()
+        self._validate_meta(len(self.data))
 
     def __len__(self) -> int:
         return len(self.data)

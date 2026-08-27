@@ -10,6 +10,8 @@ from tqdm.auto import tqdm
 
 How = typing.Literal['all', 'any']
 
+ItemId = int
+
 IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
 
 MaskLike = collections.abc.Sequence[bool] | np.ndarray | pd.Series
@@ -21,10 +23,18 @@ class Collection(abc.ABC):
     meta: pd.DataFrame
 
     @abc.abstractmethod
-    def __len__(self) -> int: ...
-
-    @abc.abstractmethod
     def _take_pos(self, positions: np.ndarray) -> typing.Self: ...
+
+    @staticmethod
+    def _default_meta(n_items: int) -> pd.DataFrame:
+        """Return a default metadata DataFrame for a collection."""
+        return pd.DataFrame(
+            index=pd.RangeIndex(n_items, name='item_id'),
+        )
+
+    def __len__(self) -> int:
+        """The number of items in the collection."""
+        return len(self.meta)
 
     @property
     def index(self) -> pd.Index:
@@ -40,11 +50,11 @@ class Collection(abc.ABC):
     def __setitem__(self, key: typing.Any, value: typing.Any) -> None:
         self.meta[key] = value
 
-    def _validate_meta(self) -> None:
+    def _validate_meta(self, n_items: int) -> None:
         """Validate the core metadata invariants of a collection."""
-        if len(self.meta) != len(self):
+        if len(self.meta) != n_items:
             raise ValueError(
-                f'meta has {len(self.meta)} rows, but the collection has {len(self)} items'
+                f'meta has {len(self.meta)} rows, but the collection has {n_items} items'
             )
 
         if not self.meta.index.is_unique:
