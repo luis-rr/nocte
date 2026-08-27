@@ -31,8 +31,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import nocte.core.sampling
+import nocte.core.time
 from nocte.core import windows as timeslice
-from nocte.core.windows import MS_TO_S
+from nocte.core.time import MS_TO_S
 from nocte.io import common
 
 logger = logging.getLogger(__name__)
@@ -396,7 +398,7 @@ class DataLoader(common.DataLoader):
             )
             meta['sampling_rate'] = expected_sampling_rate
 
-        meta['sampling_period'] = timeslice.SamplingRate(
+        meta['sampling_period'] = nocte.core.sampling.SamplingRate(
             meta['sampling_rate']
         ).adjust_sampling_period()
 
@@ -418,7 +420,7 @@ class DataLoader(common.DataLoader):
             meta = pd.Series(json.load(f))
 
             if 'sampling_period' not in meta:
-                meta['sampling_period'] = timeslice.SamplingRate(
+                meta['sampling_period'] = nocte.core.sampling.SamplingRate(
                     meta['sampling_rate']
                 ).adjust_sampling_period()
 
@@ -668,7 +670,7 @@ class DataLoaderBaseline(DataLoader):
             load_hz = self.sampling_rate / 30
 
         load_win_ms = timeslice.Win.build_centered(
-            ref_ms, timeslice.ms(minutes=duration_min)
+            ref_ms, nocte.core.time.ms(minutes=duration_min)
         )
 
         load_slice = load_win_ms.to_slice_idx(self.sampling_rate, load_hz)

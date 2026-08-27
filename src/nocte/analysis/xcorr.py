@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 
 from nocte.core import windows as timeslice
 from nocte.core.stacks import Stack
-from nocte.core.windows import MS_TO_S
+from nocte.core.time import MS_TO_S
 
 
 @njit(parallel=True)

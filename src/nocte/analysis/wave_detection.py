@@ -38,6 +38,7 @@ import scipy.stats
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
+import nocte.core.time
 from nocte.core import traces as tr
 from nocte.core import windows as timeslice
 
@@ -447,7 +448,7 @@ def find_waves_in_recording(
     load_win=None,
     load_hz=1000,
     channels=None,
-    chunk_size=timeslice.ms(hours=1),  # noqa: B008
+    chunk_size=nocte.core.time.ms(hours=1),  # noqa: B008
     **kwargs,
 ):
     assert len(loader.channels) == 1

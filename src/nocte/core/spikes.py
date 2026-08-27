@@ -9,6 +9,7 @@ from typing import Self
 import numpy as np
 import pandas as pd
 
+import nocte.core.time
 from nocte.core import windows as timeslice
 from nocte.core.collections import Collection
 from nocte.core.datadict import DataDict
@@ -428,7 +429,7 @@ class Spikes(Events):
         desc = (
             f'{len(self.index):,g} spikes from '
             f'{len(self.units.index):,g} units in '
-            f'{timeslice.ms_to_str(self.win_ms.length)}'
+            f'{nocte.core.time.ms_to_str(self.win_ms.length)}'
         )
 
         if not quiet:

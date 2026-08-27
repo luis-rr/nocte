@@ -28,7 +28,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte.core import windows as timeslice
+import nocte.core.sampling
+import nocte.core.time
 from nocte.io import common
 
 logger = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ class NeuralynxBaseLoader:
         if 'SamplingFrequency' in hdr:
             hdr['sampling_rate'] = hdr['SamplingFrequency']
             sampling_rate = hdr['sampling_rate']
-            hdr['sampling_period'] = timeslice.SamplingRate(
+            hdr['sampling_period'] = nocte.core.sampling.SamplingRate(
                 sampling_rate
             ).adjust_sampling_period()
 
@@ -727,18 +728,18 @@ class MultiNCSLoader(common.MultiDataLoader):
 
     def get_timestamp_start(self, align_duration=False):
         hdr = self.get_joint_header()
-        assert timeslice.to_ms(hdr['time_created'].diff().max()) <= timeslice.ms(
-            seconds=1
-        )
+        assert nocte.core.time.to_ms(
+            hdr['time_created'].diff().max()
+        ) <= nocte.core.time.ms(seconds=1)
         time_created = hdr['time_created'].mean()
 
         if align_duration:
-            assert timeslice.to_ms(hdr['time_closed'].diff().max()) <= timeslice.ms(
-                seconds=1
-            )
+            assert nocte.core.time.to_ms(
+                hdr['time_closed'].diff().max()
+            ) <= nocte.core.time.ms(seconds=1)
             time_closed = hdr['time_closed'].mean()
 
-            timestamp_duration_ms = timeslice.to_ms(time_closed - time_created)
+            timestamp_duration_ms = nocte.core.time.to_ms(time_closed - time_created)
 
             if (timestamp_duration_ms - self.duration_ms) > 0:
                 center = time_created + (time_closed - time_created) * 0.5
@@ -748,7 +749,7 @@ class MultiNCSLoader(common.MultiDataLoader):
                 new_time_closed = center + half
 
                 logger.warning(
-                    f'Timestamp and raw data differ by {timeslice.ms_to_str(timestamp_duration_ms - self.duration_ms)}.'
+                    f'Timestamp and raw data differ by {nocte.core.time.ms_to_str(timestamp_duration_ms - self.duration_ms)}.'
                     f' Centering timestamps from <{time_created} - {time_closed}> to  '
                     f'<{new_time_created} - {new_time_closed}>'
                 )

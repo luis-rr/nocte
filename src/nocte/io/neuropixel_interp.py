@@ -15,7 +15,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from nocte.core import windows as timeslice
+import nocte.core.sampling
+import nocte.core.time
 from nocte.io import neuropixel
 
 # TODO: we should look up channel index by type. We are after SY0, which can be looked up in channel map.
@@ -26,9 +27,9 @@ SYS_CHANNEL = 768
 def extract_onsets(
     raw: neuropixel.DataLoader,
     load_win_ms=None,
-    chunk_length_ms=timeslice.ms(minutes=15),  # noqa: B008
+    chunk_length_ms=nocte.core.time.ms(minutes=15),  # noqa: B008
 ) -> pd.Series:
-    stored_hz = timeslice.SamplingRate(raw.sampling_rate)
+    stored_hz = nocte.core.sampling.SamplingRate(raw.sampling_rate)
 
     if load_win_ms is None:
         load_win_ms = (0, raw.duration_ms)
@@ -76,7 +77,7 @@ def extract_onsets_multiprobe(all_raw, load_win_ms):
 
 
 def _make_simple_meta(original, channels, target_hz):
-    target_period_ms = timeslice.SamplingRate(target_hz).period
+    target_period_ms = nocte.core.sampling.SamplingRate(target_hz).period
 
     id_to_idx = pd.Series(
         index=original['all_channel_ids'],
@@ -116,7 +117,7 @@ def interpolate_data(
     :param target_hz:
     :return:
     """
-    target_hz = timeslice.SamplingRate(target_hz)
+    target_hz = nocte.core.sampling.SamplingRate(target_hz)
     target_period_ms = target_hz.period
 
     fake_meta = _make_simple_meta(raw.meta, channels, target_hz)
@@ -197,7 +198,7 @@ def get_all_onsets(onsets_filename, all_raw, load_win_ms):
 def onset_idcs_to_ms(all_raw, all_onset_idcs):
     all_onset_ms = pd.DataFrame.from_dict(
         {
-            probe: timeslice.SamplingRate(raw.sampling_rate).idcs_to_ms(
+            probe: nocte.core.sampling.SamplingRate(raw.sampling_rate).idcs_to_ms(
                 all_onset_idcs[probe]
             )
             for probe, raw in all_raw.items()
@@ -214,11 +215,11 @@ def estimate_onset_actual_time(all_raw, all_onset_idcs):
 
     # we expect all onsets to be exactly 1 second apart
     # noinspection PyUnresolvedReferences
-    if not (actual_time.diff().dropna() == timeslice.S_TO_MS).all():
+    if not (actual_time.diff().dropna() == nocte.core.time.S_TO_MS).all():
         actual_time_bad = actual_time
 
         actual_time = pd.Series(
-            np.arange(len(actual_time)) * timeslice.S_TO_MS + actual_time.min(),
+            np.arange(len(actual_time)) * nocte.core.time.S_TO_MS + actual_time.min(),
             index=actual_time.index,
         )
 
@@ -231,8 +232,8 @@ def estimate_onset_actual_time(all_raw, all_onset_idcs):
 
         logging.warning(  # noqa: LOG015
             f'Expected onsets to be exactly 1 second apart, but got: {desc}\n'
-            f'Adjusting from [{timeslice.ms_to_str(actual_time_bad.min())}-{timeslice.ms_to_str(actual_time_bad.max())}]'
-            f' to [{timeslice.ms_to_str(actual_time.min())}-{timeslice.ms_to_str(actual_time.max())}]'
+            f'Adjusting from [{nocte.core.time.ms_to_str(actual_time_bad.min())}-{nocte.core.time.ms_to_str(actual_time_bad.max())}]'
+            f' to [{nocte.core.time.ms_to_str(actual_time.min())}-{nocte.core.time.ms_to_str(actual_time.max())}]'
         )
 
     return actual_time

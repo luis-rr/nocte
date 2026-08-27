@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
 from nocte.core import events, stacks, timeslice
-from nocte.core.windows import ms
+from nocte.core.time import ms
 from nocte.plot import plot as splot
 
 

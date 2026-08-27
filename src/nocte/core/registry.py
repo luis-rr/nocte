@@ -18,6 +18,7 @@ import requests
 from tqdm.auto import tqdm
 
 import nocte.core.events
+import nocte.core.time
 import nocte.core.traces
 from nocte.core import windows as timeslice
 from nocte.core.collections import Collection
@@ -911,7 +912,7 @@ class Registry(Collection):
                 split = string.find(':')
                 entry_desc, time_str = string[:split], string[split + 1 :]
 
-                time_ms = timeslice.str_to_ms(time_str)
+                time_ms = nocte.core.time.str_to_ms(time_str)
 
                 return entry_desc, time_ms
 
@@ -1164,7 +1165,14 @@ class Registry(Collection):
             loader = self.get_loader(exp_name)
             first_timestamp = loader.get_first_timestamp()
 
-            offsets[exp_name] = timeslice.TimeRef(first_timestamp).solar_offset
+            time_reference = first_timestamp.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            dt = first_timestamp - time_reference
+            offsets[exp_name] = nocte.core.time.to_ms(dt)
 
         return pd.Series(offsets)
 

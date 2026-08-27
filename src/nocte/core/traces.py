@@ -8,6 +8,8 @@ import pandas as pd
 import scipy.signal
 from tqdm.auto import tqdm
 
+import nocte.core.sampling
+import nocte.core.time
 from nocte.analysis import sleep
 from nocte.core import datadict as dd
 from nocte.core import windows as timeslice
@@ -310,7 +312,9 @@ class Traces(Collection):
             # To prevent this, let's calculate the final idcs as a shift of the relative idcs
             # which we take as final truth.
 
-            ref_idx = timeslice.SamplingRate(loader.sampling_rate).ms_to_idcs(ref)
+            ref_idx = nocte.core.sampling.SamplingRate(loader.sampling_rate).ms_to_idcs(
+                ref
+            )
             slice_idcs = slice(
                 slice_idcs_rel.start + ref_idx,
                 slice_idcs_rel.stop + ref_idx,
@@ -432,7 +436,7 @@ class Traces(Collection):
 
         elif isinstance(start, str):
             vmin = min(trace.index.min() for k, trace in d.items())
-            round_to = timeslice.ms(**{start: 1})
+            round_to = nocte.core.time.ms(**{start: 1})
             start = np.floor(vmin / round_to) * round_to
 
         if stop is None:
@@ -1799,7 +1803,7 @@ class Traces(Collection):
 
     @property
     def sampling_rate(self) -> float:
-        sampling_rate = 1.0 / (self.sampling_period * timeslice.MS_TO_S)
+        sampling_rate = 1.0 / (self.sampling_period * nocte.core.time.MS_TO_S)
 
         if sampling_rate.is_integer():
             sampling_rate = int(sampling_rate)
@@ -2111,7 +2115,7 @@ class Traces(Collection):
 
         time_offset = self.time.min()
 
-        time = t_stft * timeslice.ms(seconds=1) + time_offset
+        time = t_stft * nocte.core.time.ms(seconds=1) + time_offset
 
         spec = z_xx.T
 
@@ -2248,8 +2252,8 @@ class Traces(Collection):
         self,
         win_len_ms=None,
         db=False,
-        sliding_len_ms=timeslice.ms(seconds=10),  # noqa: B008
-        sliding_step_ms=timeslice.ms(seconds=1),  # noqa: B008
+        sliding_len_ms=nocte.core.time.ms(seconds=10),  # noqa: B008
+        sliding_step_ms=nocte.core.time.ms(seconds=1),  # noqa: B008
         pbar=None,
         **kwargs,
     ):
@@ -2300,8 +2304,8 @@ class Traces(Collection):
     def band_power_rolling(
         self,
         bands=sleep.FREQ_BANDS,
-        sliding_len_ms=timeslice.ms(seconds=10),  # noqa: B008
-        sliding_step_ms=timeslice.ms(seconds=1),  # noqa: B008
+        sliding_len_ms=nocte.core.time.ms(seconds=10),  # noqa: B008
+        sliding_step_ms=nocte.core.time.ms(seconds=1),  # noqa: B008
         db=False,
         add_total=True,
         pbar=None,

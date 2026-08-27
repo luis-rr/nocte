@@ -12,7 +12,7 @@ import scipy.stats
 
 from nocte.core import stacks, timeslice
 from nocte.core.stacks import Stack
-from nocte.core.windows import S_TO_MS
+from nocte.core.time import S_TO_MS
 
 # nice tutorial: https://raphaelvallat.com/bandpower.html
 FREQ_BANDS = pd.DataFrame.from_dict(

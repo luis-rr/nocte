@@ -11,6 +11,7 @@ import numba as nb
 import numpy as np
 import pandas as pd
 
+import nocte.core.time
 from nocte.core import datadict as dd
 from nocte.core import stacks
 from nocte.core import windows as timeslice
@@ -602,7 +603,7 @@ class Events(Collection):
         )
 
         return pd.Series(
-            rate * timeslice.ms(seconds=1),
+            rate * nocte.core.time.ms(seconds=1),
             index=sampling_t,
         )
 
@@ -618,7 +619,7 @@ class Events(Collection):
         counts = self.count_rolling(
             valid_win=valid_win, by=by, sliding_win=sliding_win, step=step
         )
-        return counts / (sliding_win / timeslice.ms(seconds=1))
+        return counts / (sliding_win / nocte.core.time.ms(seconds=1))
 
     def mean_rolling(
         self,

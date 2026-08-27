@@ -43,8 +43,10 @@ import xarray as xr
 import xarray.core.coordinates
 from tqdm.auto import tqdm
 
+import nocte.core.sampling
+import nocte.core.time
 from nocte.core import windows as timeslice
-from nocte.core.windows import MS_TO_S, S_TO_MS
+from nocte.core.time import MS_TO_S, S_TO_MS
 
 
 def _expose(parent_method):
@@ -891,7 +893,7 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        stored_hz = timeslice.SamplingRate(stored_hz)
+        stored_hz = nocte.core.sampling.SamplingRate(stored_hz)
 
         load_hz = stored_hz.match_load_hz(load_hz, thresh=0.1)
         stored_hz.assert_stride(load_hz, 'stored_hz', 'load_hz')
@@ -1025,7 +1027,7 @@ class Stack:
         if stored_hz is None:
             stored_hz = raw.sampling_rate
 
-        stored_hz = timeslice.SamplingRate(stored_hz)
+        stored_hz = nocte.core.sampling.SamplingRate(stored_hz)
 
         if load_win is None:
             load_win = raw.win_ms
@@ -1084,9 +1086,13 @@ class Stack:
         if load_hz is None:
             load_hz = stored_hz
 
-        load_hz = timeslice.SamplingRate(stored_hz).match_load_hz(load_hz, thresh=0.1)
-        timeslice.SamplingRate(stored_hz).assert_stride(load_hz, 'stored_hz', 'load_hz')
-        stride_i = timeslice.SamplingRate(stored_hz).get_stride(load_hz)
+        load_hz = nocte.core.sampling.SamplingRate(stored_hz).match_load_hz(
+            load_hz, thresh=0.1
+        )
+        nocte.core.sampling.SamplingRate(stored_hz).assert_stride(
+            load_hz, 'stored_hz', 'load_hz'
+        )
+        stride_i = nocte.core.sampling.SamplingRate(stored_hz).get_stride(load_hz)
 
         load_win = timeslice.Win(*load_win)
         load_win = load_win.clip(raw.win_idcs)
@@ -1178,9 +1184,9 @@ class Stack:
         # 'allclose' can let pass small rounding errors
         # remember time unit is milliseconds, so we are going
         # to round up to 1 pico second
-        tstep = timeslice.SamplingRate.from_period(tstep).adjust_sampling_period(
-            quiet=True
-        )
+        tstep = nocte.core.sampling.SamplingRate.from_period(
+            tstep
+        ).adjust_sampling_period(quiet=True)
 
         if float(tstep).is_integer():
             tstep = int(tstep)
@@ -1284,7 +1290,7 @@ class Stack:
         refs = np.searchsorted(coord, times)
 
         hz = self.estimate_sampling_rate()
-        hz = timeslice.SamplingRate(hz)
+        hz = nocte.core.sampling.SamplingRate(hz)
 
         win_idcs = timeslice.Win(hz.ms_to_idcs(win_ms[0]), hz.ms_to_idcs(win_ms[1]))
 
@@ -1377,7 +1383,7 @@ class Stack:
             assert dim in ref.dims, f'Expected {dim} got {ref.dims} on ref dims'
             ref = ref.values
 
-        ms_step = timeslice.S_TO_MS / self.estimate_sampling_rate(dim)
+        ms_step = nocte.core.time.S_TO_MS / self.estimate_sampling_rate(dim)
         t = (np.arange(len(self.coords[dim])) - len(self.coords[dim]) // 2) * ms_step
 
         s = self.transpose(..., dim)
@@ -1777,8 +1783,10 @@ class Stack:
         See timeslice.SamplingRate
         """
         sampling_hz = self.estimate_sampling_rate()
-        timeslice.SamplingRate(sampling_hz).assert_stride(sampling_hz, downsample_hz)
-        factor = timeslice.SamplingRate(sampling_hz).get_stride(downsample_hz)
+        nocte.core.sampling.SamplingRate(sampling_hz).assert_stride(
+            sampling_hz, downsample_hz
+        )
+        factor = nocte.core.sampling.SamplingRate(sampling_hz).get_stride(downsample_hz)
         return self.downsample_by_factor(factor, dim=dim)
 
     def downsample_by_factor(self, factor: int, dim='time'):

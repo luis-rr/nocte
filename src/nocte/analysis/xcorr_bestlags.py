@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 
 from nocte.core.datadict import DataDict
 from nocte.core.stacks import Stack
-from nocte.core.windows import ms
+from nocte.core.time import ms
 from nocte.plot import plot as splot
 
 

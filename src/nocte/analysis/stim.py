@@ -10,7 +10,8 @@ from tqdm.auto import tqdm
 
 from nocte.analysis import video as vid
 from nocte.core import windows as timeslice
-from nocte.core.windows import Win, ms
+from nocte.core.time import ms
+from nocte.core.windows import Win
 
 
 def label_pulses(win_lights, dark=False, max_length=ms(minutes=2), valid_win=None):  # noqa: B008

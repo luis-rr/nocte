@@ -8,8 +8,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+import nocte.core.sampling
 from nocte.core import windows as timeslice
-from nocte.core.windows import MS_TO_S, S_TO_MS
+from nocte.core.time import MS_TO_S, S_TO_MS
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,7 @@ class MultiDataLoader(DataLoader):
                 f'Different sampling rate across loaders. Taking mean: {sampling_rate:,.2f}'
             )
 
-        self._sampling_period = timeslice.SamplingRate(
+        self._sampling_period = nocte.core.sampling.SamplingRate(
             sampling_rate
         ).adjust_sampling_period()
 

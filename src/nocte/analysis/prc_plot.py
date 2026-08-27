@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from nocte.core.windows import Windows, ms
+from nocte.core.time import ms
+from nocte.core.windows import Windows
 from nocte.plot import plot as splot
 
 PHASE_CAT_COLORS = {

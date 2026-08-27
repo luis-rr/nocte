@@ -8,7 +8,7 @@ import scipy
 
 import nocte.core.traces
 from nocte.core import stacks
-from nocte.core.windows import ms
+from nocte.core.time import ms
 
 
 def get_hilbert_transform(

@@ -10,7 +10,8 @@ from tqdm.auto import tqdm
 
 from nocte.core import traces as tr
 from nocte.core import windows as timeslice
-from nocte.core.windows import Win, ms
+from nocte.core.time import ms
+from nocte.core.windows import Win
 from nocte.plot import plot as splot
 
 

@@ -9,7 +9,8 @@ from tqdm.auto import tqdm
 from nocte.analysis import stim
 from nocte.core import traces as tr
 from nocte.core import windows as timeslice
-from nocte.core.windows import MS_TO_S, Win, ms
+from nocte.core.time import MS_TO_S, ms
+from nocte.core.windows import Win
 from nocte.plot import plot as splot
 
 PROT_COLORS = pd.Series(

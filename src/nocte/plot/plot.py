@@ -21,8 +21,9 @@ import scipy.stats
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
+import nocte.core.time
 from nocte.core import windows as timeslice
-from nocte.core.windows import ms
+from nocte.core.time import ms
 
 COLORS_SIDE = dict(
     left='#0053A3',  # blue
@@ -149,10 +150,14 @@ def set_time_ticks(
         major = auto_major
 
     axis.set_major_locator(
-        matplotlib.ticker.MultipleLocator(base=timeslice.to_ms(major), offset=offset)
+        matplotlib.ticker.MultipleLocator(
+            base=nocte.core.time.to_ms(major), offset=offset
+        )
     )
     axis.set_minor_locator(
-        matplotlib.ticker.MultipleLocator(base=timeslice.to_ms(minor), offset=offset)
+        matplotlib.ticker.MultipleLocator(
+            base=nocte.core.time.to_ms(minor), offset=offset
+        )
     )
 
     scale_factor = scale
@@ -649,12 +654,12 @@ def _set_axis_label(ax, label, which):
 
 def make_axs_long_experiment(
     win_ms,
-    tbin_width=timeslice.ms(hours=2),  # noqa: B008
+    tbin_width=nocte.core.time.ms(hours=2),  # noqa: B008
     sharey='all',
     constrained_layout=True,
     figsize=None,
-    major=timeslice.ms(minutes=10),  # noqa: B008
-    minor=timeslice.ms(minutes=1),  # noqa: B008
+    major=nocte.core.time.ms(minutes=10),  # noqa: B008
+    minor=nocte.core.time.ms(minutes=1),  # noqa: B008
     show_timestamp=True,
     tstart_timestamp=None,
     time_scale='minutes',
@@ -667,7 +672,7 @@ def make_axs_long_experiment(
     Prepare axes to plot a ful experiment chopped up in sequential chunks as rows.
     """
     win_ms = timeslice.Win(*win_ms)
-    tbin_width = timeslice.to_ms(tbin_width)
+    tbin_width = nocte.core.time.to_ms(tbin_width)
     t_edges = np.arange(win_ms.start, win_ms.stop, tbin_width)
     t_edges = np.append(t_edges, win_ms.stop)
 
@@ -703,8 +708,8 @@ def make_axs_long_experiment(
         if show_timestamp:
             if tstart_timestamp is None:
                 timestamp = (
-                    f'{timeslice.ms_to_str(tbin.start, plus_sign=False, show_days=show_days)}'
-                    f'-{timeslice.ms_to_str(tbin.stop, plus_sign=False, show_days=show_days)}'
+                    f'{nocte.core.time.ms_to_str(tbin.start, plus_sign=False, show_days=show_days)}'
+                    f'-{nocte.core.time.ms_to_str(tbin.stop, plus_sign=False, show_days=show_days)}'
                 )
 
             else:
