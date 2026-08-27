@@ -213,7 +213,7 @@ class _UnitsView(DataFrameWrapper):
         n_invalid = np.count_nonzero(~valid)
 
         if n_invalid > 0:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'{n_invalid:,d}/{n_total:,d} spikes fell outside bin range [{bins[0]:.6g}, {bins[-1]:.6g})'
             )
 
@@ -364,7 +364,7 @@ class Spikes(Events):
         spikes_df, units_df = _load_kilosort4_folder(folder)
         spikes_df: pd.DataFrame
         units_df: pd.DataFrame
-        win_ms: tuple
+        win_ms: tuple  # noqa: F842
 
         # drop statistics that should be recalculated on the fly
         units_df.drop(['fr', 'n_spikes'], axis=1, errors='ignore', inplace=True)

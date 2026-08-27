@@ -5,7 +5,7 @@ the sampling rates differ in a few decimals, which accumulate over several hours
 
 The recorded square signal is common to everyone and is assumed here to be exactly 30kHz.
 The times of this reference are extracted in "extract_onsets" and stored as a csv.
-"""
+"""  # noqa: EXE002
 
 import itertools
 import logging
@@ -26,7 +26,7 @@ SYS_CHANNEL = 768
 def extract_onsets(
     raw: neuropixel.DataLoader,
     load_win_ms=None,
-    chunk_length_ms=timeslice.ms(minutes=15),
+    chunk_length_ms=timeslice.ms(minutes=15),  # noqa: B008
 ) -> pd.Series:
     stored_hz = timeslice.SamplingRate(raw.sampling_rate)
 
@@ -229,7 +229,7 @@ def estimate_onset_actual_time(all_raw, all_onset_idcs):
             ]
         )
 
-        logging.warning(
+        logging.warning(  # noqa: LOG015
             f'Expected onsets to be exactly 1 second apart, but got: {desc}\n'
             f'Adjusting from [{timeslice.ms_to_str(actual_time_bad.min())}-{timeslice.ms_to_str(actual_time_bad.max())}]'
             f' to [{timeslice.ms_to_str(actual_time.min())}-{timeslice.ms_to_str(actual_time.max())}]'

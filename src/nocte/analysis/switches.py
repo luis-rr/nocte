@@ -1,6 +1,6 @@
 """
 Code to analyse the switches of inter-hemispheric dominance.
-"""
+"""  # noqa: EXE002
 
 import logging
 
@@ -40,7 +40,7 @@ def load_lead_traces(
     reg,
     exp_name,
     tau=1_000,
-    exp_valid_win=timeslice.Win(ms(hours=2), ms(hours=2 + 9)),
+    exp_valid_win=timeslice.Win(ms(hours=2), ms(hours=2 + 9)),  # noqa: B008
     low_hz=100,
     suffix='_exp_clipped',
 ):
@@ -81,7 +81,7 @@ def extract_lag_modes(xcorr, min_lag=5):
     )
 
     if lag_modes[0] == -min_lag or lag_modes[1] == +min_lag:
-        logging.warning(f'Lags too small? {lag_modes}')
+        logging.warning(f'Lags too small? {lag_modes}')  # noqa: LOG015
 
     return lag_modes
 
@@ -99,7 +99,7 @@ def load_xcorr(reg, exp_name, tau, suffix='_exp', exp_valid_win=None, low_hz=100
     if exp_valid_win is not None:
         xcorr = xcorr.sel_between(time=exp_valid_win)
         if 0 in xcorr.shape:
-            logging.warning(f'x-corr does not exist in window {exp_valid_win}')
+            logging.warning(f'x-corr does not exist in window {exp_valid_win}')  # noqa: LOG015
             return xcorr
 
     vmax = np.quantile(xcorr.values.ravel(), 0.999)
@@ -110,7 +110,9 @@ def load_xcorr(reg, exp_name, tau, suffix='_exp', exp_valid_win=None, low_hz=100
 
 
 def extract_rem_wins_from_log_beta_thresh_detour(
-    all_beta, beta_thresh=0.15, max_detours=ms(seconds=15)
+    all_beta,
+    beta_thresh=0.15,
+    max_detours=ms(seconds=15),  # noqa: B008
 ):
     is_rem = all_beta['beta_max'] > beta_thresh
 

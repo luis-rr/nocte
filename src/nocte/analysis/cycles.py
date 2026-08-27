@@ -14,7 +14,7 @@ from nocte.core.windows import Win, ms
 from nocte.plot import plot as splot
 
 
-def classify_by_gm(beta, max_detours=ms(seconds=10)):
+def classify_by_gm(beta, max_detours=ms(seconds=10)):  # noqa: B008
     if not isinstance(beta, pd.DataFrame):
         beta = beta.to_frame()
 
@@ -43,7 +43,7 @@ def classify_by_gm(beta, max_detours=ms(seconds=10)):
     return labels
 
 
-def classify_by_gm_log10(beta, max_detours=ms(seconds=10)):
+def classify_by_gm_log10(beta, max_detours=ms(seconds=10)):  # noqa: B008
     beta_log = np.log10(beta)
     assert not beta_log.isna().any()
     return classify_by_gm(beta_log, max_detours=max_detours)
@@ -89,7 +89,8 @@ def _is_local_peak(traces, times):
 
 
 def estimate_interval(
-    acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3))
+    acorrs_baselines: tr.Traces,
+    between=Win(ms(minutes=1), ms(minutes=3)),  # noqa: B008
 ):
     cropped = acorrs_baselines.crop(between)
 

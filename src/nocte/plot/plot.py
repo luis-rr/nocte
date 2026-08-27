@@ -1,6 +1,6 @@
 """
 General utility code to plot traces and spike trains
-"""
+"""  # noqa: EXE002
 
 import colorsys
 import itertools
@@ -216,7 +216,11 @@ def _auto_select_tick_steps(ax, which='x') -> tuple[float, float]:
 
 
 def set_ticks_solar_time(
-    ax, which='x', skip_zero=False, offset=ms(hours=0), show_days=True
+    ax,
+    which='x',
+    skip_zero=False,
+    offset=ms(hours=0),  # noqa: B008
+    show_days=True,
 ):
     def solar_ticks(x, _):
         x = x - offset
@@ -241,7 +245,7 @@ def drop_spine(ax, which: str):
     which can be 'all'
     """
     if which == 'all':
-        for which in ['bottom', 'left', 'right', 'top']:
+        for which in ['bottom', 'left', 'right', 'top']:  # noqa: PLR1704
             drop_spine(ax, which)
 
     if which == 'x':
@@ -645,12 +649,12 @@ def _set_axis_label(ax, label, which):
 
 def make_axs_long_experiment(
     win_ms,
-    tbin_width=timeslice.ms(hours=2),
+    tbin_width=timeslice.ms(hours=2),  # noqa: B008
     sharey='all',
     constrained_layout=True,
     figsize=None,
-    major=timeslice.ms(minutes=10),
-    minor=timeslice.ms(minutes=1),
+    major=timeslice.ms(minutes=10),  # noqa: B008
+    minor=timeslice.ms(minutes=1),  # noqa: B008
     show_timestamp=True,
     tstart_timestamp=None,
     time_scale='minutes',
@@ -1341,7 +1345,7 @@ def plot_trace_highlighted(
     if len(cropped) > 1000:
         cropped = tqdm(cropped, desc='plot')
 
-    for win_idx, trace in cropped:
+    for win_idx, trace in cropped:  # noqa: PLR1704
         style = styles.get(wins['cat'][win_idx], {})
 
         if isinstance(style, str):

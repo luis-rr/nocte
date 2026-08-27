@@ -1,4 +1,4 @@
-import functools
+import functools  # noqa: EXE002
 import logging
 from typing import Self
 
@@ -234,7 +234,7 @@ class Traces(DataFrameWrapper):
         if self.reg.index.name is None:
             default_index_name = 'trace_idx'
             if default_index_name in reg.columns:
-                logging.warning(
+                logging.warning(  # noqa: LOG015
                     f'Default index name "{default_index_name}" already in columns. Drop or rename first?'
                 )
             self.reg.rename_axis(index=default_index_name, inplace=True)
@@ -442,7 +442,7 @@ class Traces(DataFrameWrapper):
             period = min(np.min(np.diff(trace.index)) for k, trace in d.items())
             period = np.ceil(period * 0.5)
 
-        logging.info(f'resampling from {start} to {stop} at {period}')
+        logging.info(f'resampling from {start} to {stop} at {period}')  # noqa: LOG015
 
         win = timeslice.Win(start, stop)
 
@@ -1047,7 +1047,7 @@ class Traces(DataFrameWrapper):
 
     def unwrap(self, period=1, axis=0):
         if np.any(np.isnan(self.traces)):
-            logging.warning('Unwrapping does not support nans')
+            logging.warning('Unwrapping does not support nans')  # noqa: LOG015
 
         return self.replace_traces(
             np.unwrap(self.traces.values, period=period, axis=axis)
@@ -1525,7 +1525,7 @@ class Traces(DataFrameWrapper):
 
         dups = reg.columns.duplicated()
         if np.any(dups):
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 'Dropping duplicated columns: '
                 + ', '.join(list(reg.columns[dups]))
                 + '. Maybe you want cut_merge?'
@@ -1566,7 +1566,7 @@ class Traces(DataFrameWrapper):
         matched_reg = Traces.match(self, wins, left_ref='tr_idx', right_ref='win_idx')
 
         if len(matched_reg) == 0:
-            logging.error('No matches found')
+            logging.error('No matches found')  # noqa: LOG015
 
         multi_cut = []
 
@@ -1726,7 +1726,7 @@ class Traces(DataFrameWrapper):
 
         missing = others.columns.difference(self.reg.index)
         if len(missing) > 0:
-            logging.warning(f'Missing reg entries for {len(missing)} traces')
+            logging.warning(f'Missing reg entries for {len(missing)} traces')  # noqa: LOG015
 
         common = others.columns.intersection(self.reg.index)
 
@@ -2244,8 +2244,8 @@ class Traces(DataFrameWrapper):
         self,
         win_len_ms=None,
         db=False,
-        sliding_len_ms=timeslice.ms(seconds=10),
-        sliding_step_ms=timeslice.ms(seconds=1),
+        sliding_len_ms=timeslice.ms(seconds=10),  # noqa: B008
+        sliding_step_ms=timeslice.ms(seconds=1),  # noqa: B008
         pbar=None,
         **kwargs,
     ):
@@ -2296,8 +2296,8 @@ class Traces(DataFrameWrapper):
     def band_power_rolling(
         self,
         bands=sleep.FREQ_BANDS,
-        sliding_len_ms=timeslice.ms(seconds=10),
-        sliding_step_ms=timeslice.ms(seconds=1),
+        sliding_len_ms=timeslice.ms(seconds=10),  # noqa: B008
+        sliding_step_ms=timeslice.ms(seconds=1),  # noqa: B008
         db=False,
         add_total=True,
         pbar=None,

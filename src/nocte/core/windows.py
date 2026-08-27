@@ -1,7 +1,7 @@
 """
 Manage conversion between timescales & sampling rates, as well as defining windows of time
 that can be used to cut data.
-"""
+"""  # noqa: EXE002
 
 import functools
 import logging
@@ -263,7 +263,7 @@ class SamplingRate:
         )
 
         if not valid:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'Adjusting load_hz from {load_hz}Hz to {new_load_hz}Hz to make it '
                 f'a perfect divisor of stored_hz {self.rate}Hz (new stride: {self.get_stride(new_load_hz)})'
             )
@@ -297,7 +297,7 @@ class SamplingRate:
         new = np.round(self.period, decimals=9)
 
         if not quiet and not np.isclose(new, self.period):
-            logging.warning(f'Adjusting sampling period from {self.period} to {new}')
+            logging.warning(f'Adjusting sampling period from {self.period} to {new}')  # noqa: LOG015
 
         return new
 
@@ -305,7 +305,7 @@ class SamplingRate:
         new = np.round(length / self.period) * self.period
 
         if desc is not None and not np.isclose(new, length):
-            logging.warning(f'Adjusting {desc} from {length} to {new}')
+            logging.warning(f'Adjusting {desc} from {length} to {new}')  # noqa: LOG015
 
         return new
 
@@ -1338,7 +1338,7 @@ class Windows(DataFrameWrapper):
                     ignore_index=True,
                 )
             else:
-                logging.warning(
+                logging.warning(  # noqa: LOG015
                     f'Cannot set start at {start} when windows begin earlier at {endpoint}'
                 )
 
@@ -1354,7 +1354,7 @@ class Windows(DataFrameWrapper):
                     ignore_index=True,
                 )
             else:
-                logging.warning(
+                logging.warning(  # noqa: LOG015
                     f'Cannot set stop at {stop} when windows begin later at {endpoint}'
                 )
 
@@ -1487,7 +1487,7 @@ class Windows(DataFrameWrapper):
 
     @classmethod
     def concat(cls, many, cycle_name='cycle_idx', local_name=None, **kwargs):
-        """ """
+        """ """  # noqa: D419
 
         if hasattr(many, 'items'):
             dfs = {idx: c.reg for idx, c in many.items()}
@@ -1513,7 +1513,7 @@ class Windows(DataFrameWrapper):
 
     @classmethod
     def concat_list(cls, many, axis=0, reset_index=True, **kwargs):
-        """ """
+        """ """  # noqa: D419
         dfs = [c.reg for c in many]
         results = pd.concat(dfs, axis=axis, **kwargs)
 
@@ -3019,7 +3019,7 @@ class Windows(DataFrameWrapper):
         overlapping_cols = classified.columns.intersection(events.columns)
 
         if len(overlapping_cols) > 0:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'{len(overlapping_cols)} columns already exist: {list(overlapping_cols)}'
             )
 

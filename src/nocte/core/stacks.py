@@ -28,7 +28,7 @@ A "raw" object must implement:
 
 The Stack class wraps a xarray.DataArray object to simplify the API and
 add a couple of methods. The underlying data can be accessed as stack.data.
-"""
+"""  # noqa: EXE002
 
 import functools
 import itertools
@@ -840,7 +840,7 @@ class Stack:
 
         if adjust_gain is not None:
             if not np.issubdtype(stack.values.dtype, np.integer):
-                logging.warning('gain already adjusted?')
+                logging.warning('gain already adjusted?')  # noqa: LOG015
 
             channels = stack.coords['channel'].values
             gain_adjust = Stack.from_array(adjust_gain[channels], {'channel': channels})
@@ -916,7 +916,7 @@ class Stack:
             combs = tqdm(combs, desc='load trace')
 
         if (windows['start'] < 0).any() or (windows['stop'] < 0).any():
-            logging.warning('Negative indices. Too close to edge?')
+            logging.warning('Negative indices. Too close to edge?')  # noqa: LOG015
 
         try:
             for (i, chan), (j, (win_idx, start, stop)) in combs:
@@ -1152,7 +1152,7 @@ class Stack:
             period = int(period)
 
         if (this_period % period) > 1e-6:
-            logging.error(
+            logging.error(  # noqa: LOG015
                 f'Sampling period missalignment of {this_period % period} '
                 f'(stack: {this_period}; data: {period})'
             )
@@ -1331,7 +1331,7 @@ class Stack:
         iter_dim = self.dims[0]
         dims = self.dims[1:]
         if dims != ('time',):
-            logging.warning(f'Extracting pearson r along last dimension(s): {dims}')
+            logging.warning(f'Extracting pearson r along last dimension(s): {dims}')  # noqa: LOG015
 
         if isinstance(ref, (xr.DataArray, Stack)):
             ref = ref.values
@@ -1651,7 +1651,7 @@ class Stack:
         assert len(shift_steps) == len(self.coords[by])
 
         if np.any(np.isnan(shift_steps)):
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'{np.sum(np.isnan(shift_steps))} nans in shift values. Not aligned to coords?'
             )
             shift_steps[np.isnan(shift_steps)] = 0
@@ -1803,7 +1803,7 @@ class Stack:
 
         current_hz = self.estimate_sampling_rate(dim=dim)
         if upsample_hz < current_hz:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'Downsampling signal instead of upsampling ({upsample_hz}hz < {current_hz}hz)'
             )
 

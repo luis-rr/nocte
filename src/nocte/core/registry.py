@@ -2,7 +2,7 @@
 Locate files (raw data and partial results).
 All information is in an excel sheet that we process here (the Registry).
 All partial results and processed data are stored in HDF5 files within a folder next to the data.
-"""
+"""  # noqa: EXE002
 
 import datetime
 import io
@@ -324,7 +324,7 @@ class Entry:
 
     def load_all_beta_traces(self, simplify=True, *args, **kwargs):
 
-        loaded = self.load_all_beta(simplify=simplify, *args, **kwargs)
+        loaded = self.load_all_beta(simplify=simplify, *args, **kwargs)  # noqa: B026
 
         traces: nocte.core.traces.Traces = nocte.core.traces.Traces.from_df(
             loaded,
@@ -924,7 +924,7 @@ class Registry(DataFrameWrapper):
 
         table = []
 
-        for exp_name, events_desc in events_desc.items():
+        for exp_name, events_desc in events_desc.items():  # noqa: B020
             for i, entry in enumerate(events_desc.strip().split('\n')):
                 desc, time = parse_entry(entry)
 

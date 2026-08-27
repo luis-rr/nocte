@@ -1,7 +1,7 @@
 """
 Process data to extract spectral power, SNs and SWR.
 Experiments are long (> 10h) and require processing in chunks or using sliding windows.
-"""
+"""  # noqa: EXE002
 
 import gc
 import logging
@@ -9,12 +9,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from nocte.paths import Registry
 from tqdm.auto import tqdm
 
 from nocte.analysis import sleep, sne, sne_matching
 from nocte.core import stacks, timeslice
 from nocte.core.windows import Win, Windows
-from nocte.paths import Registry
 
 
 class ChunkedExperiment:
@@ -76,7 +76,7 @@ class ChunkedExperiment:
             mask: pd.Series = durations_ms >= min_chunk_length
 
             if np.any(~mask):
-                logging.info(
+                logging.info(  # noqa: LOG015
                     f'Dropping {np.count_nonzero(~mask)}/{len(mask)} chunks smaller than {min_chunk_length}'
                 )
 
@@ -172,7 +172,7 @@ def extract_sliding(
     raw,
     sliding_win_ms,
     step_ms,
-    chunk_length_ms=timeslice.ms(hours=1),
+    chunk_length_ms=timeslice.ms(hours=1),  # noqa: B008
     load_hz=1000,
     channels='all',
     load_win=None,
@@ -297,7 +297,7 @@ def extract_all_power(
 
         except Exception as e:
             if ignore_failures:
-                logging.exception(f'Processing {exp_name} failed: {e}')
+                logging.exception(f'Processing {exp_name} failed: {e}')  # noqa: LOG015, TRY401
             else:
                 raise
 
@@ -311,7 +311,7 @@ def process_experiment_sne(
     raw,
     channel,
     load_hz=None,
-    chunk_length=timeslice.ms(hours=1),
+    chunk_length=timeslice.ms(hours=1),  # noqa: B008
     load_win=None,
     **kwargs,
 ):
@@ -382,7 +382,7 @@ def extract_all_sne(
 
         except Exception as e:
             if ignore_failures:
-                logging.exception(f'Processing {exp_name} failed: {e}')
+                logging.exception(f'Processing {exp_name} failed: {e}')  # noqa: LOG015, TRY401
             else:
                 raise
 
@@ -454,6 +454,6 @@ def extract_all_matchings(
 
         except Exception as e:
             if ignore_failures:
-                logging.exception(f'Processing {exp_name} failed: {e}')
+                logging.exception(f'Processing {exp_name} failed: {e}')  # noqa: LOG015, TRY401
             else:
                 raise

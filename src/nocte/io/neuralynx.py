@@ -16,7 +16,7 @@ class MutiNCSLoader makes it easier to handle multiple NCS files (multiple chann
 
 NCS data is stored in a series of "records", each with multiple samples.
 NCSLoader provides an api that hides these records and lets you index by sample idx.
-"""
+"""  # noqa: EXE002
 
 import datetime
 import logging
@@ -147,7 +147,7 @@ class NeuralynxBaseLoader:
         ):
             if old_key in hdr:
                 try:
-                    hdr[new_key] = datetime.datetime.strptime(
+                    hdr[new_key] = datetime.datetime.strptime(  # noqa: DTZ007
                         hdr[old_key], '%Y/%m/%d %H:%M:%S'
                     )
 
@@ -166,7 +166,7 @@ class NeuralynxBaseLoader:
         ]
         tmp_microsecond = tmp_time[3] * 1000
 
-        return datetime.datetime(
+        return datetime.datetime(  # noqa: DTZ001
             tmp_date[2],
             tmp_date[0],
             tmp_date[1],  # Year, month, day
@@ -511,7 +511,7 @@ class NCSLoader(common.DataLoader):
 
         microseconds = records['TimeStamp'].squeeze().item()
 
-        dt = datetime.datetime.fromtimestamp(microseconds // 1000000)
+        dt = datetime.datetime.fromtimestamp(microseconds // 1000000)  # noqa: DTZ006
         dt = dt.replace(microsecond=microseconds % 1000000)
         return dt
 

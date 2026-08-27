@@ -13,7 +13,7 @@ from nocte.core import windows as timeslice
 from nocte.core.windows import Win, ms
 
 
-def label_pulses(win_lights, dark=False, max_length=ms(minutes=2), valid_win=None):
+def label_pulses(win_lights, dark=False, max_length=ms(minutes=2), valid_win=None):  # noqa: B008
     win_lights = win_lights.copy()
 
     is_short = win_lights.lengths() < max_length
@@ -41,7 +41,7 @@ def label_pulses(win_lights, dark=False, max_length=ms(minutes=2), valid_win=Non
     return win_lights
 
 
-def load_light_wins(reg, exp_name, max_pulse_length=ms(minutes=2), col='lights'):
+def load_light_wins(reg, exp_name, max_pulse_length=ms(minutes=2), col='lights'):  # noqa: B008
     encoded = reg[col].fillna('').loc[exp_name]
 
     if encoded == '':
@@ -88,7 +88,7 @@ def encode_light_wins(wins, start_on=True):
     return times
 
 
-def load_light_wins_multi(reg, only_pulse=False, max_pulse_length=ms(minutes=2)):
+def load_light_wins_multi(reg, only_pulse=False, max_pulse_length=ms(minutes=2)):  # noqa: B008
     exp_light_wins = {}
 
     for exp_name in tqdm(reg.experiment_names):
@@ -115,10 +115,10 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
         lum_path = reg.get_entry(exp_name).get_path_luminance()
 
         if not red_vid.exists():
-            logging.error(f'Skipping {exp_name}. No reduced video: {red_vid}')
+            logging.error(f'Skipping {exp_name}. No reduced video: {red_vid}')  # noqa: LOG015
 
         if not override and vid.series_exists(lum_path, fix_key):
-            logging.info(f'skipping existing results file: {lum_path}')
+            logging.info(f'skipping existing results file: {lum_path}')  # noqa: LOG015
 
         else:
             to_extract.append((exp_name, red_vid, lum_path))
@@ -139,7 +139,7 @@ def extract_all_exp_luminance(reg, vid_paths, override=False):
             fixed.store_hdf(str(lum_path), key=fix_key)
 
         except (FileNotFoundError, AssertionError) as e:
-            logging.error(f'{exp_name}: {e}')
+            logging.error(f'{exp_name}: {e}')  # noqa: LOG015
 
 
 def load_all_lum_traces(reg):
@@ -165,10 +165,10 @@ def load_all_lum_traces(reg):
                 exp_lum[exp_name] = lum
 
         except KeyError as e:
-            logging.error(f'{exp_name}: {lum_path}: {e}')
+            logging.error(f'{exp_name}: {lum_path}: {e}')  # noqa: LOG015
 
         except FileNotFoundError as e:
-            logging.error(f'{exp_name}: {lum_path}: {e}')
+            logging.error(f'{exp_name}: {lum_path}: {e}')  # noqa: LOG015
 
     return exp_lum
 
@@ -184,7 +184,7 @@ def _label_manually(all_pulses, to_label, quiet=True):
         which = all_pulses.sel(exp_name=exp_name, pulse_idx=pulse_idx).index
         if len(which) == 0:
             if not quiet:
-                logging.warning(f'Cannot find: {exp_name} pulse {pulse_idx:g}')
+                logging.warning(f'Cannot find: {exp_name} pulse {pulse_idx:g}')  # noqa: LOG015
         else:
             assert len(which) == 1, len(which)
             which = which[0]
@@ -330,10 +330,10 @@ def match_protocol_length(lengths):
 
 def collect_all_pulses(
     exp_light_wins,
-    isolation=ms(minutes=15),
-    pulse_len=ms(seconds=1),
+    isolation=ms(minutes=15),  # noqa: B008
+    pulse_len=ms(seconds=1),  # noqa: B008
     cat='on',
-    length_precision=ms(minutes=1),
+    length_precision=ms(minutes=1),  # noqa: B008
     no_edges=True,
 ) -> timeslice.Windows:
     all_pulses = {}
@@ -385,7 +385,7 @@ def collect_all_pulses(
 def collect_analysis_windows(
     reg_sel,
     align_to='stop',
-    win_len=ms(minutes=30),
+    win_len=ms(minutes=30),  # noqa: B008
     quiet=False,
     **pulse_sel_kwargs,
 ) -> timeslice.Windows:

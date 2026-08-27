@@ -14,8 +14,8 @@ from nocte.core.windows import ms
 def get_hilbert_transform(
     trace,
     filter_hz=(
-        1_000 / ms(minutes=6),
-        1_000 / ms(seconds=60),
+        1_000 / ms(minutes=6),  # noqa: B008
+        1_000 / ms(seconds=60),  # noqa: B008
     ),
     phase_shift=True,
 ):
@@ -93,7 +93,10 @@ def classify_phase(values):
 
 
 def get_phase_cut(
-    phase_traces, analysis_windows, phase_time=ms(seconds=-5), name='single'
+    phase_traces,
+    analysis_windows,
+    phase_time=ms(seconds=-5),  # noqa: B008
+    name='single',
 ):
     phase_detailed_cut = phase_traces.extract(analysis_windows)
 

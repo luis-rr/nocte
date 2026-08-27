@@ -1,6 +1,6 @@
 """
 Code to analyise trains of pulses
-"""
+"""  # noqa: EXE002
 
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ PROT_COLORS = pd.Series(
 )
 
 
-def group_pulses(light_wins, max_interval=ms(minutes=5)):
+def group_pulses(light_wins, max_interval=ms(minutes=5)):  # noqa: B008
     light_wins = light_wins.sel(cat='on')
 
     to_next = stim.match_protocol_length(light_wins.interval_to_next())
@@ -116,7 +116,9 @@ def _extract_train_protocol_multi(exp_light_wins):
 
 
 def extract_train_protocol_multi(
-    exp_light_wins, min_pulses=3, interval_range=(ms(seconds=0), ms(minutes=10))
+    exp_light_wins,
+    min_pulses=3,
+    interval_range=(ms(seconds=0), ms(minutes=10)),  # noqa: B008
 ) -> timeslice.Windows:
     all_trains = _extract_train_protocol_multi(exp_light_wins)
 

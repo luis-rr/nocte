@@ -1,6 +1,6 @@
 """
 Code to match pairs of Sharp Negative Events
-"""
+"""  # noqa: EXE002
 
 import logging
 
@@ -209,7 +209,7 @@ def _trim_events_outside(xcorr, events):
     valid_events = events.sel_between(ref_time=valid_win)
 
     if len(valid_events) != len(events):
-        logging.warning(
+        logging.warning(  # noqa: LOG015
             f'{len(events) - len(valid_events)}/{len(events)} events fall outside of xcorr window'
         )
         events = valid_events
@@ -261,7 +261,7 @@ def calculate_matching(
     sns: SharpNegativeEvents,
     full_xcorr: Stack,
     null_thresh=0.05,
-    chunk_size=ms(minutes=30),
+    chunk_size=ms(minutes=30),  # noqa: B008
     pbar=False,
 ) -> pd.DataFrame:
     sns = _trim_events_outside(full_xcorr, sns)
@@ -279,7 +279,7 @@ def calculate_matching(
         ~sns.reg['ref_time'].isin(full_xcorr.coords['time'])
     )
     if missing_times > 0:
-        logging.warning(
+        logging.warning(  # noqa: LOG015
             f'{missing_times}/{len(sns)} events misaligned with xcorr sampling rate. Interpolating xcorr'
         )
         full_xcorr = full_xcorr.interp(

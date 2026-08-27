@@ -183,7 +183,7 @@ def store_neuropixels_data(
     meta_path = output_folder / f'{stem}.ap.meta'
 
     if (bin_path.exists() or meta_path.exists()) and not overwrite:
-        logging.warning('Files exist. Skipping')
+        logging.warning('Files exist. Skipping')  # noqa: LOG015
         return
 
     assert all(chunk.ndim == 2 for chunk in chunks)

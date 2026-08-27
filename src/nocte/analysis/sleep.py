@@ -1,6 +1,6 @@
 """
 Analyse dragon sleep.
-"""
+"""  # noqa: EXE002
 
 import logging
 
@@ -75,7 +75,7 @@ def band_power(
 ):
     valid = bands['freq_min'] < (sampling_rate * 0.5)
     if not valid.all():
-        logging.warning(
+        logging.warning(  # noqa: LOG015
             f'Bands too high to extract: {bands.index[~valid]} '
             f'Must be below nyquist_freq {sampling_rate * 0.5})'
         )

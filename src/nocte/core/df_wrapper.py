@@ -240,13 +240,13 @@ class DataFrameWrapper:
 
         left_reg = left.reg.copy()
         if left_ref in left_reg.columns:
-            logging.warning(f'Overriding existing col "{left_ref}" on left reg.')
+            logging.warning(f'Overriding existing col "{left_ref}" on left reg.')  # noqa: LOG015
             left_reg = left_reg.drop(left_ref, axis=1)
         left_reg = left_reg.rename_axis(index=left_ref).reset_index()
 
         right_reg = right.reg.copy()
         if right_ref in right_reg.columns:
-            logging.warning(f'Overriding existing col "{right_ref}" on right reg.')
+            logging.warning(f'Overriding existing col "{right_ref}" on right reg.')  # noqa: LOG015
             right_reg = right_reg.drop(right_ref, axis=1)
         right_reg = right_reg.rename_axis(index=right_ref).reset_index()
 

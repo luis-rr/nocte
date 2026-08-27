@@ -1,6 +1,6 @@
 """
 Code to extract, analyse and plot the lags that yield the highest x-corr
-"""
+"""  # noqa: EXE002
 
 import logging
 from pathlib import Path
@@ -114,10 +114,10 @@ class XCorrBestLags:
             bins = np.arange(self.reg['lag'].min() - 0.5, self.reg['lag'].max() + 1, 1)
 
         if self.reg['lag'].min() < np.min(bins):
-            logging.warning('Lags below lowest bin')
+            logging.warning('Lags below lowest bin')  # noqa: LOG015
 
         if self.reg['lag'].max() > np.max(bins):
-            logging.warning('Lags above highest bin')
+            logging.warning('Lags above highest bin')  # noqa: LOG015
 
         h, edges = np.histogram(self.reg['lag'], bins=bins)
 
@@ -307,7 +307,7 @@ def compute_lags_best_xcorr(
     exp_names,
     fig_desc,
     use_cache=True,
-    time_range=(ms(hours=2), ms(hours=11)),
+    time_range=(ms(hours=2), ms(hours=11)),  # noqa: B008
     lag_range=(-50, +50),
     sliding_win=1_000,
     suffix='',

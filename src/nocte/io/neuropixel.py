@@ -22,7 +22,7 @@ Data is signed 16-bit integer. Row matrix of time (rows) and channel (column):
 Following code adapted from example provided by supplier, downloaded from:
     https://billkarsh.github.io/SpikeGLX/
 
-"""
+"""  # noqa: EXE002
 
 import logging
 import os

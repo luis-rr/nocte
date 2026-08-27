@@ -1,7 +1,7 @@
 """
 Data container for generic LFP events that have a start/stop/reference time.
 Internally stored as a simple pd.DataFrame.
-"""
+"""  # noqa: EXE002
 
 import functools
 import itertools
@@ -280,7 +280,7 @@ class Events(DataFrameWrapper):
             reg = reg.sort_index()
 
         if not reg.index.is_unique:
-            logging.warning('New index is not unique')
+            logging.warning('New index is not unique')  # noqa: LOG015
 
         return self._replace_reg(reg)
 
@@ -324,12 +324,12 @@ class Events(DataFrameWrapper):
         wins = self.reg.copy()
 
         if 'start_time' in wins.columns:
-            logging.warning('Overwriting event column "start_time"')
+            logging.warning('Overwriting event column "start_time"')  # noqa: LOG015
 
         wins['start_time'] = wins[col] + win_ms[0]
 
         if 'stop_time' in wins.columns:
-            logging.warning('Overwriting event column "start_time"')
+            logging.warning('Overwriting event column "start_time"')  # noqa: LOG015
 
         wins['stop_time'] = wins[col] + win_ms[1]
 
@@ -444,7 +444,7 @@ class Events(DataFrameWrapper):
 
         bad = np.count_nonzero(times < 0)
         if bad > 0:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'{bad:,g} events with negative times to next. Events overlap?'
             )
 

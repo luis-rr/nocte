@@ -421,7 +421,7 @@ def find_template(
 def extract_waves_from_recording(
     loader,
     times,
-    cut_out=timeslice.Win(-500, +1500),
+    cut_out=timeslice.Win(-500, +1500),  # noqa: B008
     filter_hz=(0.25, 40),
     load_hz=1000,
 ) -> pd.DataFrame:
@@ -447,7 +447,7 @@ def find_waves_in_recording(
     load_win=None,
     load_hz=1000,
     channels=None,
-    chunk_size=timeslice.ms(hours=1),
+    chunk_size=timeslice.ms(hours=1),  # noqa: B008
     **kwargs,
 ):
     assert len(loader.channels) == 1
@@ -475,7 +475,7 @@ def find_waves_in_recording(
         signal = filt.get()
 
         if len(signal) <= len(template_examples):
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f'Skipping chunk smaller than template ({len(template_examples)} > {len(signal)}).'
             )
 

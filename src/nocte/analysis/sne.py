@@ -1,6 +1,6 @@
 """
 Code to handle samples, events and collections of events
-"""
+"""  # noqa: EXE002
 
 import numpy as np
 import pandas as pd

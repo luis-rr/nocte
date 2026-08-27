@@ -301,7 +301,7 @@ def extract_exp_luminance(vid_path, res_path, key):
 
     frames = load_movie(vid_path)
     if 0 in frames.shape:
-        logging.error(f'No data in video. File under processing? {vid_path}')
+        logging.error(f'No data in video. File under processing? {vid_path}')  # noqa: LOG015
         return
 
     lum = extract_lights_on(frames)
@@ -394,7 +394,7 @@ def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
 
     if len(new_time) == len(lum) - 1:
         # in some versions of the data, we stored info about a dummy last frame that doesn't really exist
-        logging.warning('Skipping last entry (missing 1 timestamp)')
+        logging.warning('Skipping last entry (missing 1 timestamp)')  # noqa: LOG015
         lum = lum.iloc[:-1]
 
     assert len(new_time) == len(lum), (
@@ -404,7 +404,7 @@ def adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0'):
     )
 
     offsets = new_time - lum.index
-    logging.info(
+    logging.info(  # noqa: LOG015
         f'Adjusting {exp_info.name} for offset: {np.min(offsets)}- {np.max(offsets)}'
     )
 
@@ -440,7 +440,7 @@ def adjust_frame_times_multiple_tries(exp_info, lum: pd.Series):
             if i == len(to_try) - 1:
                 raise
             else:
-                logging.info('Try different camera label')
+                logging.info('Try different camera label')  # noqa: LOG015
 
 
 ########################################################################################################################
@@ -502,7 +502,7 @@ def adjust_deeplabcut_time_multi(reg, exp_tracking):
 
     for exp_name, tracking in tqdm(exp_tracking.items(), desc='adjust'):
         if exp_name not in reg.experiment_names:
-            logging.warning(f'{exp_name} missing from reg. Skipping adjustment.')
+            logging.warning(f'{exp_name} missing from reg. Skipping adjustment.')  # noqa: LOG015
 
         else:
             new_times = get_cam_frame_timestamps_rec(reg.get_entry(exp_name))
@@ -519,7 +519,7 @@ def adjust_deeplabcut_time_multi(reg, exp_tracking):
                 )
 
             else:
-                logging.error(
+                logging.error(  # noqa: LOG015
                     f'Unable to adjust {exp_name}. '
                     f'Got {len(tracking):,d} frames but {len(new_times):,d} timestamps'
                     f' (diff: {len(tracking) - len(new_times)})'
