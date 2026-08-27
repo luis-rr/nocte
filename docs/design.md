@@ -40,7 +40,6 @@ nocte/
 ├── pyproject.toml
 ├── README.md
 ├── LICENSE
-├── CHANGELOG.md
 ├── .gitignore
 ├── .pre-commit-config.yaml
 │

@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nocte"
-version = "0.1.0"
+version = "1.0.0.dev0"
 description = "Analysis of neuronal oscillations, cycles and time events in electrophysiological recordings"
+requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
@@ -14,14 +15,17 @@ dependencies = [
     "tqdm>=4.65",
     "numba>=0.59",
     "h5py>=3.9",
-    "xarray>=2023.6",
-    "scikit-learn>=1.2",
-    "pytest>=8.2",
 ]
-requires-python = ">=3.10"
 
-[tool.setuptools]
-packages = ["nocte"]
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff",
+    "pre-commit",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff.format]
-quote-style = 'single'
+quote-style = "single"
