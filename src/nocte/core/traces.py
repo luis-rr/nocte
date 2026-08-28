@@ -1,2455 +1,1341 @@
-import functools
-import logging
-from typing import Self
+from __future__ import annotations
 
-import numba as nb
+import collections.abc
+import fractions
+import itertools
+import logging
+import typing
+import warnings
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import scipy.signal
-from tqdm.auto import tqdm
 
-import nocte.core.sampling
-import nocte.core.time
-from nocte.analysis import sleep
-from nocte.core import datadict as dd
-from nocte.core import windows as timeslice
 from nocte.core.collections import Collection
+from nocte.core.sampling import SamplingRate
+from nocte.core.windows import Win
+
+logger = logging.getLogger(__name__)
+
+FloatT = typing.TypeVar('FloatT', bound=np.floating[typing.Any])
+FloatU = typing.TypeVar('FloatU', bound=np.floating[typing.Any])
+
+InterpMethod = typing.Literal['linear', 'nearest']
+TimeLike = float | collections.abc.Sequence[float] | np.ndarray | pd.Index | pd.Series
 
 
-# @nb.njit(parallel=True)
-def _cross_corr_shifted_nb(
-    signal0: np.ndarray,
-    signal1: np.ndarray,
-    idcs: np.ndarray,
-    offset: int,
-):
-    """
-    Fast sliding window cross corr.
-    See parallelization diagnostics like:
-        xc._cross_corr_nb.parallel_diagnostics(level=4)
+def _validate_trace_array(values: np.ndarray) -> np.ndarray:
+    """Normalize public numerical input to a 2D floating-point array."""
 
-    :param signal0:
-    :param signal1:
+    values = np.asarray(values)
 
-    :param idcs:
-        shape <N, 2> indicating the pair of indices to cut c0 and c1 to comput xcorr.
-        c1 indices will additionally be offset by "offset".
+    if values.ndim == 1:
+        values = values.reshape(1, -1)
 
-    :param offset:
+    elif values.ndim != 2:
+        raise ValueError('trace values must be one- or two-dimensional')
 
-    :return: array of same length as idcs0
-    """
-    corr = np.ones(len(idcs)) * np.nan
+    if np.issubdtype(values.dtype, np.complexfloating):
+        raise TypeError('complex trace values are not supported')
 
-    idcs_shifted = idcs + offset
+    if np.issubdtype(values.dtype, np.bool_):
+        warnings.warn(
+            'Boolean trace values are converted to float64',
+            UserWarning,
+            stacklevel=3,
+        )
+        values = values.astype(np.float64)
 
-    valid = (idcs_shifted >= 0) & (idcs_shifted <= len(signal1))
-    valid = valid[:, 0] & valid[:, 1]
+    elif np.issubdtype(values.dtype, np.integer):
+        values = values.astype(np.float64)
 
-    # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
-    # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
+    elif not np.issubdtype(values.dtype, np.floating):
+        raise TypeError('trace values must be real numeric data')
 
-    (valid_idcs,) = np.where(valid)
-    iter_count = len(valid_idcs)
-
-    for j in nb.prange(iter_count):
-        i = valid_idcs[j]
-
-        start0, stop0 = idcs[i]
-        start1, stop1 = idcs_shifted[i]
-
-        section0 = signal0[start0:stop0]
-        section1 = signal1[start1:stop1]
-
-        corr[i] = np.sum(section0 * section1)
-
-    return corr
+    return np.ascontiguousarray(values)
 
 
-@nb.njit(parallel=True)
-def _cross_corr_shifted_pearsons_nb(
-    signal0: np.ndarray,
-    signal1: np.ndarray,
-    idcs: np.ndarray,
-    offset: int,
-):
-    """
-    Fast sliding window cross corr.
-    See parallelization diagnostics like:
-        xc._cross_corr_nb.parallel_diagnostics(level=4)
-
-    :param signal0:
-    :param signal1:
-
-    :param idcs:
-        shape <N, 2> indicating the pair of indices to cut c0 and c1 to comput xcorr.
-        c1 indices will additionally be offset by "offset".
-
-    :param offset:
-
-    :return: array of same length as idcs0
-    """
-    corr = np.ones(len(idcs)) * np.nan
-
-    idcs_shifted = idcs + offset
-
-    valid = (idcs_shifted >= 0) & (idcs_shifted <= len(signal1))
-    valid = valid[:, 0] & valid[:, 1]
-
-    # assert np.min(idcs_shifted[:, 0]) >= 0, 'must zero-pad array or crop windows'
-    # assert np.max(idcs_shifted[:, 1]) < len(signal1), 'must zero-pad array or crop windows'
-
-    (valid_idcs,) = np.where(valid)
-    iter_count = len(valid_idcs)
-
-    for j in nb.prange(iter_count):
-        i = valid_idcs[j]
-
-        start0, stop0 = idcs[i]
-        start1, stop1 = idcs_shifted[i]
-
-        section0 = signal0[start0:stop0]
-        section1 = signal1[start1:stop1]
-
-        section0 = (section0 - np.mean(section0)) / np.std(section0)
-        section1 = (section1 - np.mean(section1)) / np.std(section1)
-
-        corr[i] = np.mean(section0 * section1)
-
-    return corr
+def _validate_method(method: InterpMethod) -> None:
+    if method not in ('linear', 'nearest'):
+        raise ValueError("method must be 'linear' or 'nearest'")
 
 
-def _assert_multiple(sampling_period_ms, t):
-    is_multiple = t % sampling_period_ms == 0
+def _validate_max_gap(max_gap: float) -> float:
 
-    if isinstance(is_multiple, np.ndarray):
-        is_multiple = np.all(is_multiple)
+    max_gap = float(max_gap)
 
-    assert is_multiple, (
-        f'Signal sampled every {sampling_period_ms} ms, '
-        f'but asking for non-multiple {t} ms'
+    if max_gap > 0:
+        raise ValueError('max_gap must be positive')
+
+    if np.isinf(max_gap):
+        return max_gap
+
+    if not np.isfinite(max_gap):
+        raise ValueError('max_gap must be finite or positive infinite')
+
+    return max_gap
+
+
+def _regular_times(start: float, last: float, sampling: SamplingRate) -> np.ndarray:
+    """Return regular sample coordinates from `start` through `last`, inclusive."""
+    if last < start:
+        return np.empty(0, dtype=float)
+
+    ratio = (last - start) / sampling.period_ms
+    nearest = np.round(ratio)
+    if np.isclose(ratio, nearest, rtol=1e-10, atol=1e-10):
+        ratio = nearest
+
+    n_samples = int(np.floor(ratio)) + 1
+    return start + sampling.samples_to_ms(np.arange(n_samples, dtype=np.intp))
+
+
+def _interpolate_irregular(
+    values: np.ndarray,
+    times: np.ndarray,
+    target: np.ndarray,
+    *,
+    method: InterpMethod,
+    max_gap: float = np.inf,
+) -> np.ndarray:
+    """Interpolate rows sharing one irregular source coordinate."""
+    _validate_method(method)
+    max_gap = _validate_max_gap(max_gap)
+
+    values = np.asarray(values)
+    times = np.asarray(times, dtype=float)
+    target = np.asarray(target, dtype=float)
+
+    result = np.full(
+        (values.shape[0], len(target)),
+        np.nan,
+        dtype=values.dtype,
     )
 
+    if len(times) == 0 or len(target) == 0:
+        return result
 
-# @nb.njit(parallel=True)
-def _rolling_cross_corr_discreete(
-    s0: np.ndarray,
-    s1: np.ndarray,
-    offsets: np.ndarray,
-    sliding_win: int,
-    sliding_step: int,
-    pbar=None,
-    pearson=False,
-):
-    length = min(len(s0), len(s1))
-
-    starts = np.arange(0, length - sliding_win + 1, sliding_step)
-    stops = np.arange(sliding_win, length + 1, sliding_step)
-    sliding_wins = np.array([starts, stops]).T
-
-    xcorr = np.empty((len(offsets), len(sliding_wins)))
-
-    for i, offset in enumerate(
-        Collection._optional_pbar(offsets, pbar=pbar, total=len(offsets), desc='lag')
-    ):
-        if pearson:
-            value = _cross_corr_shifted_pearsons_nb(s0, s1, sliding_wins, offset=offset)
-
-        else:
-            value = _cross_corr_shifted_nb(s0, s1, sliding_wins, offset=offset)
-
-        xcorr[i] = value
-
-    return xcorr
-
-
-def _rolling_cross_corr_ms(
-    s0: np.ndarray,
-    s1: np.ndarray,
-    sampling_period_ms: float,
-    lags_ms: np.ndarray,
-    sliding_win_ms: float,
-    sliding_step_ms: float,
-    pbar=None,
-    pearson=False,
-):
-    lags_ms = np.asarray(lags_ms)
-    assert len(lags_ms) > 0
-
-    _assert_multiple(sampling_period_ms, lags_ms)
-    offsets = np.round(lags_ms / sampling_period_ms).astype(int)
-
-    _assert_multiple(sampling_period_ms, sliding_win_ms)
-    sliding_win = int(sliding_win_ms // sampling_period_ms)
-
-    if sliding_step_ms is None:
-        sliding_step_ms = sampling_period_ms
-    _assert_multiple(sampling_period_ms, sliding_step_ms)
-    sliding_step = int(sliding_step_ms // sampling_period_ms)
-
-    xcorr = _rolling_cross_corr_discreete(
-        s0,
-        s1,
-        offsets,
-        sliding_win,
-        sliding_step,
-        pbar,
-        pearson=pearson,
+    positions = np.searchsorted(times, target, side='left')
+    clipped = np.clip(positions, 0, len(times) - 1)
+    exact = (positions < len(times)) & np.isclose(
+        times[clipped],
+        target,
+        rtol=1e-10,
+        atol=1e-12,
     )
 
-    return xcorr
+    if exact.any():
+        result[:, exact] = values[:, positions[exact]]
+
+    interp = ~exact & (positions > 0) & (positions < len(times))
+    if interp.any():
+        right = positions[interp]
+        left = right - 1
+        gaps = times[right] - times[left]
+
+        allowed = np.ones(len(right), dtype=bool)
+        allowed &= gaps <= max_gap + np.finfo(float).eps * 16
+
+        if allowed.any():
+            target_allowed = target[interp][allowed]
+            left = left[allowed]
+            right = right[allowed]
+            out_cols = np.flatnonzero(interp)[allowed]
+
+            if method == 'linear':
+                fraction = (target_allowed - times[left]) / (times[right] - times[left])
+                result[:, out_cols] = (
+                    values[:, left] + (values[:, right] - values[:, left]) * fraction
+                )
+            else:
+                left_dist = target_allowed - times[left]
+                right_dist = times[right] - target_allowed
+                source = np.where(left_dist <= right_dist, left, right)
+                result[:, out_cols] = values[:, source]
+
+    # Each trace has its own finite support when edge samples are NaN.
+    valid = ~np.isnan(values)
+    any_valid = valid.any(axis=1)
+    first = np.full(values.shape[0], -1, dtype=np.intp)
+    last = np.full(values.shape[0], -1, dtype=np.intp)
+
+    if values.shape[1]:
+        first[any_valid] = np.argmax(valid[any_valid], axis=1)
+        last[any_valid] = (
+            values.shape[1] - 1 - np.argmax(valid[any_valid, ::-1], axis=1)
+        )
+
+    for row in np.flatnonzero(any_valid):
+        inside = (target >= times[first[row]]) & (target <= times[last[row]])
+        result[row, ~inside] = np.nan
+
+    return result
 
 
-def _estimate_sampling_period(times, atol=1.0e-6) -> float:
-    dts = np.diff(times)
-    dts = np.unique(dts)
-
-    assert np.allclose(dts[0], dts, atol=atol), dts
-
-    # noinspection PyTypeChecker
-    return dts[0]
-
-
-class Traces(Collection):
+class _TracesData(typing.Generic[FloatT]):
     """
-    Class for storing time series as a pd.DataFrame (self.traces) with
-    associated metadata as another pd.DataFrame (self.meta).
+    Internal storage for regularly sampled traces.
+
+    Values are a floating-point array with shape `(n_traces, n_samples)`.
+    All traces share one sampling rate and temporal origin. NaN represents
+    missing observations without changing the regular sampling grid.
     """
 
     def __init__(
         self,
-        meta: pd.DataFrame,
-        traces: pd.DataFrame,
-        copy=True,
+        values: npt.NDArray[FloatT],
+        sampling: SamplingRate,
+        start: float,
     ):
-        if copy:
-            traces = traces.copy()
-            meta = meta.copy()
+        values = np.asarray(values)
 
-        super().__init__(meta.copy())
-        self.traces: pd.DataFrame = traces
+        if values.ndim != 2:
+            raise ValueError('trace values must be a two-dimensional array')
+        if not np.issubdtype(values.dtype, np.floating):
+            raise TypeError('internal trace values must have a floating dtype')
+        if not isinstance(sampling, SamplingRate):
+            raise TypeError('sampling must be a SamplingRate')
 
-        assert isinstance(meta, pd.DataFrame)
-        assert meta.index.is_unique
-        assert meta.columns.is_unique
+        start = float(start)
+        if not np.isfinite(start):
+            raise ValueError('trace start must be finite')
 
-        if self.meta.index.name is None:
-            default_index_name = 'trace_idx'
-            if default_index_name in meta.columns:
-                logging.warning(  # noqa: LOG015
-                    f'Default index name "{default_index_name}" already in columns. Drop or rename first?'
-                )
-            self.meta.rename_axis(index=default_index_name, inplace=True)
+        values = np.array(values, copy=True, order='C', subok=False)
+        values.flags.writeable = False
 
-        assert self.traces.index.is_unique
-        assert self.traces.columns.is_unique
-        if self.traces.index.name is None:
-            self.traces.rename_axis(index='time', inplace=True)
-        if self.traces.columns.name is None:
-            self.traces.rename_axis(columns=self.meta.index.name, inplace=True)
+        self._values = values
+        self._sampling = sampling
+        self._start = start
 
-        assert self.traces.columns.name == self.meta.index.name
+    def __len__(self) -> int:
+        return self._values.shape[0]
 
-        assert len(self.meta.index) == len(self.traces.columns), (
-            f'Got {len(self.meta.index)} meta entries but {len(self.traces.columns)} traces'
+    @property
+    def values(self) -> npt.NDArray[FloatT]:
+        return self._values
+
+    @property
+    def sampling(self) -> SamplingRate:
+        return self._sampling
+
+    @property
+    def start(self) -> float:
+        return self._start
+
+    @property
+    def stop(self) -> float:
+        return self.start + self.sampling.samples_to_ms(self.n_samples)
+
+    @property
+    def n_samples(self) -> int:
+        return self._values.shape[1]
+
+    @property
+    def time(self) -> np.ndarray:
+        return self.start + self.sampling.samples_to_ms(
+            np.arange(self.n_samples, dtype=np.intp)
         )
 
-        assert np.all(self.meta.index == self.traces.columns)
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self._values.shape
 
-        self.traces.columns.name = self.meta.index.name
+    @property
+    def dtype(self) -> np.dtype[FloatT]:
+        return self._values.dtype
 
-    @classmethod
-    def load_single(
-        cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None
-    ):
+    def astype(
+        self,
+        dtype: type[FloatU] | np.dtype[FloatU],
+    ) -> _TracesData[FloatU]:
 
-        load_win = timeslice.Win(*load_win)
+        dtype = np.dtype(dtype)
 
-        if ref is None:
-            load_wins = timeslice.Windows.build_around(
-                [load_win.start],
-                (0, load_win.length),
-            )
-        else:
-            load_wins = timeslice.Windows.build_around(pd.Series([ref]), load_win)
+        if not np.issubdtype(dtype, np.floating):
+            raise TypeError('Traces can only be cast to floating dtypes')
 
-        result = cls.load_many(
-            loader,
-            load_wins,
-            load_hz=load_hz,
-            channels=channels,
-            pbar=pbar,
+        return _TracesData(
+            self.values.astype(dtype),
+            self.sampling,
+            self.start,
         )
 
-        if 'win_idx' in result.meta.columns:
-            result.meta.drop('win_idx', axis=1, inplace=True)
+    def sel_pos(self, positions: np.ndarray) -> typing.Self:
+        positions = np.asarray(positions, dtype=np.intp)
+        return self.__class__(
+            self._values[positions],
+            self.sampling,
+            self.start,
+        )
 
+    def get_pos(self, position: int) -> pd.Series:
+        return pd.Series(
+            self._values[position],
+            index=pd.Index(self.time, name='time_ms'),
+            name=position,
+        )
+
+    def copy(self) -> typing.Self:
+        return self
+
+    def _with_start(self, start: float) -> typing.Self:
+        start = float(start)
+        if not np.isfinite(start):
+            raise ValueError('trace start must be finite')
+
+        result = self.__class__.__new__(self.__class__)
+        result._values = self._values
+        result._sampling = self._sampling
+        result._start = start
         return result
 
-    @classmethod
-    def load_many(cls, loader, load_wins, load_hz=None, channels=None, pbar=None):
-
-        if load_hz is None:
-            load_hz = loader.sampling_rate
-
-        if channels is None:
-            channels = loader.channels.index
-
-        traces = {}
-
-        for idx, ref, win_ms in load_wins.iter_wins_ref(pbar=pbar):
-            win_ms = win_ms.clip(loader.win_ms)
-
-            win_ms_rel = win_ms.shift(-ref)
-            slice_idcs_rel: slice = win_ms_rel.to_slice_idx(
-                loader.sampling_rate, load_hz
-            )
-
-            # Rounding for closest sample together with imperfect sampling rates may cause
-            # an off by one difference between:
-            #   win_rel.to_slice_idx(loader.sampling_rate, load_hz)
-            #   win.to_slice_idx(loader.sampling_rate, load_hz)
-            # To prevent this, let's calculate the final idcs as a shift of the relative idcs
-            # which we take as final truth.
-
-            ref_idx = nocte.core.sampling.SamplingRate(loader.sampling_rate).ms_to_idcs(
-                ref
-            )
-            slice_idcs = slice(
-                slice_idcs_rel.start + ref_idx,
-                slice_idcs_rel.stop + ref_idx,
-                slice_idcs_rel.step,
-            )
-
-            assert (slice_idcs.stop - slice_idcs.start) == (
-                slice_idcs_rel.stop - slice_idcs_rel.start
-            )
-
-            # This is equivalent of converting to idcs in the ideal load_hz
-            rel_idcs = np.arange(
-                slice_idcs_rel.start / slice_idcs_rel.step,
-                slice_idcs_rel.stop / slice_idcs_rel.step,
-                1,
-            )
-
-            data = loader.load(slice_idcs, channels)
-
-            data = pd.DataFrame(data.T, index=rel_idcs, columns=channels)
-            data.rename_axis('channel', axis=1, inplace=True)
-
-            traces[idx] = data
-
-        wins_idx_name = load_wins.index.name
-
-        traces = pd.concat(traces, axis=1, names=[wins_idx_name])
-
-        traces.sort_index(inplace=True)
-        assert traces.index.is_unique
-
-        traces.index = traces.index.astype(int)
-
-        traces.index = traces.index * 1_000.0 / load_hz
-
-        new_reg = traces.columns.to_frame(index=False)
-        merged_reg = pd.merge(
-            new_reg,
-            load_wins.wins.drop(['start', 'stop'], axis=1),
-            how='left',
-            left_on=wins_idx_name,
-            right_index=True,
-        )
-        assert merged_reg.index.is_unique
-
-        traces.columns = merged_reg.index
-
-        return cls.from_df(
-            meta=merged_reg,
-            traces=traces,
-        )
-
-    @classmethod
-    def from_multiindex_df(cls, df: pd.DataFrame):
-        desc = df.columns.to_frame(index=False)
-        traces = df.copy()
-        traces.columns = desc.index
-
-        return cls.from_df(
-            traces=traces,
-            meta=desc,
-        )
-
-    @classmethod
-    def from_df(cls, traces: pd.DataFrame, meta: pd.DataFrame = None):
-        """
-        From a dataframe where index indicates time in milliseconds.
-        Optionally provide extra info for the registry (desc), whose index must match the df columns.
-        """
-
-        traces = traces.copy()
-
-        if meta is None:
-            meta = traces.columns.to_frame(index=False)
-            traces.columns = meta.index
-
-        traces.sort_index(inplace=True)
-
-        meta = meta.copy()
-
-        return cls(
-            meta=meta,
-            traces=traces,
-        )
-
-    @classmethod
-    def from_series(cls, s: pd.Series, col_name=None, entry_name=None):
-
-        if entry_name is not None:
-            s = s.rename(entry_name)
-
-        df = s.to_frame()
-
-        if col_name is not None:
-            df.rename_axis(columns=col_name, inplace=True)
-
-        return cls.from_df(df)
-
-    @classmethod
-    def from_dict(cls, d: dict, names: list):
-        df = pd.concat(d, axis=1, names=names)
-        return cls.from_df(df)
-
-    @classmethod
-    def from_dict_resampled(
-        cls,
-        d: dict,
-        names: list,
-        start='milliseconds',
-        stop=None,
-        period=None,
-        meta: pd.DataFrame = None,
-        pbar=None,
-    ):
-        assert len(d) > 0
-
-        if start is None:
-            start = min(trace.index.min() for k, trace in d.items())
-
-        elif isinstance(start, str):
-            vmin = min(trace.index.min() for k, trace in d.items())
-            round_to = nocte.core.time.ms(**{start: 1})
-            start = np.floor(vmin / round_to) * round_to
-
-        if stop is None:
-            stop = max(trace.index.max() for k, trace in d.items())
-
-        if period is None:
-            period = min(np.min(np.diff(trace.index)) for k, trace in d.items())
-            period = np.ceil(period * 0.5)
-
-        logging.info(f'resampling from {start} to {stop} at {period}')  # noqa: LOG015
-
-        win = timeslice.Win(start, stop)
-
-        resampled = {}
-        for k, trace in cls._optional_pbar(d.items(), total=len(d), pbar=pbar):
-            if isinstance(trace, pd.Series):
-                resampled[k] = win.interp_series(trace, step=period)
-            else:
-                assert isinstance(trace, pd.DataFrame)
-                resampled[k] = win.interp_df(trace, step=period)
-
-        lengths = np.array([trace.shape[0] for trace in resampled.values()])
-        assert np.all(lengths[0] == lengths)
-
-        time = pd.Index(next(iter(resampled.values())).index)
-        for df in resampled.values():
-            df.reset_index(drop=True, inplace=True)
-
-        resampled = pd.concat(
-            resampled,
-            axis=1,
-            verify_integrity=False,
-            sort=False,
-            names=names,
-        )
-        resampled.index = time
-
-        return cls.from_df(resampled, meta=meta)
-
-    @classmethod
-    def from_data_dict(
-        cls, datadict: dd.DataDict, key_name: str | None = None, pre_aligned=False
-    ):
-        """Assuming each entry is a traces object"""
-
-        if key_name is None:
-            assert datadict.index.name is not None
-            key_name = datadict.index.name
-
-        if pre_aligned:
-            traces = cls.concat_dict_aligned(datadict.data, names=[key_name])
-
-        else:
-            traces = cls.concat_dict(datadict.data, key_name=[key_name])
-
-        traces = traces.merge_reg(datadict.meta, left_on=[key_name], right_index=True)
-
-        return traces
-
-    def store_hdf(self, path, key='traces'):
-        path = str(path)
-        self.meta.to_hdf(path, key=f'{key}_reg')
-        self.traces.to_hdf(path, key=f'{key}_data')
-
-    @classmethod
-    def load_hdf(cls, path, key='traces'):
-        path = str(path)
-        # noinspection PyTypeChecker
-        return cls(
-            meta=pd.read_hdf(path, key=f'{key}_reg'),
-            traces=pd.read_hdf(path, key=f'{key}_data'),
-            copy=False,
-        )
-
-    def to_dict(self, col):
-        """
-        Split this traces object into multiple ones with the key being the given column values.
-        """
-        return dict(self.iter_grouped(col))
-
-    def first_valid_index(self):
-        return self.traces.apply(lambda col: col.first_valid_index())
-
-    def last_valid_index(self):
-        return self.traces.apply(lambda col: col.last_valid_index())
-
-    def to_wins(self, ref='ref', tight=True) -> timeslice.Windows:
-
-        meta = self.meta.copy()
-        if tight:
-            start = self.first_valid_index()
-            stop = self.last_valid_index()
-        else:
-            rel_win = self.get_global_win()
-            start, stop = rel_win.start, rel_win.stop
-
-        if ref in self.columns:
-            refs = meta[ref]
-        else:
-            refs = 0
-
-        meta['start'] = refs + start
-        meta['stop'] = refs + stop
-
-        return timeslice.Windows(meta)
-
-    @classmethod
-    def concat_dict(cls, traces_dict: dict, key_name=None):
-
-        meta = pd.concat(
-            {k: traces.meta for k, traces in traces_dict.items()},
-            axis=0,
-            names=key_name,
-        )
-
-        meta.reset_index(inplace=True)
-        meta.rename(columns=dict(trace_idx='local_trace_idx'), inplace=True)
-
-        traces = pd.concat([traces.traces for traces in traces_dict.values()], axis=1)
-
-        traces.columns = meta.index
-
-        return cls(
-            meta=meta,
-            traces=traces,
-            copy=False,
-        )
-
-    @classmethod
-    def concat_list(cls, traces_list: list):
-
-        meta = pd.concat([traces.meta for traces in traces_list], axis=0)
-        meta = meta.reset_index(drop=True)
-
-        traces = pd.concat([traces.traces for traces in traces_list], axis=1)
-        traces = traces.T.reset_index(drop=True).T
-        traces.sort_index(inplace=True)
-
-        return cls(
-            meta=meta,
-            traces=traces,
-            copy=False,
-        )
-
-    @classmethod
-    def concat_dict_aligned(cls, traces_dict: dict, names):
-        """
-        Concatenates multiple Traces objects assuming indices are regular and overlapping.
-        Sampling rates must match and sampling time must be aligned, but data may be missing
-        for some objects either at the beginning or at the end (longer or shorter recordings).
-
-        This function pads shorter traces objects with NaN rows so they all have the same index as the longest one.
-
-        This is much faster than concatenating DataFrames with pd.concat, which involves slow reindexing.
-        """
-
-        sampling_periods = np.array(
-            [traces.sampling_period for traces in traces_dict.values()]
-        )
-        step = sampling_periods[0]
-        assert np.all(sampling_periods == step), (
-            'Traces with different sampling periods'
-        )
-
-        starts = np.array([traces.time[0] for traces in traces_dict.values()])
-        global_start = np.min(starts)
-        assert np.all(((starts - global_start) % sampling_periods[0]) == 0), (
-            'Traces sampling is misaligned'
-        )
-
-        stops = np.array([traces.time[-1] for traces in traces_dict.values()])
-        global_stop = np.max(stops)
-
-        unified_index = pd.Index(
-            np.arange(
-                global_start,
-                global_stop + step,
-                step,
-            )
-        )
-
-        padded_dfs = []
-        for traces in traces_dict.values():
-            df = traces.traces
-            start = df.index[0]
-            stop = df.index[-1]
-            cols = df.columns
-
-            start_pad = pd.DataFrame(
-                np.nan, index=np.arange(global_start, start, step), columns=cols
-            )
-            stop_pad = pd.DataFrame(
-                np.nan,
-                index=np.arange(stop + step, global_stop + step, step),
-                columns=cols,
-            )
-
-            padded = pd.concat([start_pad, df, stop_pad])
-            assert len(padded) == len(unified_index)
-            padded_dfs.append(padded)
-
-        combined_reg = pd.concat(
-            {k: traces.meta for k, traces in traces_dict.items()}, axis=0, names=names
-        )
-
-        combined_reg.reset_index(inplace=True, drop=False)
-        combined_reg.drop('trace_idx', axis=1, inplace=True)
-
-        combined_array = np.hstack([df.to_numpy() for df in padded_dfs])
-
-        combined_traces = pd.DataFrame(
-            combined_array, columns=combined_reg.index, index=unified_index
-        )
-
-        return cls(combined_reg, combined_traces, copy=False)
-
-    @functools.wraps(pd.DataFrame.reset_index)
-    def reset_index(self, *args, drop=True, **kwargs):
-
-        meta = self.meta.reset_index(*args, drop=drop, **kwargs)
-
-        traces = self.traces.copy()
-        traces.columns = meta.index
-
-        return Traces(meta, traces)
-
-    @functools.wraps(pd.DataFrame.set_index)
-    def set_index(self, *args, **kwargs):
-
-        meta = self.meta.set_index(*args, **kwargs)
-        assert meta.index.is_unique
-
-        traces = self.traces.copy()
-        traces.columns = meta.index
-
-        return Traces(meta, traces)
-
-    @functools.wraps(pd.DataFrame.__eq__)
-    def __eq__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__eq__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__ne__)
-    def __ne__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__ne__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__ge__)
-    def __ge__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__ge__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__gt__)
-    def __gt__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__gt__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__le__)
-    def __le__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__le__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__lt__)
-    def __lt__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__lt__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__add__)
-    def __add__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__add__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__radd__)
-    def __radd__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__radd__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__sub__)
-    def __sub__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__sub__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__rsub__)
-    def __rsub__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__rsub__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__mul__)
-    def __mul__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__mul__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__rmul__)
-    def __rmul__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__rmul__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__truediv__)
-    def __truediv__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__truediv__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__rtruediv__)
-    def __rtruediv__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__rtruediv__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__floordiv__)
-    def __floordiv__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__floordiv__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__rfloordiv__)
-    def __rfloordiv__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__rfloordiv__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__neg__)
-    def __neg__(self):
-        return self.replace_traces(
-            self.traces.__neg__(),
-        )
-
-    @functools.wraps(pd.DataFrame.__neg__)
-    def __mod__(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.__mod__(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.__array__)
-    def __array__(self, *args, **kwargs):
-        return self.traces.__array__(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.__array_ufunc__)
-    def __array_ufunc__(self, *args, **kwargs):
-        return self.traces.__array_ufunc__(*args, **kwargs)
-
-    def get(self, idx=None) -> pd.Series:
-        """return a single trace. If no index it's given, we assume there is only one"""
-        if idx is None:
-            assert len(self.traces.columns) == 1, f'Found too many traces:\n{self.meta}'
-            idx = self.index[0]
-
-        # noinspection PyTypeChecker
-        return self.traces.loc[:, idx]
-
-    def get_df(self, col, expect_unique=True) -> pd.DataFrame:
-        """
-        return the traces with the columns changed to be a given property
-        """
-        traces = self.traces
-
-        new_col = self.meta[col]
-        assert not expect_unique or new_col.is_unique
-        traces = traces.T.set_index(new_col).T
-
-        return traces
-
-    def groupby_mix(self, by, how):
-
-        if not isinstance(by, list):
-            by = [by]
-
-        # if drop is None:
-        #     # noinspection PyUnresolvedReferences
-        #     different = (self.meta.groupby(by).nunique() > 1).any()
-        #     drop = different.index[different]
-
-        by = [self.meta[col] for col in by]
-
-        agg_traces = {}
-        agg_reg = {}
-
-        for k, straces in self.traces.T.groupby(by):
-            straces = straces.T
-            sreg = self.meta.loc[straces.columns]
-
-            same_values = sreg.nunique(dropna=True) == 1
-            none_missing = sreg.isna().sum() == 0
-            sreg = sreg.loc[:, same_values & none_missing].drop_duplicates()
-            assert len(sreg) == 1, (
-                f'Expected single trace for {k}. Got {len(sreg)}: {sreg.nunique()}'
-            )
-            idx = sreg.index[0]
-
-            agg_reg[idx] = sreg.iloc[0]
-            # noinspection PyTypeChecker
-            agg_traces[idx] = how(straces, axis=1)
-
-        agg_reg = pd.DataFrame.from_dict(agg_reg, orient='index')
-        agg_reg.sort_index(inplace=True)
-
-        agg_traces = pd.DataFrame(agg_traces)
-        agg_traces.sort_index(inplace=True, axis=1)
-
-        return Traces(
-            meta=agg_reg,
-            traces=agg_traces,
-        )
-
-    def groupby_mean(self, by):
-        return self.groupby_mix(by, how=pd.DataFrame.mean)
-
-    def groupby_median(self, by):
-        return self.groupby_mix(by, how=pd.DataFrame.median)
-
-    def groupby_std(self, by):
-        return self.groupby_mix(by, how=pd.DataFrame.std)
-
-    def groupby_max(self, by):
-        return self.groupby_mix(by, how=pd.DataFrame.max)
-
-    def histograms(self, bins=None, density=None, weights=None) -> pd.DataFrame:
-        if bins is None:
-            bins = 100
-
-        if isinstance(bins, int):
-            bins = np.linspace(
-                np.nanmin(self.traces.values),
-                np.nanmax(self.traces.values),
-                bins + 1,
-            )
-
-        df = pd.DataFrame(
-            {
-                k: np.histogram(trace, bins=bins, density=density, weights=weights)[0]
-                for k, trace in self.items()
-            }
-        )
-
-        df.index = pd.IntervalIndex.from_breaks(bins)
-
-        return df
-
-    def items(self, col=None, *, pbar=None):
-        """
-        Returns an iterator to go over each trace.
-        If 'col' is None, then the key will be the index.
-        If it is not, then the key will be the value of the corresponding column
-        (which must be unique).
-
-            for exp_name, trace in beta.items('exp_name', pbar=True):
-                pass
-
-        """
-        if col is not None:
-            data = self.get_df(col)
-        else:
-            data = self.traces
-
-        return self._optional_pbar(data.items(), total=len(data.columns), pbar=pbar)
-
-    def histograms2d(self, vbins=None, tbins=None, rolling_win=None, pbar=None):
-        """
-        Extracts a 2D histogram for each trace where the first dimension is the time and the second the value.
-
-        This can be useful to look at how the distribution of values changes over time.
-
-        All histograms will have the same bins.
-        """
-
-        if vbins is None:
-            vbins = 100
-
-        if isinstance(vbins, int):
-            vbins = np.linspace(
-                np.nanmin(self.traces.values),
-                np.nanmax(self.traces.values),
-                vbins,
-            )
-
-        if tbins is None:
-            tbins = float(self.sampling_period)
-
-        if isinstance(tbins, float):
-            tbins = self.get_global_win().arange(tbins)
-
-        hists = {}
-        for k, trace in self.items(pbar=pbar):
-            trace = trace.dropna()
-
-            h, t_edges, v_edges = np.histogram2d(
-                trace.index,
-                trace.values,
-                bins=(tbins, vbins),
-            )
-
-            h = pd.DataFrame(
-                h,
-                index=pd.IntervalIndex.from_breaks(t_edges),
-                columns=pd.IntervalIndex.from_breaks(v_edges),
-            )
-
-            if rolling_win is not None:
-                h = h.rolling(rolling_win, center=True).mean()
-
-            hists[k] = h
-
-        hists = dd.DataDict(self.meta, hists)
-
-        return hists
-
-    def normalize_by_quantiles(self, qmin=0.05, qmax=0.95, win=None):
-
-        if win is not None:
-            traces = self.crop(win)
-            assert len(traces.time) > 0, f'No data in {win}'
-
-        else:
-            traces = self
-
-        vmin = traces.traces.quantile(qmin)
-        vmax = traces.traces.quantile(qmax)
-
-        return (self - vmin) / (vmax - vmin)
-
-    def iter_grouped(self, groupby, pbar=None):
-
-        grouped = self.meta.groupby(groupby, sort=False)
-
-        for k, sub_reg in self._optional_pbar(
-            grouped, total=len(grouped.groups), pbar=pbar
-        ):
-            sub_traces = Traces(
-                meta=sub_reg,
-                traces=self.traces.loc[:, sub_reg.index],
-            )
-
-            yield k, sub_traces
-
-    @functools.wraps(pd.DataFrame.clip)
-    def clip(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.clip(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.replace)
-    def replace(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.replace(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.fillna)
-    def fillna(self, *args, **kwargs):
-        return self.replace_traces(
-            self.traces.fillna(*args, **kwargs),
-        )
-
-    @functools.wraps(pd.DataFrame.abs)
-    def abs(self):
-        return self.replace_traces(
-            self.traces.abs(),
-        )
-
-    def unique_sorted(self, col, order=None):
-        """
-        Returns unique values of a column with a particular preference for some of them in their ordering.
-        For example, if
-            vals = ['x', 'y', 'a', 'c']
-
-        and
-            order = ['a', 'b', 'c']
-
-        this will return
-
-            sorted_vals = ['a', 'c', 'x', 'y']
-
-        This is useful when we want to iterate over the values for plotting and we know the general order,
-        but not the particular case, so we are as consistent as possible across plot.
-
-        """
-        order = order or []
-
-        vals = self[col].unique()
-
-        order_idcs = {key: idx for idx, key in enumerate(order)}
-
-        sorted_vals = sorted(vals, key=lambda x: order_idcs.get(x, float('inf')))
-
-        return sorted_vals
-
-    def log10(self, drop_inf=False):
-        log = self.apply(np.log10)
-
-        if drop_inf:
-            log.traces.replace(-np.inf, np.nan, inplace=True)
-            log.traces.replace(+np.inf, np.nan, inplace=True)
-
-        return log
-
-    def power10(self):
-        """opposite of log10"""
-        return self.apply(lambda x: np.power(10, x))
-
-    def square(self):
-        return self.apply(np.square)
-
-    def sqrt(self):
-        return self.apply(np.sqrt)
-
-    def unwrap(self, period=1, axis=0):
-        if np.any(np.isnan(self.traces)):
-            logging.warning('Unwrapping does not support nans')  # noqa: LOG015
-
-        return self.replace_traces(
-            np.unwrap(self.traces.values, period=period, axis=axis)
-        )
-
-    def crop(
-        self,
-        win: timeslice.Win,
-        **kwargs,
-    ):
-        win = timeslice.Win(*win)
-        new = self.apply(lambda trace: win.crop_df(trace, **kwargs))
-        return new
-
-    def crop_centered(
-        self,
-        duration,
-        **kwargs,
-    ):
-        win = timeslice.Win.build_centered(np.mean(self.time), duration)
-        return self.crop(win, **kwargs)
-
-    def shift_time(
-        self,
-        ref_time: float | pd.Series | np.ndarray,
-    ):
-        if isinstance(ref_time, (pd.Series, np.ndarray)):
-            return self.shift_time_each(ref_time)
-        else:
-            return self.replace_traces(self.traces.set_index(self.time + ref_time))
-
-    def shift_time_each(
-        self,
-        shifts: pd.Series,
-        neg=False,
-    ):
-        """
-        Shift each individual trace by the corresponding shift.
-        Useful if the same event happened at a different time each.
-        Note the resulting traces may not align in their sampling rate, depending
-        on whether the shifts align. Use 'resample' to re-align the traces.
-        :param shifts:
-            The shifts to apply to each individual trace.
-            If a string, it is assumed to be the name of the column in the registry.
-        :param neg:
-            To negate the shifts, use neg=True. Useful if shifts is a column.
-        :return:
-        """
-        if isinstance(shifts, str):
-            shifts = self[shifts]
-
-        if isinstance(shifts, np.ndarray):
-            shifts = pd.Series(shifts, index=self.index)
-
-        assert isinstance(shifts, pd.Series)
-        shifts = shifts.reindex(self.index)
-        assert shifts.notna().all()
-
-        if neg:
-            shifts = shifts * -1
-
-        shifted_traces = {
-            k: pd.Series(trace.values, index=trace.index + shifts[k])
-            for k, trace in self.items()
-        }
-
-        # TODO
-        # This might be slow (due to re-indexing) and generate many np.nans if the shifts dont align
-        # which can be common with floating errors.
-        # This can be solved post-hoc with 'resample', but we could avoid it all together
-        # by directly resampling here in the same way that 'from_dict_resampled' works.
-        shifted_traces = pd.DataFrame(shifted_traces)
-
-        return self.replace_traces(shifted_traces)
-
-    def cross_corr(self, pairs, pearson=True, mode='same'):
-        """
-        Compute cross-correlations between selected pairs of traces.
-
-        Parameters
-        ----------
-        pairs : iterable of tuple[int, int]
-            List of (i, j) index pairs referring to traces in `self`.
-        pearson : bool, default True
-            If True, compute Pearson-normalized cross-correlation.
-        mode : {'same', 'full', 'valid'}
-            Correlation mode, passed to scipy.signal.correlate.
-
-        Returns
-        -------
-        dict[tuple[int, int], pd.Series]
-            Mapping (i, j) -> cross-correlation series indexed by lag.
-        """
-
-        def _single_xcorr(trace_i, trace_j):
-            # drop NaNs independently, then align on common time index
-            ti = trace_i.dropna()
-            tj = trace_j.dropna()
-
-            if len(ti) == 0 or len(tj) == 0:
-                return pd.Series(dtype=float)
-
-            # align on common index
-            ti, tj = ti.align(tj, join='inner')
-
-            if len(ti) == 0:
-                return pd.Series(dtype=float)
-
-            if pearson:
-                ti = ti - ti.mean()
-                tj = tj - tj.mean()
-
-            t = ti.index - ti.index.min()
-
-            if mode == 'same':
-                lags = t - t[len(t) // 2]
-            elif mode == 'full':
-                lags = np.concatenate(
-                    [
-                        t[::-1] * -1,
-                        t[1:],
-                    ]
-                )
-            else:
-                assert mode == 'valid'
-                lags = [0]
-
-            xcorr = scipy.signal.correlate(
-                ti.values,
-                tj.values,
-                mode=mode,
-            )
-
-            xcorr = pd.Series(xcorr, index=lags)
-
-            if pearson:
-                denom = np.sqrt(ti.var() * tj.var()) * len(ti)
-                if denom != 0:
-                    xcorr = xcorr / denom
+    def sel_time(self, win: Win) -> typing.Self:
+        win_start = win.time_at('start')
+        win_stop = win.time_at('stop')
+
+        if self.n_samples == 0:
+            return self.copy()
+
+        period = self.sampling.period_ms
+        rel_start = (win_start - self.start) / period
+        rel_stop = (win_stop - self.start) / period
+
+        for name, value in (('start', rel_start), ('stop', rel_stop)):
+            nearest = np.round(value)
+            if np.isclose(value, nearest, rtol=1e-10, atol=1e-10):
+                if name == 'start':
+                    rel_start = nearest
                 else:
-                    xcorr[:] = np.nan
+                    rel_stop = nearest
 
-            return xcorr
+        first = int(np.ceil(rel_start))
+        stop = int(np.ceil(rel_stop))
+        first = int(np.clip(first, 0, self.n_samples))
+        stop = int(np.clip(stop, first, self.n_samples))
 
-        out = {}
-        for k, i, j in pairs[['first', 'second']].itertuples():
-            trace_i = self.traces[i]
-            trace_j = self.traces[j]
-            out[k] = _single_xcorr(trace_i, trace_j)
-
+        new_start = self.start + self.sampling.samples_to_ms(first)
         return self.__class__(
-            pairs,
-            pd.DataFrame(out),
+            self._values[:, first:stop],
+            self.sampling,
+            new_start,
         )
 
-    def cross_corr_rolling_by(
+    def shift(self, by: float) -> typing.Self:
+        by = float(by)
+        if not np.isfinite(by):
+            raise ValueError('shift must be finite')
+
+        return self._with_start(self.start + by)
+
+    def _lookup_common(
         self,
-        pair_by,
-        sort_by=None,
-        **kwargs,
-    ):
-        if sort_by is None:
-            sort_by = pair_by
-
-        def sort_pair(a, b):
-            if self.meta.loc[a, sort_by] < self.meta.loc[b, sort_by]:
-                return a, b
-            else:
-                return b, a
-
-        groups = {
-            pair_idx: sort_pair(a, b)
-            for pair_idx, (a, b) in self.meta.groupby(pair_by).groups.items()
-        }
-
-        pairs = pd.DataFrame.from_dict(
-            groups, orient='index', columns=['first', 'second']
+        target: np.ndarray,
+        *,
+        method: InterpMethod,
+    ) -> np.ndarray:
+        _validate_method(method)
+        target = np.asarray(target, dtype=float)
+        result = np.full(
+            (len(self), len(target)),
+            np.nan,
+            dtype=self.dtype,
         )
 
-        xcorrs = self.cross_corr_rolling(
-            pairs=pairs,
-            **kwargs,
+        if self.n_samples == 0 or len(target) == 0:
+            return result
+
+        finite_target = np.isfinite(target)
+        fractional = (target - self.start) / self.sampling.period_ms
+        safe_fractional = np.where(finite_target, fractional, 0.0)
+        nearest_integer = np.round(safe_fractional)
+        exact = finite_target & np.isclose(
+            fractional,
+            nearest_integer,
+            rtol=1e-10,
+            atol=1e-10,
         )
+        exact_indices = nearest_integer.astype(np.intp, copy=False)
+        exact &= (exact_indices >= 0) & (exact_indices < self.n_samples)
 
-        return pairs, xcorrs
+        if exact.any():
+            result[:, exact] = self._values[:, exact_indices[exact]]
 
-    def cross_corr_rolling(
-        self,
-        pairs: pd.DataFrame,
-        lags_ms: np.ndarray,
-        sliding_win_ms: float,
-        sliding_step_ms: float | None = None,
-        pbar=None,
-        pbar_single=None,
-        pearson=True,
-    ):
-        sampling_period = self.sampling_period
+        remaining = finite_target & ~exact
+        if method == 'linear':
+            left = np.floor(safe_fractional).astype(np.intp, copy=False)
+            right = left + 1
+            interp = remaining & (left >= 0) & (right < self.n_samples)
 
-        if sliding_step_ms is None:
-            sliding_step_ms = sampling_period
-
-        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
-            lags_ms = np.arange(*lags_ms, sampling_period)
-
-        if isinstance(pairs, list):
-            pairs = pd.DataFrame([(0, 1)], columns=['first', 'second'])
-
-        to_iter = pairs[['first', 'second']].itertuples()
-
-        xcorrs = {}
-
-        for i, k0, k1 in self._optional_pbar(to_iter, total=len(pairs), pbar=pbar):
-            xcorr = _rolling_cross_corr_ms(
-                self.traces[k0].values,
-                self.traces[k1].values,
-                sampling_period_ms=sampling_period,
-                lags_ms=lags_ms,
-                sliding_win_ms=sliding_win_ms,
-                sliding_step_ms=sliding_step_ms,
-                pbar=pbar_single,
-                pearson=pearson,
-            )
-
-            win_centers = (
-                np.arange(xcorr.shape[1]) * sliding_step_ms
-                + self.traces.index.min()
-                + sliding_win_ms * 0.5
-            )
-
-            xcorrs[i] = pd.DataFrame(
-                xcorr.T,
-                index=win_centers,
-                columns=lags_ms,
-            )
-
-        return xcorrs
-
-    def corr_rolling(
-        self,
-        template: np.ndarray,
-        lags_ms: np.ndarray,
-        sliding_win_ms: float,
-        sliding_step_ms: float | None = None,
-        pbar=None,
-        pbar_single=None,
-        pearson=True,
-    ):
-        sampling_period = self.sampling_period
-
-        if sliding_step_ms is None:
-            sliding_step_ms = sampling_period
-
-        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
-            lags_ms = np.arange(*lags_ms, sampling_period)
-
-        xcorrs = {}
-
-        if isinstance(template, pd.Series):
-            template = template.values
-
-        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            xcorr = _rolling_cross_corr_ms(
-                self.traces[k].values,
-                template,
-                sampling_period_ms=sampling_period,
-                lags_ms=lags_ms,
-                sliding_win_ms=sliding_win_ms,
-                sliding_step_ms=sliding_step_ms,
-                pbar=pbar_single,
-                pearson=pearson,
-            )
-
-            win_centers = (
-                np.arange(xcorr.shape[1]) * sliding_step_ms
-                + self.traces.index.min()
-                + sliding_win_ms * 0.5
-            )
-
-            xcorrs[k] = pd.DataFrame(
-                xcorr.T,
-                index=win_centers,
-                columns=lags_ms,
-            )
-
-        return xcorrs
-
-    def auto_corr_rolling(
-        self,
-        lags_ms: np.ndarray,
-        sliding_win_ms: float,
-        sliding_step_ms: float | None = None,
-        pbar=None,
-        pbar_each=None,
-        pearson=True,
-        key=None,
-    ):
-
-        if key is not None:
-            assert self[key].is_unique
-
-        sampling_period = self.sampling_period
-
-        if sliding_step_ms is None:
-            sliding_step_ms = sampling_period
-
-        if isinstance(lags_ms, tuple) and len(lags_ms) == 2:
-            lags_ms = np.arange(*lags_ms, sampling_period)
-
-        acorrs = {}
-
-        for k, trace in self.items(pbar=pbar):
-            acorr = _rolling_cross_corr_ms(
-                trace.values,
-                trace.values,
-                sampling_period_ms=sampling_period,
-                lags_ms=lags_ms,
-                sliding_win_ms=sliding_win_ms,
-                sliding_step_ms=sliding_step_ms,
-                pbar=pbar_each,
-                pearson=pearson,
-            )
-
-            win_centers = (
-                np.arange(acorr.shape[1]) * sliding_step_ms
-                + self.traces.index.min()
-                + sliding_win_ms * 0.5
-            )
-
-            acorr = pd.DataFrame(
-                acorr.T,
-                index=win_centers,
-                columns=lags_ms,
-            )
-
-            acorrs[k] = acorr
-
-        if key is not None:
-            acorrs = {self.loc[k, key]: v for k, v in acorrs.items()}
-
-        return acorrs
-
-    def auto_corr(self, pearson=True, mode='same'):
-
-        def _single_acorr(trace):
-
-            # note that the presence of nans means different
-            # trace may have effective different lengths
-            # which means the normalization (where we divide by the length)
-            # needs to be done per trace
-            trace = trace.dropna()
-
-            if len(trace) == 0:
-                return trace
-
-            if pearson:
-                trace = trace - trace.mean()
-
-            t = trace.index - trace.index.min()
-
-            if mode == 'same':
-                lags = t - t[len(t) // 2]
-
-            elif mode == 'full':
-                lags = np.concatenate(
-                    [
-                        t[::-1] * -1,
-                        t[1:],
-                    ]
+            if interp.any():
+                fraction = fractional[interp] - left[interp]
+                result[:, interp] = (
+                    self._values[:, left[interp]]
+                    + (self._values[:, right[interp]] - self._values[:, left[interp]])
+                    * fraction
                 )
-            else:
-                assert mode == 'valid'
-                lags = [0]
+        else:
+            left = np.floor(safe_fractional).astype(np.intp, copy=False)
+            fraction = safe_fractional - left
+            nearest = left + (fraction > 0.5).astype(np.intp)
+            interp = remaining & (nearest >= 0) & (nearest < self.n_samples)
+            if interp.any():
+                result[:, interp] = self._values[:, nearest[interp]]
 
-            # noinspection PyUnresolvedReferences
-            acorr = scipy.signal.correlate(
-                trace,
-                trace,
-                mode=mode,
+        first = self.first_valid_index()
+        last = self.last_valid_index()
+        nonempty = first >= 0
+
+        for row in np.flatnonzero(nonempty):
+            first_time = self.start + self.sampling.samples_to_ms(int(first[row]))
+            last_time = self.start + self.sampling.samples_to_ms(int(last[row]))
+            inside = (target >= first_time) & (target <= last_time)
+            result[row, ~inside] = np.nan
+
+        # Warn only when NaNs are encountered inside a trace's valid support.
+        warned = False
+        for row in np.flatnonzero(nonempty):
+            first_time = self.start + self.sampling.samples_to_ms(int(first[row]))
+            last_time = self.start + self.sampling.samples_to_ms(int(last[row]))
+            inside = finite_target & (target >= first_time) & (target <= last_time)
+            if inside.any() and np.isnan(result[row, inside]).any():
+                warned = True
+                break
+
+        if warned:
+            logger.warning(
+                'Interpolation encountered missing samples; affected values remain NaN. '
+                'Use fill_missing() first to bridge internal gaps.'
             )
-
-            acorr = pd.Series(acorr, index=lags)
-
-            if pearson:
-                acorr = acorr / (trace.var() * len(trace))
-
-            return acorr
-
-        return self.apply(_single_acorr)
-
-    @staticmethod
-    def _match_traces_wins(meta: pd.DataFrame, windows, **kwargs):
-
-        meta: pd.DataFrame = meta.copy()
-        # meta.drop(['ref'], axis=1, inplace=True)
-
-        if meta.index.name is None:
-            meta.index.name = 'index_reg'
-
-        reg_index_name = meta.index.name
-        meta.reset_index(inplace=True)
-
-        wins = windows.wins.copy()
-
-        if wins.index.name is None or wins.index.name == reg_index_name:
-            wins.index.name = 'index_wins'
-
-        wins.reset_index(inplace=True)
-
-        merged = pd.merge(
-            wins,
-            meta,
-            how='left',
-            **kwargs,
-        )
-
-        merged.dropna(subset=reg_index_name, inplace=True)
-
-        return merged, reg_index_name
-
-    def extract_all(  # TODO rewrite
-        self,
-        windows: timeslice.Windows,
-        upsampling_ms=None,
-        pbar=None,
-    ):
-        """
-        Extract all traces using a set of time windows.
-
-        This method applies each window to all traces, generating a new collection of traces
-        where each original trace is split into multiple segments corresponding to the given windows.
-
-        Parameters
-        ----------
-        windows : Windows
-            A `Windows` object defining the time ranges for extraction.
-        upsampling_ms : float, optional
-            If provided, upsample traces to this time resolution before extraction.
-        pbar : bool or tqdm-like, optional
-            Whether to display a progress bar.
-
-        Returns
-        -------
-        Traces
-            A new `Traces` object where each segment corresponds to a window.
-
-        Notes
-        -----
-        - This method differs from `extract()`, which maps traces to their corresponding windows.
-        - If windows overlap, extracted traces may have duplicated time segments.
-        """
-
-        if upsampling_ms is None:
-            upsampling_ms = self.sampling_period
-
-        interp_traces = windows.interp_df(
-            self.traces,
-            step=upsampling_ms,
-            pbar=pbar,
-        )
-
-        traces = pd.concat(interp_traces, axis=1, names=[windows.index.name])
-
-        new = traces.columns.to_frame(index=False)
-
-        new.rename(columns={new.columns[-1]: f'precut_{new.columns[-1]}'}, inplace=True)
-
-        wins_reg = windows.wins.reindex(new.iloc[:, 0])
-        wins_reg.index = new.index
-
-        traces_reg = self.meta  # .drop(['ref'], axis=1)
-        traces_reg = traces_reg.reindex(new.iloc[:, 1])
-        traces_reg.index = new.index
-
-        meta = pd.concat([wins_reg, traces_reg, new], axis=1)
-
-        dups = meta.columns.duplicated()
-        if np.any(dups):
-            logging.warning(  # noqa: LOG015
-                'Dropping duplicated columns: '
-                + ', '.join(list(meta.columns[dups]))
-                + '. Maybe you want cut_merge?'
-            )
-            meta = meta.loc[:, ~dups]
-
-        traces.columns = meta.index
-
-        return self.from_df(
-            traces=traces,
-            meta=meta,
-        )
-
-    def extract(self, wins, align=None, upsampling_ms=None):
-        """
-        Extract segments from traces using a `Windows` object.
-
-        This method selects and extracts trace segments according to the time windows
-        defined in `windows`, ensuring that each trace is matched with its corresponding
-        windows. It is the primary method for time-based trace extraction.
-
-        Parameters:
-        -----------
-        wins : Windows
-            A `Windows` object defining the start and stop times for extraction.
-
-        **kwargs :
-            Additional arguments passed to fine-tune extraction behavior through pd.merge.
-
-        Returns:
-        --------
-        Traces
-            A new `Traces` object containing only the extracted segments.
-        """
-
-        upsampling_ms = upsampling_ms or self.sampling_period * 2
-
-        matched_reg = Traces.match(self, wins, left_ref='tr_idx', right_ref='win_idx')
-
-        if len(matched_reg) == 0:
-            logging.error('No matches found')  # noqa: LOG015
-
-        multi_cut = []
-
-        for win_idx, sel in matched_reg.groupby('win_idx', sort=False):
-            sel_traces = self.traces.loc[:, sel['tr_idx'].values]
-
-            assert not np.any(np.isnan(sel_traces.index))
-
-            win: timeslice.Win = wins.get(win_idx)
-
-            cut_traces = win.interp_df(sel_traces, step=upsampling_ms)
-            cut_traces.columns = sel.index
-
-            if align is not None:
-                ref = wins.relative_time(align).loc[win_idx]
-                cut_traces.index = cut_traces.index - ref
-
-            assert not np.any(np.isnan(cut_traces.index))
-
-            multi_cut.append(cut_traces)
-
-        multi_cut_traces = pd.concat(multi_cut, axis=1)
-
-        # need to resort because the group-by above may process traces out of order
-        matched_reg.sort_index(inplace=True)
-        multi_cut_traces.sort_index(axis=1, inplace=True)
-
-        result = Traces.from_df(meta=matched_reg, traces=multi_cut_traces)
 
         return result
 
-    def copy(self):
-        return self.__class__(
-            meta=self.meta.copy(),
-            traces=self.traces.copy(),
+    def lookup(
+        self,
+        time: TimeLike,
+        *,
+        method: InterpMethod = 'linear',
+    ) -> np.ndarray:
+        target = np.asarray(time, dtype=float)
+        scalar = target.ndim == 0
+
+        if scalar:
+            target = target.reshape(1)
+        elif target.ndim != 1:
+            raise ValueError('time must be scalar or one-dimensional')
+
+        result = self._lookup_common(
+            target,
+            method=method,
         )
-
-    def set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None):
-        """add extra columns describing properties of these windows"""
-        assert len(extra) == len(self.index)
-        new = self.copy()
-
-        if suffix is not None:
-            extra = extra.add_suffix(suffix)
-
-        if prefix is not None:
-            extra = extra.add_prefix(prefix)
-
-        for col, vals in extra.items():
-            new[col] = vals
-
-        return new
-
-    @functools.wraps(pd.merge)
-    def merge_reg(self, extra: pd.DataFrame, **kwargs):
-        return self.__class__(
-            pd.merge(
-                self.meta,
-                extra,
-                **kwargs,
-            ),
-            self.traces,
-        )
-
-    @functools.wraps(pd.DataFrame.drop)
-    def drop(self, *args, **kwargs):
-        return self.__class__(
-            self.meta.drop(*args, **kwargs),
-            self.traces,
-        )
-
-    def _apply_mask(self, mask) -> Self:
-        return self.__class__(
-            meta=self.meta.loc[mask],
-            traces=self.traces.loc[:, mask],
-        )
-
-    def _replace_reg(self, meta) -> Self:
-        return self.__class__(
-            meta=meta,
-            traces=self.traces,
-        )
-
-    @property
-    def shape(self):
-        return self.meta.shape
-
-    @property
-    def values(self):
-        return self.traces.values
-
-    @property
-    def time(self):
-        return self.traces.index
-
-    @property
-    def tloc(self):
-        return self.traces.loc
-
-    def lookup(self, times, interp=True) -> pd.Series:
-        """
-        Look up a different time for each trace.
-        For example, imagine these traces are time series of different animals
-        and each one of them has a different cycle-duration.
-
-        :param times: A series of times with index equal to this traces index.
-            Alternatively, a str identifying a column to lookup.
-
-        :param interp: Whether to interpolate the traces to look up the given
-            times if they don't perfectly align with our sampling
-        """
-
-        if isinstance(times, str):
-            times = self[times]
-
-        if isinstance(times, (np.ndarray, pd.Index)):
-            times = pd.Series(times, index=self.index)
-
-        if np.isscalar(times):
-            times = pd.Series(times, index=self.index)
-
-        def lookup_single(s, t) -> float:
-            if interp:
-                return np.interp(t, s.index, s.values).item()
-
-            else:
-                return s.loc[t]
-
-        return pd.Series({k: lookup_single(self.get(k), t) for k, t in times.items()})
-
-    def apply(self, *args, **kwargs):
-        new = self.traces.apply(*args, **kwargs)
-        return self.replace_traces(new)
-
-    @functools.wraps(pd.DataFrame.applymap)
-    def applymap(self, func):
-        to_map = func
-        if isinstance(func, dict):
-            to_map = lambda x: func[x]
-
-        mapped = self.traces.applymap(to_map)
-
-        return self.replace_traces(mapped)
-
-    def replace_traces(self, others: dict | np.ndarray | pd.DataFrame):
-
-        if isinstance(others, dict):
-            others: pd.DataFrame = pd.DataFrame(others)
-
-        if not isinstance(others, pd.DataFrame):
-            assert others.shape == self.traces.shape
-            others: pd.DataFrame = pd.DataFrame(
-                others,
-                index=self.traces.index,
-                columns=self.traces.columns,
-            )
-
-        missing = others.columns.difference(self.meta.index)
-        if len(missing) > 0:
-            logging.warning(f'Missing meta entries for {len(missing)} traces')  # noqa: LOG015
-
-        common = others.columns.intersection(self.meta.index)
-
-        return self.__class__(
-            meta=self.meta.loc[common],
-            traces=others.loc[:, common],
-        )
-
-    def sort_values(self, *args, **kwargs):
-        meta = self.meta.sort_values(*args, **kwargs)
-
-        return self.__class__(
-            meta=meta,
-            traces=self.traces.reindex(meta.index, axis=1),
-        )
-
-    def sort_index(self, *args, **kwargs):
-        meta = self.meta.sort_index(*args, **kwargs)
-
-        return self.__class__(
-            meta=meta,
-            traces=self.traces.reindex(meta.index, axis=1),
-        )
-
-    def contains_nan(self):
-        return bool(np.any(self.traces.isna().values))
-
-    def drop_missing(self, how='any'):
-        """Drop timepoints with missing data for any trace"""
-        # noinspection PyTypeChecker
-        traces = self.traces.dropna(axis=0, how=how)
-        return self.replace_traces(traces)
-
-    def drop_empty(self, how='all'):
-        """Drop entire traces if they are completely missing data"""
-        # noinspection PyTypeChecker
-        traces = self.traces.dropna(axis=1, how=how)
-        return self.replace_traces(traces)
-
-    def drop_tight(self):
-        """
-        Drop leading and trailing rows that are entirely NaN.
-        Interior all-NaN rows are preserved.
-        """
-        mask = self.traces.notna().any(axis=1)
-
-        if not mask.any():
-            sel = self.traces.iloc[0:0]
-            return self.replace_traces(sel)
-
-        first = mask.idxmax()
-        last = mask[::-1].idxmax()
-
-        sel = self.traces.loc[first:last]
-        return self.replace_traces(sel)
-
-    def get_global_win(self) -> timeslice.Win:
-        return timeslice.Win(
-            self.time.min(),
-            self.time.max(),
-        )
-
-    @property
-    def sampling_period(self) -> float:
-        return _estimate_sampling_period(self.time)
-
-    @property
-    def sampling_rate(self) -> float:
-        sampling_rate = 1.0 / (self.sampling_period * nocte.core.time.MS_TO_S)
-
-        if sampling_rate.is_integer():
-            sampling_rate = int(sampling_rate)
-
-        return sampling_rate
-
-    def gradient(self):
-        sampling_period = self.sampling_period
-        return self.apply(lambda trace: np.gradient(trace, sampling_period))
-
-    def diff(self):
-        return self.apply(pd.Series.diff)
-
-    @functools.wraps(pd.DataFrame.max)
-    def max(self, *args, **kwargs):
-        return self.traces.max(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.min)
-    def min(self, *args, **kwargs):
-        return self.traces.min(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.idxmax)
-    def idxmax(self, *args, **kwargs):
-        return self.traces.idxmax(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.idxmin)
-    def idxmin(self, *args, **kwargs):
-        return self.traces.idxmin(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.mean)
-    def mean(self, *args, **kwargs):
-        return self.traces.mean(*args, **kwargs)
-
-    def cumsum(self, *args, **kwargs):
-        return self.replace_traces(self.traces.cumsum(*args, **kwargs))
-
-    def mean_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(
-            *args, center=center, min_periods=min_periods, **kwargs
-        )
-
-        return self.replace_traces(
-            rolling.mean(),
-        )
-
-    def mean_rolling_gaussian(
-        self, std_ms, center=True, min_periods=None
-    ):  # TODO inconsistent window def
-
-        std_idcs = std_ms / self.sampling_period
-
-        traces = self.traces.rolling(
-            int(std_idcs * 4),
-            win_type='gaussian',
-            center=center,
-            min_periods=min_periods,
-        ).mean(std=std_idcs)
-
-        return self.replace_traces(traces)
-
-    def sum_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(
-            *args, center=center, min_periods=min_periods, **kwargs
-        )
-
-        return self.replace_traces(
-            rolling.sum(),
-        )
-
-    def median_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(
-            *args, center=center, min_periods=min_periods, **kwargs
-        )
-
-        return self.replace_traces(
-            rolling.median(),
-        )
-
-    def std_rolling(self, *args, center=True, min_periods=1, **kwargs):
-        rolling = self.traces.rolling(
-            *args, center=center, min_periods=min_periods, **kwargs
-        )
-
-        return self.replace_traces(
-            rolling.std(),
-        )
-
-    def zscore_rolling(self, sliding_win_ms):
-        win_size = sliding_win_ms / self.sampling_period
-
-        assert win_size == int(win_size)
-
-        win_size = int(win_size)
-        assert win_size > 0
-
-        mean = self.mean_rolling(win_size)
-        std = self.std_rolling(win_size)
-
-        return (self - mean.traces) / std.traces
-
-    @functools.wraps(pd.DataFrame.median)
-    def median(self, *args, **kwargs):
-        return self.traces.median(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.quantile)
-    def quantile(self, *args, **kwargs):
-        return self.traces.quantile(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.std)
-    def std(self, *args, **kwargs):
-        return self.traces.std(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.var)
-    def var(self, *args, **kwargs):
-        return self.traces.var(*args, **kwargs)
-
-    @functools.wraps(pd.DataFrame.sum)
-    def sum(self, *args, **kwargs):
-        return self.traces.sum(*args, **kwargs)
-
-    def zscore(self):
-        return (self - self.mean()) / self.std()
-
-    def center(self):
-        return self - self.mean()
-
-    def resample(self, period, start=None, stop=None):
-
-        if start is None:
-            start = self.time.min()
-
-        if stop is None:
-            stop = self.time.max()
-
-        win = timeslice.Win(start, stop)
-
-        return self.__class__.from_df(
-            meta=self.meta,
-            traces=win.interp_df(self.traces, step=period),
-        )
-
-    def downsample_factor(self, factor, offset=None):
-        return self.__class__(
-            meta=self.meta,
-            traces=self.traces.iloc[offset::factor],
-        )
-
-    def are_continuously_sampled(self, atol=1.0e-6) -> bool:
-        """Check that there are no gaps in the sampling time"""
-        dts = np.diff(self.time)
-        return np.allclose(dts[0], dts, atol=atol)
-
-    def downsample(self, period):
-        current = self.sampling_period
-
-        assert np.isclose(period % current, 0), (
-            f'New period ({period}) must be a multiple of current period ({current})'
-        )
-
-        factor = int(period / current)
-
-        return self.downsample_factor(factor)
-
-    def interp(
-        self, times: pd.Series, fill_value=None
-    ):  # TODO fill_value should be nan by default
-
-        times = np.asarray(times)
-
-        interpolated = np.column_stack(
-            [
-                np.interp(
-                    times,
-                    self.time,
-                    self.traces[col].values,
-                    left=fill_value,
-                    right=fill_value,
+        return result[:, 0] if scalar else result
+
+    def lookup_each(
+        self,
+        time: np.ndarray,
+        *,
+        method: InterpMethod = 'linear',
+    ) -> np.ndarray:
+        _validate_method(method)
+        time = np.asarray(time, dtype=float)
+
+        if time.ndim != 1 or len(time) != len(self):
+            raise ValueError('time must contain one value per trace')
+
+        result = np.full(len(self), np.nan, dtype=self.dtype)
+        first = self.first_valid_index()
+        last = self.last_valid_index()
+
+        for row, target in enumerate(time):
+            if not np.isfinite(target) or first[row] < 0:
+                continue
+
+            first_time = self.start + self.sampling.samples_to_ms(int(first[row]))
+            last_time = self.start + self.sampling.samples_to_ms(int(last[row]))
+            if target < first_time or target > last_time:
+                continue
+
+            fractional = (target - self.start) / self.sampling.period_ms
+            nearest_integer = round(fractional)
+
+            if np.isclose(fractional, nearest_integer, rtol=1e-10, atol=1e-10):
+                if 0 <= nearest_integer < self.n_samples:
+                    result[row] = self._values[row, nearest_integer]
+                continue
+
+            left = int(np.floor(fractional))
+            right = left + 1
+
+            if method == 'linear':
+                if left < 0 or right >= self.n_samples:
+                    continue
+                fraction = fractional - left
+                result[row] = (
+                    self._values[row, left]
+                    + (self._values[row, right] - self._values[row, left]) * fraction
                 )
-                for col in self.traces.columns
-            ]
+            else:
+                nearest = left if fractional - left <= 0.5 else right
+                if 0 <= nearest < self.n_samples:
+                    result[row] = self._values[row, nearest]
+
+        if np.isnan(result).any():
+            internal_nan = False
+            for row, target in enumerate(time):
+                if first[row] < 0 or not np.isfinite(target):
+                    continue
+                first_time = self.start + self.sampling.samples_to_ms(int(first[row]))
+                last_time = self.start + self.sampling.samples_to_ms(int(last[row]))
+                if first_time <= target <= last_time and np.isnan(result[row]):
+                    internal_nan = True
+                    break
+            if internal_nan:
+                logger.warning(
+                    'Interpolation encountered missing samples; affected values remain NaN. '
+                    'Use fill_missing() first to bridge internal gaps.'
+                )
+
+        return result
+
+    def resample(self, hz: float) -> typing.Self:
+        target_sampling = SamplingRate(hz)
+
+        if self.n_samples == 0:
+            return self.__class__(
+                np.empty((len(self), 0), dtype=self.dtype),
+                target_sampling,
+                self.start,
+            )
+
+        last_time = self.start + self.sampling.samples_to_ms(self.n_samples - 1)
+        target_time = _regular_times(
+            self.start,
+            last_time,
+            target_sampling,
         )
 
-        new_traces = pd.DataFrame(
+        if np.isclose(target_sampling.rate, self.sampling.rate):
+            return self.copy()
+
+        if target_sampling.rate > self.sampling.rate:
+            values = self._lookup_common(target_time, method='linear')
+            return self.__class__(values, target_sampling, self.start)
+
+        gapless = self.is_gapless()
+        if not gapless.all():
+            bad = int(np.count_nonzero(~gapless))
+            raise ValueError(
+                f'Cannot anti-alias {bad} trace(s) with internal NaN gaps; '
+                'use fill_missing() first or select traces without internal gaps'
+            )
+
+        ratio = fractions.Fraction(
+            target_sampling.rate / self.sampling.rate
+        ).limit_denominator(100_000)
+        up = ratio.numerator
+        down = ratio.denominator
+        intermediate_hz = self.sampling.rate * up / down
+        intermediate_sampling = SamplingRate(intermediate_hz)
+
+        output = np.full(
+            (len(self), len(target_time)),
+            np.nan,
+            dtype=self.dtype,
+        )
+        first = self.first_valid_index()
+        last = self.last_valid_index()
+
+        for row in range(len(self)):
+            if first[row] < 0:
+                continue
+
+            i0 = int(first[row])
+            i1 = int(last[row])
+            source = self._values[row, i0 : i1 + 1]
+            source_start = self.start + self.sampling.samples_to_ms(i0)
+            source_last = self.start + self.sampling.samples_to_ms(i1)
+
+            if len(source) < 2:
+                exact = np.isclose(
+                    target_time,
+                    source_start,
+                    rtol=1e-10,
+                    atol=1e-12,
+                )
+                output[row, exact] = source[0]
+                continue
+
+            sampled = scipy.signal.resample_poly(
+                source,
+                up,
+                down,
+            )
+            sampled = np.asarray(sampled, dtype=self.dtype)
+            sampled_time = source_start + intermediate_sampling.samples_to_ms(
+                np.arange(len(sampled), dtype=np.intp)
+            )
+            inside = sampled_time <= source_last + np.finfo(float).eps * 16
+            sampled = sampled[inside]
+            sampled_time = sampled_time[inside]
+
+            output[row] = _interpolate_irregular(
+                sampled.reshape(1, -1),
+                sampled_time,
+                target_time,
+                method='linear',
+            )[0]
+
+        return self.__class__(
+            output,
+            target_sampling,
+            self.start,
+        )
+
+    def fill_missing(
+        self,
+        method: InterpMethod = 'linear',
+        *,
+        max_gap: float = np.inf,
+    ) -> typing.Self:
+        """
+        Fill internal NaN gaps in each trace using interpolation.
+
+        param method: Interpolation method, either 'linear' or 'nearest'.
+        param max_gap: Maximum gap size in milliseconds to fill; larger gaps remain NaN.
+        """
+        _validate_method(method)
+        max_gap = _validate_max_gap(max_gap)
+
+        values = self._values.copy()
+        period = self.sampling.period_ms
+
+        for row in range(len(self)):
+            valid = np.flatnonzero(~np.isnan(values[row]))
+            if len(valid) < 2:
+                continue
+
+            for left, right in itertools.pairwise(valid):
+                if right == left + 1:
+                    continue
+
+                gap = (right - left) * period
+                if gap > max_gap + np.finfo(float).eps * 16:
+                    continue
+
+                positions = np.arange(left + 1, right, dtype=np.intp)
+                if method == 'linear':
+                    fraction = (positions - left) / (right - left)
+                    values[row, positions] = (
+                        values[row, left]
+                        + (values[row, right] - values[row, left]) * fraction
+                    )
+                else:
+                    use_left = positions - left <= right - positions
+                    values[row, positions] = np.where(
+                        use_left,
+                        values[row, left],
+                        values[row, right],
+                    )
+
+        return self.__class__(
+            values,
+            self.sampling,
+            self.start,
+        )
+
+    def first_valid_index(self) -> np.ndarray:
+        result = np.full(len(self), -1, dtype=np.intp)
+        if self.n_samples == 0 or len(self) == 0:
+            return result
+
+        valid = ~np.isnan(self._values)
+        nonempty = valid.any(axis=1)
+        result[nonempty] = np.argmax(valid[nonempty], axis=1)
+        return result
+
+    def last_valid_index(self) -> np.ndarray:
+        result = np.full(len(self), -1, dtype=np.intp)
+        if self.n_samples == 0 or len(self) == 0:
+            return result
+
+        valid = ~np.isnan(self._values)
+        nonempty = valid.any(axis=1)
+        result[nonempty] = (
+            self.n_samples
+            - 1
+            - np.argmax(
+                valid[nonempty, ::-1],
+                axis=1,
+            )
+        )
+        return result
+
+    def is_gapless(self) -> np.ndarray:
+        first = self.first_valid_index()
+        last = self.last_valid_index()
+        result = np.ones(len(self), dtype=bool)
+
+        for row in np.flatnonzero(first >= 0):
+            result[row] = not np.isnan(
+                self._values[row, first[row] : last[row] + 1]
+            ).any()
+
+        return result
+
+
+class Traces(Collection[pd.Series], typing.Generic[FloatT]):
+    """
+    Indexed collection of regularly sampled continuous signals.
+
+    Each item is one trace and `meta.iloc[i]` describes payload row `i`.
+    The payload is a 2D floating-point NumPy array with one shared regular
+    sampling grid; NaN represents missing observations. Floating input dtypes
+    are preserved, integer inputs become float64, boolean inputs warn and
+    become float64, and complex or non-numeric inputs are rejected.
+
+    Traces is a data container with explicit sampling semantics. It does not
+    emulate a NumPy array or pandas DataFrame.
+    """
+
+    def __init__(
+        self,
+        data: _TracesData[FloatT],
+        meta: pd.DataFrame,
+    ):
+        if not isinstance(data, _TracesData):
+            raise TypeError('data must be _TracesData')
+
+        self._data = data
+        self.meta = meta.copy()
+        self._validate_meta(len(self._data))
+
+    # ------------------------------------------------------------------
+    # construction
+
+    @classmethod
+    def from_array(
+        cls,
+        values: np.ndarray,
+        hz: float,
+        *,
+        start: float = 0.0,
+        meta: pd.DataFrame | None = None,
+    ) -> typing.Self:
+        """Build traces from samples already on one regular sampling grid."""
+        values = _validate_trace_array(values)
+        data = _TracesData(
+            values,
+            SamplingRate(hz),
+            start,
+        )
+
+        return cls(
+            data,
+            cls._default_meta(len(data)) if meta is None else meta,
+        )
+
+    @classmethod
+    def from_irregular(
+        cls,
+        values: np.ndarray,
+        times: np.ndarray,
+        hz: float,
+        *,
+        method: InterpMethod = 'linear',
+        max_gap: float = np.inf,
+        meta: pd.DataFrame | None = None,
+    ) -> typing.Self:
+        """Interpolate shared irregular observations onto one regular grid."""
+        values = _validate_trace_array(values)
+        times = np.asarray(times, dtype=float)
+        sampling = SamplingRate(hz)
+        _validate_method(method)
+        max_gap = _validate_max_gap(max_gap)
+
+        if times.ndim != 1:
+            raise ValueError('times must be one-dimensional')
+        if len(times) != values.shape[1]:
+            raise ValueError('times length must match the number of samples')
+        if len(times) == 0:
+            raise ValueError('times cannot be empty')
+        if not np.isfinite(times).all():
+            raise ValueError('times must be finite')
+        if np.any(np.diff(times) <= 0):
+            raise ValueError('times must be strictly increasing')
+
+        target = _regular_times(
+            float(times[0]),
+            float(times[-1]),
+            sampling,
+        )
+        interpolated = _interpolate_irregular(
+            values,
+            times,
+            target,
+            method=method,
+            max_gap=max_gap,
+        )
+        data = _TracesData(
             interpolated,
-            index=times,
-            columns=self.traces.columns,
+            sampling,
+            float(times[0]),
         )
 
-        return self.replace_traces(new_traces)
-
-    def filter_pass(self, hz: tuple, **kwargs):
-        """
-        A combined call to low_pass / high_pass / band_pass.
-
-        This is useful to quickly switch the filtering in an analysis
-        with just one parameter.
-
-        :param hz: Must be a tuple (or None) defining a Hz range for a band pass filter.
-        If one of the ends is inf, it turns into a high or low pass filter:
-
-            Low pass:
-                (-np.inf, 5)
-                (None, 5)
-
-            Band pass:
-                (20, 50)
-
-            high pass:
-                (50, np.inf)
-                (50, None)
-
-            No filter:
-                None
-                (-np.inf, np.inf)
-
-        """
-        if hz is None:
-            return self
-
-        low, high = hz
-        low_open = low is None or np.isclose(low, 0) or np.isinf(low) or np.isnan(low)
-        high_open = (
-            high is None or np.isclose(high, 0) or np.isinf(high) or np.isnan(high)
+        return cls(
+            data,
+            cls._default_meta(len(data)) if meta is None else meta,
         )
 
-        if low_open and not high_open:
-            return self.low_pass(high, **kwargs)
+    # ------------------------------------------------------------------
+    # collection / representation
 
-        elif not low_open and high_open:
-            return self.high_pass(low, **kwargs)
-
-        elif not low_open and not high_open:
-            return self.band_pass(low, high, **kwargs)
-
-        else:
-            return self
-
-    def filtfilt(self, *params):
-        """a version that tolerates nans at the start/end of each col"""
-        padded = self.traces.ffill().bfill().values
-        filtered_data = scipy.signal.filtfilt(*params, padded, axis=0)
-        filtered_data[np.isnan(self.traces.values)] = np.nan
-
-        new_traces = pd.DataFrame(
-            filtered_data,
-            index=self.traces.index,
-            columns=self.traces.columns,
-        )
-        return self.replace_traces(new_traces)
-
-    def band_pass(self, low_hz, high_hz, *, order=2):
-        assert self.are_continuously_sampled()
-
-        sampling_hz = self.sampling_rate
-
-        nyquist_freq = sampling_hz / 2
-        assert high_hz <= nyquist_freq, (
-            f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+    def _sel_pos(self, positions: np.ndarray) -> typing.Self:
+        return self.__class__(
+            self._data.sel_pos(positions),
+            self.meta.iloc[positions],
         )
 
-        low = low_hz / nyquist_freq
-        high = high_hz / nyquist_freq
-
-        # noinspection PyUnresolvedReferences
-        params = scipy.signal.butter(order, [low, high], btype='band')
-
-        return self.filtfilt(*params)
-
-    def low_pass(self, high_hz, *, order=2):
-        assert self.are_continuously_sampled()
-
-        sampling_hz = self.sampling_rate
-
-        nyquist_freq = sampling_hz / 2
-        assert high_hz <= nyquist_freq, (
-            f'High Hz ({high_hz}) must be <= Nyquist ({nyquist_freq})'
+    def copy(self) -> typing.Self:
+        return self.__class__(
+            self._data.copy(),
+            self.meta.copy(),
         )
 
-        high = high_hz / nyquist_freq
+    def _get_pos(self, position: int) -> pd.Series:
+        """Return one trace as a time-indexed Series."""
+        trace = self._data.get_pos(position)
 
-        # noinspection PyUnresolvedReferences
-        params = scipy.signal.butter(order, high, btype='low')
+        trace.name = self.meta.index[position]
 
-        return self.filtfilt(*params)
+        return trace
 
-    def high_pass(self, low_hz, *, order=2):
-        assert self.are_continuously_sampled()
-
-        sampling_hz = self.sampling_rate
-
-        nyquist_freq = sampling_hz / 2
-        low = low_hz / nyquist_freq
-
-        # noinspection PyUnresolvedReferences
-        params = scipy.signal.butter(order, low, btype='high')
-
-        return self.filtfilt(*params)
-
-    def _spectral_analysis_single(self, k, spec_func, take_abs, **kwargs):
-        """Apply a spectral analysis function to a single trace"""
-
-        assert self.are_continuously_sampled()
-
-        sampling_rate = self.sampling_rate
-
-        data = self.traces[k]
-
-        f_stft, t_stft, z_xx = spec_func(data, fs=sampling_rate, **kwargs)
-
-        time_offset = self.time.min()
-
-        time = t_stft * nocte.core.time.ms(seconds=1) + time_offset
-
-        spec = z_xx.T
-
-        if take_abs:
-            spec = np.abs(spec)
-
-        df = pd.DataFrame(
-            spec,
-            columns=f_stft,
-            index=time,
+    def to_frame(self) -> pd.DataFrame:
+        """Return samples as a time-by-trace DataFrame."""
+        return pd.DataFrame(
+            self.values.T,
+            index=pd.Index(self.time, name='time_ms'),
+            columns=self.index.copy(),
+            copy=False,
         )
 
-        df.sort_index(axis=1, inplace=True)
-        df.sort_index(axis=0, inplace=True)
+    # ------------------------------------------------------------------
+    # sampled state
 
-        return df.rename_axis(index='time', columns='freq')
+    @property
+    def values(self) -> npt.NDArray[FloatT]:
+        return self._data.values
 
-    def _spectral_analysis(
-        self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs
-    ):
-        """
-        Apply a spectral analysis function to each trace
+    @property
+    def sampling(self) -> SamplingRate:
+        return self._data.sampling
 
-        spec_func must return the same as scipy.signal.spectrogram, that is:
-        freqs (M array), time (N array), spec (MxN array)
-        """
-        res = {}
+    @property
+    def hz(self) -> float:
+        return self.sampling.rate
 
-        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
-            spec = self._spectral_analysis_single(
-                k, spec_func, take_abs=take_abs, **kwargs
+    @property
+    def period_ms(self) -> float:
+        return self.sampling.period_ms
+
+    @property
+    def start(self) -> float:
+        return self._data.start
+
+    @property
+    def stop(self) -> float:
+        return self._data.stop
+
+    @property
+    def duration(self) -> float:
+        return self.stop - self.start
+
+    @property
+    def extent(self) -> Win:
+        return Win(
+            self.start,
+            self.stop,
+        )
+
+    @property
+    def n_samples(self) -> int:
+        return self._data.n_samples
+
+    @property
+    def time(self) -> np.ndarray:
+        return self._data.time
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self._data.shape
+
+    @property
+    def dtype(self) -> np.dtype[FloatT]:
+        return self._data.dtype
+
+    def astype(
+        self,
+        dtype: type[FloatU] | np.dtype[FloatU],
+    ) -> Traces[FloatU]:
+        return Traces[FloatU](
+            data=self._data.astype(dtype),
+            meta=self.meta,
+        )
+
+    # ------------------------------------------------------------------
+    # temporal selection / sampling
+
+    def sel_time(self, win: Win) -> typing.Self:
+        """Select existing samples contained in a window without interpolation."""
+        return self.__class__(
+            self._data.sel_time(win),
+            self.meta,
+        )
+
+    def shift(self, by: float) -> typing.Self:
+        """Shift the temporal coordinate without changing sample values."""
+        return self.__class__(
+            self._data.shift(by),
+            self.meta,
+        )
+
+    def lookup(
+        self,
+        time: TimeLike,
+        *,
+        method: InterpMethod = 'linear',
+    ) -> pd.Series | pd.DataFrame:
+        """Interpolate all traces at one or more arbitrary time points."""
+        requested = np.asarray(time, dtype=float)
+        scalar = requested.ndim == 0
+        values = self._data.lookup(
+            time,
+            method=method,
+        )
+
+        if scalar:
+            return pd.Series(
+                values,
+                index=self.index.copy(),
+                name=float(requested),
             )
 
-            if db:
-                spec = 10 * np.log10(spec)
-
-            res[k] = spec
-
-        return res
-
-    def spectral_analysis_stft(self, nperseg=256, noverlap=128, **kwargs):
-        """Short-Time Fourier Transform (STFT)"""
-        return self._spectral_analysis(
-            scipy.signal.stft,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            **kwargs,
-        )
-
-    def spectral_analysis_wavelet(self, freqs=None, wavelet='morl', **kwargs):
-        """Wavelet Transform (Morlet wavelet)"""
-        import pywt
-
-        sampling_rate = self.sampling_rate
-
-        if freqs is None:
-            freqs = np.geomspace(1, 100, 101)  # np.arange(1, 128)
-
-        center_frequency = 0.84  # Morlet wavelet typical center frequency
-        scales = center_frequency / (freqs / sampling_rate)
-
-        def wavelet_single(data, fs, **wv_kwargs):
-            coef, freqs_wt = pywt.cwt(data, sampling_period=1.0 / fs, **wv_kwargs)
-            freqs_wt = freqs  # convert scales to frequency
-            return freqs_wt, np.arange(0, len(self.time)) / sampling_rate, coef
-
-        return self._spectral_analysis(
-            wavelet_single,
-            scales=scales,
-            wavelet=wavelet,
-            **kwargs,
-        )
-
-    def spectrograms_overlapping(
-        self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs
-    ):
-        """Approximation to multi-taper spectrogram by using overlapping tukey windows"""
-
-        return self._spectral_analysis(
-            scipy.signal.spectrogram,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window,
-            **kwargs,
-        )
-
-    def spectrograms(self, segment_ms=1_000, overlap_ms=None, **kwargs):
-        """Specgrograms with sensible defaults"""
-        assert self.are_continuously_sampled()
-
-        period = self.sampling_period
-        nperseg = int(segment_ms / period)
-        nperseg = int(np.clip(nperseg, 1, np.inf))
-
-        if overlap_ms is None:
-            overlap_ms = segment_ms * 0.95
-        noverlap = int(overlap_ms / period)
-        noverlap = int(np.clip(noverlap, 0, nperseg - 1))
-
-        return self._spectral_analysis(
-            scipy.signal.spectrogram,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            **kwargs,
-        )
-
-    def welch(
-        self,
-        win_len_ms=None,
-        db=False,
-        **kwargs,
-    ):
-        assert self.are_continuously_sampled()
-
-        sampling_rate = self.sampling_rate
-
-        power_spectral_density, sample_frequences = sleep.welch(
-            self.traces.values,
-            sampling_rate=sampling_rate,
-            win_len_ms=win_len_ms,
-            db=db,
-            **kwargs,
-        )
-
-        power = pd.DataFrame(
-            power_spectral_density,
-            index=sample_frequences,
-            columns=self.traces.columns,
-        )
-
-        return self.replace_traces(power)
-
-    def welch_rolling(
-        self,
-        win_len_ms=None,
-        db=False,
-        sliding_len_ms=nocte.core.time.ms(seconds=10),  # noqa: B008
-        sliding_step_ms=nocte.core.time.ms(seconds=1),  # noqa: B008
-        pbar=None,
-        **kwargs,
-    ):
-        assert self.are_continuously_sampled()
-        sampling_rate = self.sampling_rate
-
-        def welch_section(traces: pd.DataFrame):
-            power_spectral_density, sample_frequences = sleep.welch(
-                traces.values,
-                sampling_rate=sampling_rate,
-                win_len_ms=win_len_ms,
-                db=db,
-                **kwargs,
-            )
-
-            return sample_frequences, power_spectral_density.T
-
-        return self.apply_rolling(
-            welch_section,
-            length_ms=sliding_len_ms,
-            step_ms=sliding_step_ms,
-            pbar=pbar,
-            name='freq',
-        )
-
-    def band_power(
-        self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False
-    ):
-        assert self.are_continuously_sampled()
-
-        welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
-
-        power, bands = sleep.band_power(
-            self.traces.values,
-            sampling_rate=self.sampling_rate,
-            bands=bands,
-            welch_ms=welch_ms,
-            db=db,
-            add_total=add_total,
-        )
+        if requested.ndim != 1:
+            raise ValueError('time must be scalar or one-dimensional')
 
         return pd.DataFrame(
-            power,
-            index=bands,
-            columns=self.traces.columns,
+            values.T,
+            index=pd.Index(requested, name='time_ms'),
+            columns=self.index.copy(),
         )
 
-    def band_power_rolling(
+    def lookup_each(
         self,
-        bands=sleep.FREQ_BANDS,
-        sliding_len_ms=nocte.core.time.ms(seconds=10),  # noqa: B008
-        sliding_step_ms=nocte.core.time.ms(seconds=1),  # noqa: B008
-        db=False,
-        add_total=True,
-        pbar=None,
-        welch_ms=None,
-    ):
-        """
-        Extract the spectral power for each time trace using a sliding window.
-        Note the windows will overlap and the value generated is assigned to its center.
-        This means we cannot cover the beginning and end of the trace.
-        """
-        assert self.get_global_win().length >= sliding_len_ms, (
-            f'Data shorter than sliding window ({self.get_global_win().length} vs {sliding_len_ms})'
+        time: pd.Series,
+        *,
+        method: InterpMethod = 'linear',
+    ) -> pd.Series:
+        """Interpolate each trace at its corresponding time coordinate."""
+        if not isinstance(time, pd.Series):
+            raise TypeError('time must be a pandas Series indexed by trace ID')
+        time = self._align_series(time, 'time')
+
+        return pd.Series(
+            self._data.lookup_each(
+                time.to_numpy(dtype=float),
+                method=method,
+            ),
+            index=self.index.copy(),
+            name='value',
         )
 
-        assert not self.contains_nan()
-
-        if isinstance(bands, list):
-            assert all(isinstance(b, str) for b in bands)
-            bands = sleep.FREQ_BANDS.loc[bands]
-
-        welch_ms = sleep.default_welch_ms(welch_ms, bands['freq_min'].min())
-
-        assert sliding_len_ms >= welch_ms, (
-            f'Sliding window ({sliding_len_ms} ms) must be bigger than '
-            f'Welch window ({welch_ms}ms; lowest freq: {bands.freq_min.replace(0, np.nan).min()} Hz)'
+    def resample(self, hz: float) -> typing.Self:
+        """Represent the signals on a new regular sampling rate."""
+        return self.__class__(
+            self._data.resample(hz),
+            self.meta,
         )
 
-        sampling_rate = self.sampling_rate
+    def fill_missing(
+        self,
+        method: InterpMethod = 'linear',
+        *,
+        max_gap: float = np.inf,
+    ) -> typing.Self:
+        """Interpolate bounded internal NaN gaps without extrapolating edges."""
+        return self.__class__(
+            self._data.fill_missing(
+                method,
+                max_gap=max_gap,
+            ),
+            self.meta,
+        )
 
-        def band_power_section(traces: pd.DataFrame):
-            power, freqs = sleep.band_power(
-                traces.values,
-                sampling_rate=sampling_rate,
-                bands=bands,
-                welch_ms=welch_ms,
-                add_total=add_total,
-                db=db,
+    # ------------------------------------------------------------------
+    # missing-data state
+
+    def is_empty(self) -> pd.Series:
+        is_empty = np.asarray(
+            np.isnan(self.values).all(axis=1),
+            dtype=bool,
+        )
+
+        return pd.Series(
+            is_empty,
+            index=self.index.copy(),
+            name='is_empty',
+        )
+
+    def are_empty(self) -> bool:
+        return bool(self.is_empty().all())
+
+    def is_complete(self) -> pd.Series:
+        is_partial = np.asarray(
+            np.isnan(self.values).any(axis=1),
+            dtype=bool,
+        )
+
+        is_complete = ~is_partial
+
+        return pd.Series(
+            is_complete,
+            index=self.index.copy(),
+            name='is_complete',
+        )
+
+    def are_complete(self) -> bool:
+        return bool(self.is_complete().all())
+
+    def is_gapless(self) -> pd.Series:
+        return pd.Series(
+            self._data.is_gapless(),
+            index=self.index.copy(),
+            name='is_gapless',
+        )
+
+    def are_gapless(self) -> bool:
+        return bool(self.is_gapless().all())
+
+    def first_valid_time(self) -> pd.Series:
+        indices = self._data.first_valid_index()
+        result = np.full(len(self), np.nan, dtype=float)
+        valid = indices >= 0
+        result[valid] = self.start + self.sampling.samples_to_ms(indices[valid])
+
+        return pd.Series(
+            result,
+            index=self.index.copy(),
+            name='first_valid_time',
+        )
+
+    def last_valid_time(self) -> pd.Series:
+        indices = self._data.last_valid_index()
+        result = np.full(len(self), np.nan, dtype=float)
+        valid = indices >= 0
+        result[valid] = self.start + self.sampling.samples_to_ms(indices[valid])
+
+        return pd.Series(
+            result,
+            index=self.index.copy(),
+            name='last_valid_time',
+        )
+
+    # ------------------------------------------------------------------
+    # per-trace summaries
+
+    def _summary(
+        self,
+        values: np.ndarray,
+        *,
+        name: str,
+    ) -> pd.Series:
+        return pd.Series(
+            values,
+            index=self.index.copy(),
+            name=name,
+        )
+
+    def mean(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanmean(self.values, axis=1)
+        return self._summary(values, name='mean')
+
+    def median(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanmedian(self.values, axis=1)
+        return self._summary(values, name='median')
+
+    def std(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanstd(self.values, axis=1, ddof=1)
+        return self._summary(values, name='std')
+
+    def var(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanvar(self.values, axis=1, ddof=1)
+        return self._summary(values, name='var')
+
+    def min(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanmin(self.values, axis=1)
+        return self._summary(values, name='min')
+
+    def max(self) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanmax(self.values, axis=1)
+        return self._summary(values, name='max')
+
+    def quantile(self, q: float) -> pd.Series:
+        q = float(q)
+        if not 0 <= q <= 1:
+            raise ValueError('q must be between 0 and 1')
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.nanquantile(self.values, q, axis=1)
+        return self._summary(values, name='quantile')
+
+    # ------------------------------------------------------------------
+    # trace-preserving transforms
+
+    def _with_values(self, values: np.ndarray) -> typing.Self:
+        values = np.asarray(values)
+        if not np.issubdtype(values.dtype, np.floating) or values.dtype != self.dtype:
+            values = values.astype(self.dtype)
+
+        return self.__class__(
+            _TracesData(
+                values,
+                self.sampling,
+                self.start,
+            ),
+            self.meta,
+        )
+
+    def log10(self) -> typing.Self:
+        with np.errstate(divide='ignore', invalid='ignore'):
+            values = np.log10(self.values)
+        return self._with_values(values)
+
+    def power(self, exponent: float) -> typing.Self:
+        exponent = float(exponent)
+        if not np.isfinite(exponent):
+            raise ValueError('exponent must be finite')
+
+        with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
+            values = np.power(self.values, exponent)
+        return self._with_values(values)
+
+    def center(self) -> typing.Self:
+        means = self.mean().to_numpy()
+        return self._with_values(self.values - means[:, None])
+
+    def zscore(self) -> typing.Self:
+        means = self.mean().to_numpy()
+        std = self.std().to_numpy()
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            values = (self.values - means[:, None]) / std[:, None]
+        return self._with_values(values)
+
+    def normalize_quantiles(
+        self,
+        qmin: float = 0.05,
+        qmax: float = 0.95,
+        *,
+        win: Win | None = None,
+    ) -> typing.Self:
+        qmin = float(qmin)
+        qmax = float(qmax)
+
+        if not 0 <= qmin < qmax <= 1:
+            raise ValueError('expected 0 <= qmin < qmax <= 1')
+
+        reference = self if win is None else self.sel_time(win)
+        if reference.n_samples == 0:
+            raise ValueError('normalization window contains no samples')
+
+        low = reference.quantile(qmin).to_numpy()
+        high = reference.quantile(qmax).to_numpy()
+        scale = high - low
+
+        values = np.full(self.shape, np.nan, dtype=self.dtype)
+        valid_scale = ~np.isnan(scale) & (scale != 0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            values[valid_scale] = (
+                self.values[valid_scale] - low[valid_scale, None]
+            ) / scale[valid_scale, None]
+
+        return self._with_values(values)
+
+    # ------------------------------------------------------------------
+    # rolling transforms
+
+    def _rolling_bounds(
+        self,
+        window_ms: float,
+        *,
+        center: bool,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        window_ms = float(window_ms)
+        if not np.isfinite(window_ms) or window_ms <= 0:
+            raise ValueError('window_ms must be finite and positive')
+
+        window_samples = self.sampling.ms_to_samples(window_ms)
+        if window_samples <= 0:
+            raise ValueError('window_ms is shorter than one sample period')
+
+        rounded = self.sampling.samples_to_ms(window_samples)
+        if not np.isclose(window_ms, rounded):
+            logger.warning(
+                'Adjusting rolling window from %g ms to %g ms (%d samples)',
+                window_ms,
+                rounded,
+                window_samples,
             )
 
-            return freqs, power.T
+        pos = np.arange(self.n_samples, dtype=np.intp)
+        if center:
+            left = (window_samples - 1) // 2
+            right = window_samples - left
+            start = pos - left
+            stop = pos + right
+        else:
+            start = pos - window_samples + 1
+            stop = pos + 1
 
-        return self.apply_rolling(
-            band_power_section,
-            length_ms=sliding_len_ms,
-            step_ms=sliding_step_ms,
-            pbar=pbar,
-            name='freq_band',
+        return (
+            np.clip(start, 0, self.n_samples),
+            np.clip(stop, 0, self.n_samples),
         )
 
-    def apply_rolling(
+    @staticmethod
+    def _validate_min_valid(min_valid: int) -> int:
+        min_valid = int(min_valid)
+        if min_valid < 1:
+            raise ValueError('min_valid must be at least 1')
+        return min_valid
+
+    def rolling_mean(
         self,
-        func,
-        length_ms,
-        step_ms=None,
-        pbar=None,
-        name='',
-    ):
-        """
-        Extract some function for each time trace using a sliding window.
-        Note the windows will overlap and the value generated is assigned to its center.
-        This means we cannot cover the beginning and end of the trace.
+        window_ms: float,
+        *,
+        center: bool = True,
+        min_valid: int = 1,
+    ) -> typing.Self:
+        min_valid = self._validate_min_valid(min_valid)
+        start, stop = self._rolling_bounds(window_ms, center=center)
 
-        :param func: function to apply, should return a tuple: columns and values.
-        values should be a numpy array of shape <num traces, num features>
-        columns should be the labels for the features and they are assumed to be the same across
-        all calls to this function (for efficicency reasons).
-
-        :param step_ms:
-            how much the sliding window is shifted on each step,
-            it should be aligned with the sampling rate of the signal
-
-        :param length_ms:
-            size of the sliding window
-
-        :param pbar:
-
-        :param name: name of the feature extracted from the traces.
-
-        :return: a new Traces object
-        """
-
-        if step_ms is None:
-            step_ms = self.sampling_period
-
-        # note we want indices to slice signal, which may not start at t=0
-        signal_tstart, signal_tstop = self.get_global_win()
-        signal_sampling_rate = self.sampling_rate
-        start_off_ms = 0
-        stop_off_ms = 0
-
-        win_samples = timeslice.Windows.build_sliding_samples(
-            start_ms=0 + start_off_ms,
-            stop_ms=(signal_tstop - signal_tstart) + stop_off_ms,
-            sampling_rate=signal_sampling_rate,
-            length_ms=length_ms,
-            step_ms=step_ms,
+        valid = ~np.isnan(self.values)
+        values = np.where(valid, self.values, 0)
+        cumsum = np.pad(
+            np.cumsum(values, axis=1, dtype=np.float64),
+            ((0, 0), (1, 0)),
+        )
+        cumcount = np.pad(
+            np.cumsum(valid, axis=1, dtype=np.int64),
+            ((0, 0), (1, 0)),
         )
 
-        sliding_steps = win_samples.index
+        total = cumsum[:, stop] - cumsum[:, start]
+        count = cumcount[:, stop] - cumcount[:, start]
+        output = np.full(self.shape, np.nan, dtype=np.float64)
+        np.divide(
+            total,
+            count,
+            out=output,
+            where=count >= min_valid,
+        )
+        return self._with_values(output)
 
-        starts = win_samples['start']
-        stops = win_samples['stop']
-        refs = win_samples['ref']
+    def rolling_median(
+        self,
+        window_ms: float,
+        *,
+        center: bool = True,
+        min_valid: int = 1,
+    ) -> typing.Self:
+        min_valid = self._validate_min_valid(min_valid)
+        start, stop = self._rolling_bounds(window_ms, center=center)
+        output = np.full(self.shape, np.nan, dtype=self.dtype)
 
-        cols = []
+        for i, (i0, i1) in enumerate(zip(start, stop, strict=True)):
+            window = self.values[:, i0:i1]
+            count = np.count_nonzero(~np.isnan(window), axis=1)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                median = np.nanmedian(window, axis=1)
+            output[count >= min_valid, i] = median[count >= min_valid]
 
-        results = []
-        for i in self._optional_pbar(
-            sliding_steps,
-            total=len(sliding_steps),
-            desc='sliding win',
-            pbar=pbar,
-            many=100,
-        ):
-            section = self.traces.iloc[starts[i] : stops[i]]
-            cols, result = func(section)
-            results.append(result.ravel(order='C'))
+        return self._with_values(output)
 
-        results = np.stack(results)
+    def rolling_std(
+        self,
+        window_ms: float,
+        *,
+        center: bool = True,
+        min_valid: int = 1,
+    ) -> typing.Self:
+        min_valid = self._validate_min_valid(min_valid)
+        start, stop = self._rolling_bounds(window_ms, center=center)
 
-        results_df = pd.DataFrame(
-            results,
-            columns=pd.MultiIndex.from_product(
-                [self.traces.columns, cols],
-                names=[self.traces.columns.name, name],
-            ),
-            index=self.time[refs.values],
+        valid = ~np.isnan(self.values)
+        values = np.where(valid, self.values, 0).astype(np.float64, copy=False)
+        sums = np.pad(
+            np.cumsum(values, axis=1),
+            ((0, 0), (1, 0)),
+        )
+        sums2 = np.pad(
+            np.cumsum(values * values, axis=1),
+            ((0, 0), (1, 0)),
+        )
+        counts = np.pad(
+            np.cumsum(valid, axis=1, dtype=np.int64),
+            ((0, 0), (1, 0)),
         )
 
-        new_reg = results_df.columns.to_frame(index=False)
+        total = sums[:, stop] - sums[:, start]
+        total2 = sums2[:, stop] - sums2[:, start]
+        count = counts[:, stop] - counts[:, start]
 
-        merged_reg = pd.merge(
-            new_reg,
-            self.meta,
-            how='left',
-            left_on=self.traces.columns.name,
-            right_index=True,
+        output = np.full(self.shape, np.nan, dtype=np.float64)
+        enough = count >= max(min_valid, 2)
+        numerator = total2 - total * total / np.maximum(count, 1)
+        variance = np.full(self.shape, np.nan, dtype=np.float64)
+        np.divide(
+            numerator,
+            count - 1,
+            out=variance,
+            where=enough,
         )
-        assert merged_reg.index.is_unique
-        # merged_reg.drop(self.traces.columns.name, axis=1, inplace=True)
+        variance = np.maximum(variance, 0, where=~np.isnan(variance), out=variance)
+        output[enough] = np.sqrt(variance[enough])
 
-        results_df.columns = merged_reg.index
+        return self._with_values(output)
 
-        return self.from_df(
-            meta=merged_reg,
-            traces=results_df,
+    def rolling_zscore(
+        self,
+        window_ms: float,
+        *,
+        center: bool = True,
+        min_valid: int = 1,
+    ) -> typing.Self:
+        mean = self.rolling_mean(
+            window_ms,
+            center=center,
+            min_valid=min_valid,
         )
+        std = self.rolling_std(
+            window_ms,
+            center=center,
+            min_valid=min_valid,
+        )
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            values = (self.values - mean.values) / std.values
+        return self._with_values(values)
