@@ -1,0 +1,1163 @@
+nocte/analysis/cycles.py
+  classify_by_gm(beta, max_detours=ms(seconds=10))
+  classify_by_gm_log10(beta, max_detours=ms(seconds=10))
+  extract_rem_wins_multi(exp_beta: tr.Traces, key=None, **kwargs)
+  extract_rem_wins(beta, **kwargs)
+  _is_local_peak(traces, times)
+  estimate_interval(acorrs_baselines: tr.Traces, between=Win(ms(minutes=1), ms(minutes=3)))
+  plot_estimated_intervals(beta_acorrs, intervals, color='k', axs=None)
+  extract_rem_traces(analysis_windows, exp_rem_wins)
+
+nocte/analysis/entrainment.py
+  group_pulses(light_wins, max_interval=ms(minutes=5))
+  group_pulses_multi(exp_light_wins)
+  extract_train_protocol(light_wins)
+  _extract_train_protocol_multi(exp_light_wins)
+  extract_train_protocol_multi(exp_light_wins, min_pulses=3, interval_range=(ms(seconds=0), ms(minutes=10))) -> timeslice.Windows
+  get_protocol_desc(interval, pulse_len)
+  get_phase_evolution(all_light_wins, valid_trains, exp_phases)
+  plot_spread_racorr(all_light_wins, beta_cut, beta_cut_racorrs)
+  collect_train_period_lens(exp_rem_wins, analysis_wins, edges='keep')
+
+nocte/analysis/prc.py
+  get_hilbert_transform(trace, filter_hz=(1000 / ms(minutes=6), 1000 / ms(seconds=60)), phase_shift=True)
+  get_phase(trace, **kwargs)
+  get_phase_norm(trace, **kwargs)
+  collect_beta_phases(exp_beta: nocte.core.traces.Traces, unwrap=True, **kwargs)
+  classify_phase(values)
+  get_phase_cut(phase_traces, analysis_windows, phase_time=ms(seconds=-5), name='single')
+  take_phase_diff(phase_cut, phase_time, class_by, n_periods=1)
+
+nocte/analysis/prc_plot.py
+  plot_background_phase(ax, which='y')
+  plot_scatter_reflected(ax, x, y, colors, xlim=(-0.5, +1.5), ylim=(-1, +1), s=50)
+  get_circular_scatter(df, xlim, ylim, include_zero)
+  plot_phase_response(ax, x, y, colors, exp_names=None, xlim=(-0.5, +1.5), ylim=(-1, +1), zero_bottom_spine=True, xlabel='phase at pulse end', ylabel='phase shift', s=150)
+  plot_beta_spread_single_exp(beta, y_space=1.75, left_fill=False, right_fill=False, max_fill=True, summary=pd.DataFrame.median, suptitle='')
+  plot_circ_line(ax, slope, intercept=0.75, split=0.25, range_x=(-0.5, 1.5), color='k', linestyle='--')
+  plot_prc_single(ax, samples, class_by, line='diag')
+  plot_phases_grouped_single(ax, phase_detailed_cut, class_by, shaded)
+  plot_betas_grouped_single(ax, beta_detailed_cut, class_by, colors=None, show_labels=True, shaded=False, n_label_offset=0.0, clip_on=True)
+  plot_phase_dependency(beta_comb_cut, phase_comb_cut, class_by='phase_single_cat')
+
+nocte/analysis/reduction.py
+  _take_pca(traces: pd.DataFrame, n_components: int | None=None)
+  take_pca(traces: tr.Traces, n_components: int | None=None) -> tr.Traces
+  _take_jpca(latent: pd.DataFrame, n_components: int | None=None) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]
+  take_jpca(traces: tr.Traces, n_components: int | None=None) -> tr.Traces
+  _take_tica(latent: pd.DataFrame, lag: float, n_components: int | None=None, regularization: float=1e-06) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]
+  take_tica(traces: tr.Traces, lag: float, n_components: int | None=None) -> tr.Traces
+  _take_jpca_lagged(latent: pd.DataFrame, lag: float, n_components: int | None=None, regularization: float=1e-06) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]
+  take_jpca_lagged(traces: tr.Traces, lag: float, n_components: int | None=None) -> tr.Traces
+  _take_cca_lagged(latent: pd.DataFrame, lag: float, n_components: int | None=None) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]
+  take_cca_lagged(traces: tr.Traces, lag: float, n_components: int | None=None) -> tr.Traces
+  _reduced_rank_regression(neural_data: np.ndarray, behavior_data: np.ndarray, n_latents: int)
+  _reduced_rank_regression_dd(neural_data: pd.DataFrame, behavior_data: pd.DataFrame, n_latents: int)
+
+nocte/analysis/sleep.py
+  default_welch_ms(win_len_ms, lowest_freq=0.5)
+  welch(traces: np.array, sampling_rate, win_len_ms=None, db=False, **kwargs)
+  band_power(traces: np.array, sampling_rate, bands, welch_ms=None, db=False, add_total=True)
+  extract_power(traces: stacks.Stack, bands=FREQ_BANDS, welch_ms=None, add_total=True)
+  extract_power_sliding(main: Stack, sliding_step_ms=1000.0, sliding_win_len_ms=20000.0, bands=FREQ_BANDS, welch_ms=None, pbar=None, add_total=True)
+  find_sharp_waves(raw_trace: Stack, low_pass_hz=30, downsample_hz=10, width_ms=500.0, height=2.0, prominence=1, negative=True)
+
+nocte/analysis/sne.py
+  SharpNegativeEvents(Events)
+    __init__(self, reg: pd.DataFrame)
+    from_double_acceleration(cls, main, band_hz=(0.25, 40))
+    extract_cdf_other(self, sns_null, cols=('start_acc', 'stop_acc', 'ref_speed'))
+    add_details(self, all_beta)
+    add_isi(self)
+    assign_matches(self, path: pd.DataFrame, name='match', cols=('amplitude', 'speed', 'duration', 'ref_time', 'start_time'), quiet=False)
+    get_match(self, match_col, name='match') -> pd.Series
+    _get_simplified_channel_idx(self)
+    patch_simplified_channels(self)
+    load_matched_sns(cls, reg, exp_name, sn_suffix='_cdf', matching_suffix='_lax', drop_singles=False)
+    is_match_valid(self, match_col='match')
+    drop_missing_matches(self, match_col='match')
+
+nocte/analysis/sne_matching.py
+  _extract_event_pairs_dag(xcorr, t0s: np.ndarray, s0s: np.ndarray, t1s: np.ndarray, s1s: np.ndarray, lag_win, min_xcorr: float, null_thresh: float, pbar=True) -> np.ndarray
+  _find_gradient_dagmat(dagmat, max_ahead, pbar=True)
+  find_highest_path_dag(xcorr, t0s: np.ndarray, s0s: np.ndarray, t1s: np.ndarray, s1s: np.ndarray, null_thresh: float, lag_win=None, min_xcorr=0, max_ahead=None, pbar=True) -> np.array
+  _trim_events_outside(xcorr, events)
+  _calculate_matching(events: SharpNegativeEvents, xcorr: Stack, null_thresh: float, ch0=0, ch1=1, max_ahead=1000, pbar=True) -> np.ndarray
+  calculate_matching(sns: SharpNegativeEvents, full_xcorr: Stack, null_thresh=0.05, chunk_size=ms(minutes=30), pbar=False) -> pd.DataFrame
+  plot_signal(ax, main, linewidth=0.5, alpha=0.3, orientation='horizontal')
+  xcorr_to_diagmat(xcorr: Stack) -> Stack
+  plot_xcorr_diag(main, xcorr, events, zoom_win, show_nodes=True, show_grid=True, y_offset=0)
+
+nocte/analysis/stim.py
+  label_pulses(win_lights, dark=False, max_length=ms(minutes=2), valid_win=None)
+  load_light_wins(reg, exp_name, max_pulse_length=ms(minutes=2), col='lights')
+  decode_light_wins(encoded, start_on=True)
+  encode_light_wins(wins, start_on=True)
+  load_light_wins_multi(reg, only_pulse=False, max_pulse_length=ms(minutes=2))
+  extract_all_exp_luminance(reg, vid_paths, override=False)
+  load_all_lum_traces(reg)
+  _label_manually(all_pulses, to_label, quiet=True)
+  label_noisy(all_pulses)
+  label_decoupled(all_pulses)
+  match_protocol_length(lengths)
+  collect_all_pulses(exp_light_wins, isolation=ms(minutes=15), pulse_len=ms(seconds=1), cat='on', length_precision=ms(minutes=1), no_edges=True) -> timeslice.Windows
+  collect_analysis_windows(reg_sel, align_to='stop', win_len=ms(minutes=30), quiet=False, **pulse_sel_kwargs) -> timeslice.Windows
+
+nocte/analysis/switches.py
+  extract_lead_traces(xcorr, rem_wins, all_beta, lag_modes)
+  load_lead_traces(reg, exp_name, tau=1000, exp_valid_win=timeslice.Win(ms(hours=2), ms(hours=2 + 9)), low_hz=100, suffix='_exp_clipped')
+  extract_lag_modes(xcorr, min_lag=5)
+  load_xcorr(reg, exp_name, tau, suffix='_exp', exp_valid_win=None, low_hz=100)
+  extract_rem_wins_from_log_beta_thresh_detour(all_beta, beta_thresh=0.15, max_detours=ms(seconds=15))
+  classify_lead_state_by_diag_thresh(lead_traces, col0='log_lead_ch0', col1='log_lead_ch1', slope=1.2)
+  extract_cycle_wins(rem_wins, rem_align=0.5, sws_align=None)
+  classify_wins_by_cycle(lead_wins_raw, cycle_wins)
+  plot_lead_state_cycle_counts(counts, suptitle='')
+  smooth_lead_state_detour(lead_state_raw)
+  Cycles
+    __init__(self, lead_wins)
+    shift(self, value)
+    sel_mask_cycle(self, mask)
+    align_to_rem_center(self)
+    align_to(self, rem_times)
+    get_period_counts_per_cycle(self) -> pd.DataFrame
+    get_switch_count_per_cycle(self) -> pd.Series
+    get_period_lengths_per_cycle(self) -> pd.DataFrame
+    get_period_lengths_relative(self, valid_cats=('lead_ch0', 'lead_ch1')) -> pd.Series
+    take_largest_by_cat(self)
+    get_center_largest(self) -> pd.DataFrame
+    get_rem_wins(self)
+    get_rem_center(self) -> pd.Series
+    plot_cycles_stack(self, ax, cycle_idcs=None, height=0.8)
+
+nocte/analysis/video.py
+  VideoWriter
+    __init__(self, output_video_path, frame_width, frame_height, fps)
+    __enter__(self)
+    __exit__(self, exc_type, exc_val, exc_tb)
+  seek_fast(cap, start_idx)
+  seek_safe(cap, start_idx)
+  VideoReader
+    __init__(self, input_video_path, start, stop, step=1, safe_seek=False)
+    __enter__(self)
+    __iter__(self)
+    __exit__(self, exc_type, exc_val, exc_tb)
+  load_movie(avi_path, start_ms=None, stop_ms=None, time_coord=True, step=1) -> stacks.Stack
+  get_movie_frame_count(avi_path) -> int
+  get_frame_idx_by_fps(avi_path, time_ms) -> int
+  load_movie_frame_idx(avi_path, idx) -> stacks.Stack
+  load_movie_frames_ms(exp_info, show_times)
+  get_video_length_ms(avi_path)
+  get_fps(avi_path)
+  extract_lights_on(frames: stacks.Stack) -> pd.Series
+  series_exists(res_path, res_key)
+  extract_exp_luminance(vid_path, res_path, key)
+  fix_exp_luminance(exp_info, lum_raw, smooth_ms=None)
+  extract_light_wins(lum: pd.Series, high_q=0.99, low_q=0.1, merge_length=1000)
+  get_first_timestamp(loader) -> float
+  get_cam_frame_timestamps(events_path, cam=b'cam0') -> np.ndarray
+  adjust_frame_times(exp_info, lum: pd.Series, cam=b'cam0')
+  get_cam_frame_timestamps_rec(exp_info, cam=b'cam0')
+  adjust_frame_times_multiple_tries(exp_info, lum: pd.Series)
+  load_deeplabcut(path, sampling_rate=50.0)
+  load_deeplabcut_multi(exp_paths)
+  adjust_deeplabcut_time_multi(reg, exp_tracking)
+  extract_eye_open_multi(exp_dlc, max_pix=100)
+
+nocte/analysis/wave_detection.py
+  extract_cdf_other_nb(this: np.ndarray, null: np.ndarray) -> np.ndarray
+  _slide_template_pearson_nb(signal: np.ndarray, template: np.ndarray) -> np.ndarray
+  _slide_template_corr_nb(signal: np.ndarray, template: np.ndarray) -> np.ndarray
+  _slide_template_wmse_nb(signal: np.ndarray, template: np.ndarray, examples_var: np.ndarray) -> np.ndarray
+  _slide_template_wmse_l1_nb(signal: np.ndarray, template: np.ndarray, examples_var: np.ndarray) -> np.ndarray
+  _slide_template_fullcov_nb(signal: np.ndarray, template: np.ndarray, examples_cov_inv: np.ndarray) -> np.ndarray
+  slide_template(signal: pd.Series, examples: pd.DataFrame, method: str, norm_score: bool)
+  find_peak_idcs(scores: pd.Series, **kwargs) -> np.ndarray
+  look_up_peak_properties(signal: pd.Series, peak_idcs: np.ndarray) -> pd.DataFrame
+  find_closest_peak(peaks, times, col='time')
+  find_template(signal: pd.Series, template_examples: pd.DataFrame, method: str, norm_score=False, height_range=(-np.inf, +np.inf), width_range=(-np.inf, +np.inf), prominence_range=(-np.inf, +np.inf))
+  extract_waves_from_recording(loader, times, cut_out=timeslice.Win(-500, +1500), filter_hz=(0.25, 40), load_hz=1000) -> pd.DataFrame
+  find_waves_in_recording(loader, template_examples: pd.DataFrame, method='pearson', filter_hz=(0.25, 40), load_win=None, load_hz=1000, channels=None, chunk_size=timeslice.ms(hours=1), **kwargs)
+  make_scatter_matrix_fig(cols, figsize=(4, 4))
+  plot_scatter_matrix(axs, df, *, max_scatter=10000, alpha=0.25, s=10, **kwargs)
+  make_hists_fig(cols, figsize=(9, 1.5))
+  plot_hists_many(axs, df, alpha=0.5, bins=100, density=True, **kwargs)
+  evaluate_traces_shift_nb(traces: np.array, offsets)
+
+nocte/analysis/xcorr.py
+  _cross_corr_nb(signal0: np.ndarray, signal1: np.ndarray, idcs: np.ndarray, offset: int)
+  _cross_corr_kern_nb(signal0: np.ndarray, signal1: np.ndarray, idcs: np.ndarray, kern: np.ndarray, offset: int)
+  valid_cross_corr(signal: Stack, lags_ms: np.ndarray, win_length_ms=1000, dim='time', sliding_step_ms=None, pbar=True, kern=None)
+
+nocte/analysis/xcorr_bestlags.py
+  XCorrBestLags
+    __init__(self, reg)
+    sel_mask(self, mask)
+    from_xcorr(cls, xcorr: Stack)
+    from_xcorr_lags(cls, xcorr: Stack, lags: pd.Series)
+    __repr__(self)
+    _repr_html_(self)
+    __getitem__(self, item)
+    plot_hist2d(self, c0='time', c1='lag', ax=None, density=True, show_cbar=True, cmap='cividis', **kwargs)
+    get_hist1d_lags(self, bins=None)
+    plot_hist1d_lags(self, ax=None, lag_bins=None, orientation='vertical', facecolor='k', **kwargs)
+    plot_sel_min_xcorr(self, vmin, suptitle='')
+    clip_extreme_lags(self)
+    sel_xcorr_range(self, vmin=-np.inf, vmax=+np.inf)
+    sel_xcorr_range_q(self, qmin=0.0, qmax=1.0)
+  extract_best_lags_multi_exp(exp_xcorr, time_range, lag_range)
+  plot_dists_best_lags(exp_hists: pd.DataFrame, ylabel='prob', figsize=(3, 3), suptitle=None, sharey='none', legend=True)
+  compute_lags_best_xcorr(reg, exp_names, fig_desc, use_cache=True, time_range=(ms(hours=2), ms(hours=11)), lag_range=(-50, +50), sliding_win=1000, suffix='')
+  compute_dist_best_lags(exp_best_lags, min_xcorr_q=0.75) -> pd.DataFrame
+
+nocte/core/collections.py
+  DataFrameWrapper
+    __init__(self, reg: pd.DataFrame)
+    index(self) -> pd.Index
+    columns(self) -> pd.Index
+    __getitem__(self, *args, **kwargs)
+    __setitem__(self, *args, **kwargs)
+    __str__(self)
+    __repr__(self)
+    loc(self)
+    iloc(self)
+    _repr_html_(self)
+    empty(self) -> bool
+    value_counts(self, *args, **kwargs)
+    sort_values(self, *args, **kwargs)
+    sort_index(self, *args, **kwargs)
+    sel(self, rows=None, /, invert=False, **kwargs) -> Self
+    sel_rows(self, rows, /, invert=False)
+    _apply_mask(self, mask) -> Self
+    _replace_reg(self, reg) -> Self
+    _masks(criterias, *, how='all', invert=False)
+    sel_mask(self, mask, /, invert=False) -> Self
+    is_match(self, *, how='all', invert=False, **col_values) -> pd.Series
+    sel_match(self, *, how='all', invert=False, drop=False, **col_values) -> Self
+    is_between(self, *, how='all', invert=False, **col_ranges) -> pd.Series
+    sel_between(self, *, invert=False, how='all', **col_ranges) -> Self
+    is_in(self, *, how='all', invert=False, **col_values) -> pd.Series
+    sel_in(self, *, invert=False, how='all', **col_values) -> Self
+    sample(self, *args, **kwargs)
+    shuffle(self)
+    match(cls, left, right, *, left_ref: str, right_ref: str, how='inner', on=None, **merge_kwargs) -> pd.DataFrame
+    iter_groupby(self, *args, pbar=None, **kwargs)
+  _optional_pbar(iterator, total, pbar, desc=None, many=100)
+
+nocte/core/datadict.py
+  DataDict(DataFrameWrapper)
+    __init__(self, reg: pd.DataFrame, data: dict)
+    _apply_mask(self, mask)
+    apply(self, function, pbar=None, **kwargs)
+    from_dict(cls, data: dict, names=None)
+    from_split(cls, obj: DataFrameWrapper, *, by: str | list[str], sort: bool=False) -> 'DataDict'
+    to_hdf(self, filename, key='dd', item_key_fmt='{k}', pbar=None, storer=None)
+    from_hdf(cls, filename, key='dd', loader=pd.read_hdf, item_key_fmt='{k}', pbar=True)
+    flatten(self, *, inner_name: str | None=None, outer_name: str | None=None) -> Self
+    __len__(self)
+    replace_data(self, data)
+    simplify(self)
+    get(self, idx=None)
+    items(self, col=None, *, pbar=None)
+    sort_values(self, *args, **kwargs)
+    sort_index(self, *args, **kwargs)
+    extract_df(self, func, pbar=None, **kwargs) -> pd.DataFrame
+    iterby(self, by, pbar=None)
+    concat_dict(cls, stackset_dict, names)
+    combine(cls, left, right, func, *, left_ref, right_ref)
+    _combine_idcs(cls, left, right, *, left_ref, right_ref, **merge_kwargs)
+    reset_index(self, *args, drop=True, **kwargs)
+    set_index(self, *args, **kwargs)
+    _extract(self, wins: nocte.core.windows.Windows)
+    crop(self, win: nocte.core.windows.Win)
+    _crop_item(item, window: nocte.core.windows.Win)
+    shift_time(self, ts: pd.Series | np.ndarray | float)
+    _shift_time_item(item, dt)
+    extract(self, wins: nocte.core.windows.Windows, align=None)
+
+nocte/core/events.py
+  _quantile_rolling_nb(time: np.ndarray, values: np.ndarray, new_time: np.ndarray, win: tuple, q: float, nmin: int) -> np.ndarray
+  _mean_rolling_nb(time: np.ndarray, values: np.ndarray, new_time: np.ndarray, win: tuple, nmin: int) -> np.ndarray
+  _count_rolling_nb(time: np.ndarray, new_time: np.ndarray, win: tuple) -> np.ndarray
+  _rate_gauss_kernel_nb(time: np.ndarray, new_time: np.ndarray, sigma: float, width: float=5.0) -> np.ndarray
+  interpolate_trace(data: pd.Series, times: np.ndarray) -> pd.Series
+  interpolate_traces(data: pd.DataFrame, times: np.ndarray) -> pd.DataFrame
+  Events(DataFrameWrapper)
+    __init__(self, reg: pd.DataFrame)
+    from_data_dict(cls, data: dd.DataDict)
+    loc(self)
+    iloc(self)
+    drop(self, *args, **kwargs)
+    from_hdf(cls, path, desc=None)
+    to_hdf(self, path, desc=None)
+    _time_cols(self) -> pd.Index
+    _time_cols_param(self, cols, strip=False)
+    set_index(self, idx, sort=True)
+    round(self, cols=None, decimals=0)
+    __len__(self)
+    to_wins(self)
+    to_wins_around(self, win_ms, col='ref_time')
+    _repr_html_(self)
+    sample_uniformly(self, on, count=10, jitter=0)
+    lookup(self, trace: pd.Series, col='ref_time') -> pd.Series
+    lookup_traces(self, traces, pbar=None) -> pd.DataFrame
+    lookup_and_set(self, name, data: pd.Series, by, cols=None)
+    combine(self, other)
+    get_time_to_closest(self, stop='stop', start='start', sortby='ref') -> pd.Series
+    get_time_to_closest_per_channel(self, per='channel', **kwargs) -> pd.Series
+    get_inter_event_intervals(self, first='ref', second='ref', sortby='ref', ascending=True) -> pd.Series
+    get_inter_event_intervals_between_channels(self, first='ref', second='ref', sortby='ref', first_ch=0, second_ch=1) -> pd.Series
+    get_counts_in_bins(self, bins, by='ref_time') -> pd.Series
+    get_counts(self, load_win, step=1, by='ref_time') -> pd.Series
+    get_histogram2d(self, col='amplitude', tbins=None, vbins=None, by='ref_time')
+    shift_time(self, ts: float | pd.Series | np.ndarray, cols=None, copy=True)
+    count_rolling(self, valid_win: timeslice.Win=None, by='ref_time', sliding_win=1000, step=10) -> pd.Series
+    rate_rolling_gauss(self, sigma: float, valid_win: timeslice.Win=None, by='ref_time', step=1000) -> pd.Series
+    rate_rolling_box(self, valid_win: timeslice.Win=None, by='ref_time', sliding_win=10000, step=1000) -> pd.Series
+    mean_rolling(self, valid_win: timeslice.Win=None, on='amplitude', by='ref_time', sliding_win=1000, step=10, nmin=1) -> pd.Series
+    quantile_rolling(self, q, valid_win: timeslice.Win=None, on='amplitude', by='ref_time', sliding_win=1000, step=10, nmin=1) -> pd.Series
+    iqr_rolling(self, low=0.25, mid=0.5, high=0.75, **kwargs) -> pd.DataFrame
+    _rolling_nb(self, func, valid_win: timeslice.Win=None, on='amplitude', by='ref_time', sliding_win=1000, step=10, nmin=1, **kwargs) -> pd.Series
+    locate_within(self, wins: timeslice.Windows, by='exp_name', on='ref_time') -> pd.DataFrame
+    classify_by(self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat') -> pd.Series
+    crop(self, win: timeslice.Win, on='ref_time')
+    extract(self, wins: timeslice.Windows, by='exp_name', on='ref_time', copy=None, align=None)
+    sel_time(self, win: timeslice.Win, on='ref_time', reset=None)
+    get_global_win(self, by='ref_time') -> timeslice.Win
+    plot_traces_highlighted(self, ax, traces: stacks.Stack)
+
+nocte/core/extract.py
+  ChunkedExperiment
+    __init__(self, raw, channels, chunk_length, chunk_overlap, load_win=None, load_hz=None, min_chunk_length=None)
+    iter_chunks(self, pbar_desc='chunk', adjust_gain=True)
+    get_ref_main(self)
+    get_ref_zscoring(self)
+    iter_chunks_zscored(self, *args, **kwargs)
+  extract_sliding(raw, sliding_win_ms, step_ms, chunk_length_ms=timeslice.ms(hours=1), load_hz=1000, channels='all', load_win=None)
+  extract_sliding_power(raw, bands=('delta', 'beta', 'spiking'), sliding_win_ms=10000, step_ms=1000, load_win=None, **kwargs)
+  process_experiment_power(results_path, raw, channel, band, sliding_win_ms=10000, step_ms=1000, load_win=None)
+  extract_all_power(reg, band, sliding_win, sliding_step, areas=('CLA',), ignore_failures=True)
+  process_experiment_sne(results_path, raw, channel, load_hz=None, chunk_length=timeslice.ms(hours=1), load_win=None, **kwargs)
+  extract_all_sne(reg, areas=('CLA',), suffix='', ignore_failures=True, load_win=None, missing=True)
+  process_experiment_matching(results_path, reg: Registry, exp_name, null_thresh, xcorr_sliding_win, pbar)
+  extract_all_matchings(reg, suffix='', area='', null_thresh=0.05, xcorr_sliding_win=100, pbar=False, ignore_failures=True)
+
+nocte/core/registry.py
+  get_root_laur()
+  patch_root_laur(patched: pd.Series)
+  get_root()
+  _download_contents(url: str)
+  Entry
+    __init__(self, reg, exp_name)
+    _simplify_probe_cols(reg)
+    __getitem__(self, item)
+    get_events(self, event_cols=('light off', 'light on', 'sleep on', 'sleep off')) -> pd.Series
+    get_path(self, col='raw')
+    get_probe_channels(self, area='') -> list
+    get_loader(self, accept_non_interp=True)
+    get_loader_simplified(self, area='', accept_non_interp=True)
+    get_path_video(self, cam='cam0')
+    get_path_video_reduced(self, cam='cam0')
+    get_path_power(self, band: str, probe: int, ch: int, sliding_win: int, sliding_step: int, suffix='') -> Path
+    get_path_luminance(self)
+    load_all_beta(self, band='beta', sliding_win=10000, sliding_step=1000, area='', simplify=True) -> pd.DataFrame
+    load_all_beta_traces(self, simplify=True, *args, **kwargs)
+  Registry(DataFrameWrapper)
+    __init__(self, df: pd.DataFrame, subfolder='swsort')
+    copy(self)
+    sel_expected(self, required_cols, quiet=False)
+    _warn_missing_entries(self)
+    _warn_invalid_probe_info(self)
+    _paths_cleanup(self)
+    _paths_patch(paths)
+    _paths_ensure(paths: pd.Series)
+    _paths_abs(paths: pd.Series)
+    _fill_optional_cols(self)
+    read_online(cls, url: str, sheet_name='swr')
+    read_excel(cls, reg_path=None, sheet_name='swr')
+    is_bilat(self, area: str) -> pd.Series
+    is_stim(self)
+    is_sleep(self)
+    is_healthy(self) -> pd.Series
+    is_lesion(self, which: str) -> pd.Series
+    __len__(self)
+    get_entry(self, exp_name)
+    get_events(self, exp_name, *args, **kwargs) -> pd.Series
+    get_all_events(self) -> pd.DataFrame
+    get_path(self, exp_name, *args, **kwargs)
+    get_path_sne(self, exp_name, probe: int, ch: int, suffix='') -> Path
+    get_path_sne_all(self, exp_name, area='CLA', suffix='') -> list
+    get_path_matching(self, exp_name, suffix='', area='') -> Path
+    get_path_power(self, exp_name, *args, **kwargs) -> Path
+    get_path_xcorr(self, exp_name, probe0: int, probe1: int, ch0: int, ch1: int, sliding_win: int, low_hz=40, suffix='') -> Path
+    get_path_xcorr_area(self, exp_name, sliding_win: int, low_hz=40, suffix='', area='')
+    collect_paths_power(self, band, sliding_win, sliding_step, areas=None, missing=False)
+    collect_paths_xcorr(self, sliding_win, suffix='', missing=False, areas=None, low_hz=40) -> pd.DataFrame
+    collect_paths_sne(self, missing=False, areas=None, suffix='') -> pd.DataFrame
+    collect_paths_matching(self, area='', missing=False, suffix='') -> pd.DataFrame
+    _collect_paths_glob(self, pattern)
+    collect_paths_jrclust(self)
+    collect_paths_deeplabcut(self)
+    _get_valid_probe_idcs(self, exp_name, areas=None)
+    experiment_names(self)
+    group_exps(self, names=None, by=('state', 'lesion'), count_label=True) -> pd.Series | pd.DataFrame
+    iter_groupby(self, *args, pbar=None, **kwargs)
+    get_exp_short_desc(self, exp_name, cols=('probe', 'lesion', 'stim', 'state'))
+    get_loader(self, exp_name, *args, **kwargs)
+    get_probe_channels(self, exp_name, *args, **kwargs) -> list
+    get_loader_simplified(self, exp_name, *args, **kwargs)
+    load_timestamps(self, col, rename='ref_time') -> nocte.core.events.Events
+    load_wins(self, col, name='cat', copy=None) -> nocte.core.windows.Windows
+    load_all_sne(self, exp_name, **kwargs) -> pd.DataFrame
+    load_all_beta(self, exp_name, *args, **kwargs) -> pd.DataFrame
+    load_all_beta_traces_multi(self, *args, pbar=True, **kwargs)
+    load_all_beta_norm(self, exp_name, simplify=True, area='CLA', exp_valid_win=None, add_max=True, add_mean=False)
+    load_area_beta(self, exp_name, simplify=True, **kwargs)
+    load_all_beta_norm_multi(self, **kwargs) -> dict
+    load_exp_xcorr_combs(self, exp_names, which=None, **xcorr_kwargs) -> DataDict
+    collect_paths_video(self) -> pd.Series
+    collect_paths_video_reduced(self) -> pd.Series
+    load_solar_offsets(self, pbar=True) -> pd.Series
+    drop_empty_columns(self)
+
+nocte/core/spikes.py
+  _get_sampling_rate(ks_path)
+  _load_kilosort4_folder(ks_path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]
+  _UnitsView(DataFrameWrapper)
+    __init__(self, reg, spikes: 'Spikes')
+    _apply_mask(self, mask) -> 'Spikes'
+    get_counts(self) -> pd.Series
+    get_inter_spike_intervals(self) -> dict[int, pd.Series]
+    get_inter_spike_intervals_dists(self, bins: np.ndarray | None=None) -> Traces
+    get_counts_in_bins(self, bins: np.ndarray)
+    drop_silent(self)
+    set_index(self, idx)
+    reset_index(self)
+    rate_rolling_gauss(self, *, sigma: float, by: str='ref_time', step: int=1000, win_ms=None, pbar=None)
+  Spikes(Events)
+    __init__(self, reg: pd.DataFrame, units: pd.DataFrame, win_ms: Win | tuple)
+    _replace_reg(self, reg) -> Self
+    load_kilosort(cls, folder, *, sampling_rate, sample_count)
+    from_hdf(cls, path, key='sp')
+    to_hdf(self, path, key='sp')
+    load_hdf(cls, path, key='sp')
+    store_hdf(self, path, key='sp')
+    by_units(self)
+    _apply_mask(self, mask) -> Self
+    describe(self, quiet=False) -> str
+    crop(self, win: timeslice.Win, on='ref_time') -> Self
+    count_in_wins(self, trials)
+    copy(self)
+    relabel_units(self, mapping)
+    relabel_units_by(self, score: pd.Series, ascending=True)
+    relabel_units_by_trial_selectivity(self, trials)
+
+nocte/core/stacks.py
+  _expose(parent_method)
+  Stack
+    __init__(self, data: xr.DataArray)
+    from_array(cls, values: np.ndarray, coords)
+    from_dataframe(cls, df: pd.DataFrame, index_name=None, columns_name=None)
+    from_series(cls, s: pd.Series, index_name=None)
+    __str__(self, time_dim='time')
+    describe(self)
+    _repr_html_(self)
+    dtype(self)
+    astype(self, *args, **kwargs)
+    copy(self, *args, **kwargs)
+    to_series(self, *args, **kwargs)
+    to_dataframe(self, *args, **kwargs)
+    to_dataframe2d(self)
+    reduce(self, *args, **kwargs)
+    dropna(self, *args, **kwargs)
+    std(self, *args, **kwargs)
+    sum(self, *args, **kwargs)
+    cumsum(self, *args, **kwargs)
+    mean(self, *args, **kwargs)
+    clip(self, *args, **kwargs)
+    diff(self, *args, **kwargs)
+    gradient(self, dim='time')
+    apply(self, dim, func)
+    iter_dims(self, *dims, pbar=None)
+    iter_dim(self, dim: str, pbar=None)
+    iter_except(self, *dims, pbar=None)
+    apply_dataframe(self, func, new_dim, dim='time')
+    mean_rolling(self, window, dim='time', center=True, min_periods=1, win_type='hanning')
+    median(self, *args, **kwargs)
+    log10(self, clip_min=None)
+    abs(self)
+    min(self, *args, **kwargs)
+    max(self, *args, **kwargs)
+    argmin(self, *args, **kwargs)
+    argmax(self, *args, **kwargs)
+    quantile(self, *args, **kwargs)
+    idxmax(self, dim)
+    idxmin(self, dim)
+    reindex(self, *args, **kwargs)
+    sortby(self, *args, **kwargs)
+    where(self, *args, **kwargs)
+    __eq__(self, *args, **kwargs)
+    __ne__(self, *args, **kwargs)
+    __ge__(self, *args, **kwargs)
+    __gt__(self, *args, **kwargs)
+    __le__(self, *args, **kwargs)
+    __lt__(self, *args, **kwargs)
+    __add__(self, *args, **kwargs)
+    __radd__(self, *args, **kwargs)
+    __sub__(self, *args, **kwargs)
+    __rsub__(self, *args, **kwargs)
+    __mul__(self, *args, **kwargs)
+    __rmul__(self, *args, **kwargs)
+    __truediv__(self, *args, **kwargs)
+    __rtruediv__(self, *args, **kwargs)
+    __floordiv__(self, *args, **kwargs)
+    __rfloordiv__(self, *args, **kwargs)
+    __neg__(self, *args, **kwargs)
+    __len__(self, *args, **kwargs)
+    __array__(self, *args, **kwargs)
+    sel(self, drop=True, *args, **kwargs)
+    isel(self, drop=True, *args, **kwargs)
+    transpose(self, *dims)
+    get_axis_num(self, *args, **kwargs)
+    values(self)
+    coords(self)
+    shape(self)
+    dims(self)
+    ndim(self)
+    get_coords_except(self, *dims) -> xarray.core.coordinates.DataArrayCoordinates
+    get_coords_names(self)
+    get_coords_names_except(self, *dims)
+    replace_dim(self, old_name, new_name, values)
+    rename_dim(self, old_name, new_name)
+    reset_coord(self, dim='time', q=0)
+    sel_between(self, *, reset=False, **kwargs)
+    shift_coord(self, **kwargs)
+    sel_centered(self, duration, dim='time', reset=False)
+    sel_pairs(self, dim_index, dim_values, pairs: pd.Series)
+    store_hdf(self, path: str, key, overwrite=False)
+    load_hdf(cls, path: str, key, sel=None, adjust_gain=None)
+    load_idcs(cls, raw, windows, channels='all', load_hz=None, adjust_gain=True, pbar=True, early_exit=False)
+    load_ms(cls, raw, times, win_ms, channels='all', load_hz=None, adjust_gain=True, pbar=True, early_exit=False)
+    load_single_ms(cls, raw, load_win=None, stored_hz=None, load_hz=None, channels='all', adjust_gain=True)
+    load_single_idcs(cls, raw, load_win=None, stored_hz=None, load_hz=None, channels='all', adjust_gain=True)
+    reindex_sample_to_ms(self, sampling_rate, dim='sample', new_dim='time')
+    reindex_ms_to_sample(self, sampling_rate, dim='time', new_dim='sample')
+    estimate_sampling_period(self, dim='time') -> float
+    estimate_sampling_rate(self, dim='time') -> float
+    extend(self, dim, pre=0, post=0, fill_value=np.nan)
+    slide_template(self, ref, align=1)
+    crop(self, times, win_ms, pbar=None, new_dim='sample')
+    extract_pearsonr(self, ref, pbar=None)
+    cross_corr(self, ref, dim='time')
+    extract_spectrogram_1d(self, segment_ms=1000, overlap_ms=None)
+    histogram_along(self, dim: str, new: str, bins=100, quiet=False)
+    reset_baseline(self, between_ms=(-np.inf, +np.inf), dim='time')
+    sample(self, **sel)
+    split_by(self, dim, values: np.ndarray, replace: np.ndarray=None) -> dict
+    groupby_array(self, dim, new_name, values: np.ndarray)
+    groupby_mean(self, dim, new_name, values: np.ndarray)
+    groupby_std(self, dim, new_name, values: np.ndarray)
+    apply_shift(self, shift_steps, by='spike_id', on='time')
+    zscore(self, dim='time')
+    zscore_rolling(self, win_count, dim='time', dropna=True)
+    get_global_win(self, dim='time')
+    downsample(self, downsample_hz, dim='time')
+    downsample_by_factor(self, factor: int, dim='time')
+    upsample(self, upsample_hz, win=None, dim='time')
+    interp_between(self, win: timeslice.Win, step, **kwargs)
+    interp(self, new_idcs: np.ndarray, dim='time', pbar=None)
+    filter_pass(self, hz: tuple, dim='time')
+    band_pass(self, low_hz, high_hz, dim='time', *, order=2)
+    low_pass(self, high_hz, dim='time', *, order=2)
+    high_pass(self, low_hz, dim='time', *, order=2)
+    _find_peaks_single(self, **kwargs) -> pd.DataFrame
+    find_peaks(self, dim='time', width_ms=None, negative=False, **kwargs) -> pd.DataFrame
+  stackup(stacks_dict: dict, dim_name: str) -> Stack
+
+nocte/core/traces.py
+  _cross_corr_shifted_nb(signal0: np.ndarray, signal1: np.ndarray, idcs: np.ndarray, offset: int)
+  _cross_corr_shifted_pearsons_nb(signal0: np.ndarray, signal1: np.ndarray, idcs: np.ndarray, offset: int)
+  _assert_multiple(sampling_period_ms, t)
+  _rolling_cross_corr_discreete(s0: np.ndarray, s1: np.ndarray, offsets: np.ndarray, sliding_win: int, sliding_step: int, pbar=None, pearson=False)
+  _rolling_cross_corr_ms(s0: np.ndarray, s1: np.ndarray, sampling_period_ms: float, lags_ms: np.ndarray, sliding_win_ms: float, sliding_step_ms: float, pbar=None, pearson=False)
+  _estimate_sampling_period(times, atol=1e-06) -> float
+  Traces(DataFrameWrapper)
+    __init__(self, reg: pd.DataFrame, traces: pd.DataFrame, copy=True)
+    load_single(cls, loader, load_win, ref=None, load_hz=None, channels=None, pbar=None)
+    load_many(cls, loader, load_wins, load_hz=None, channels=None, pbar=None)
+    from_multiindex_df(cls, df: pd.DataFrame)
+    from_df(cls, traces: pd.DataFrame, reg: pd.DataFrame=None)
+    from_series(cls, s: pd.Series, col_name=None, entry_name=None)
+    from_dict(cls, d: dict, names: list)
+    from_dict_resampled(cls, d: dict, names: list, start='milliseconds', stop=None, period=None, reg: pd.DataFrame=None, pbar=None)
+    from_data_dict(cls, datadict: dd.DataDict, key_name: str | None=None, pre_aligned=False)
+    store_hdf(self, path, key='traces')
+    load_hdf(cls, path, key='traces')
+    to_dict(self, col)
+    first_valid_index(self)
+    last_valid_index(self)
+    to_wins(self, ref='ref', tight=True) -> timeslice.Windows
+    concat_dict(cls, traces_dict: dict, key_name=None)
+    concat_list(cls, traces_list: list)
+    concat_dict_aligned(cls, traces_dict: dict, names)
+    reset_index(self, *args, drop=True, **kwargs)
+    set_index(self, *args, **kwargs)
+    __eq__(self, *args, **kwargs)
+    __ne__(self, *args, **kwargs)
+    __ge__(self, *args, **kwargs)
+    __gt__(self, *args, **kwargs)
+    __le__(self, *args, **kwargs)
+    __lt__(self, *args, **kwargs)
+    __add__(self, *args, **kwargs)
+    __radd__(self, *args, **kwargs)
+    __sub__(self, *args, **kwargs)
+    __rsub__(self, *args, **kwargs)
+    __mul__(self, *args, **kwargs)
+    __rmul__(self, *args, **kwargs)
+    __truediv__(self, *args, **kwargs)
+    __rtruediv__(self, *args, **kwargs)
+    __floordiv__(self, *args, **kwargs)
+    __rfloordiv__(self, *args, **kwargs)
+    __neg__(self)
+    __mod__(self, *args, **kwargs)
+    __array__(self, *args, **kwargs)
+    __array_ufunc__(self, *args, **kwargs)
+    get(self, idx=None) -> pd.Series
+    get_df(self, col, expect_unique=True) -> pd.DataFrame
+    groupby_mix(self, by, how)
+    groupby_mean(self, by)
+    groupby_median(self, by)
+    groupby_std(self, by)
+    groupby_max(self, by)
+    histograms(self, bins=None, density=None, weights=None) -> pd.DataFrame
+    items(self, col=None, *, pbar=None)
+    histograms2d(self, vbins=None, tbins=None, rolling_win=None, pbar=None)
+    normalize_by_quantiles(self, qmin=0.05, qmax=0.95, win=None)
+    iter_grouped(self, groupby, pbar=None)
+    clip(self, *args, **kwargs)
+    replace(self, *args, **kwargs)
+    fillna(self, *args, **kwargs)
+    abs(self)
+    unique_sorted(self, col, order=None)
+    log10(self, drop_inf=False)
+    power10(self)
+    square(self)
+    sqrt(self)
+    unwrap(self, period=1, axis=0)
+    crop(self, win: timeslice.Win, **kwargs)
+    crop_centered(self, duration, **kwargs)
+    shift_time(self, ref_time: float | pd.Series | np.ndarray)
+    shift_time_each(self, shifts: pd.Series, neg=False)
+    cross_corr(self, pairs, pearson=True, mode='same')
+    cross_corr_rolling_by(self, pair_by, sort_by=None, **kwargs)
+    cross_corr_rolling(self, pairs: pd.DataFrame, lags_ms: np.ndarray, sliding_win_ms: float, sliding_step_ms: float | None=None, pbar=None, pbar_single=None, pearson=True)
+    corr_rolling(self, template: np.ndarray, lags_ms: np.ndarray, sliding_win_ms: float, sliding_step_ms: float | None=None, pbar=None, pbar_single=None, pearson=True)
+    auto_corr_rolling(self, lags_ms: np.ndarray, sliding_win_ms: float, sliding_step_ms: float | None=None, pbar=None, pbar_each=None, pearson=True, key=None)
+    auto_corr(self, pearson=True, mode='same')
+    _match_traces_wins(reg: pd.DataFrame, windows, **kwargs)
+    extract_all(self, windows: timeslice.Windows, upsampling_ms=None, pbar=None)
+    extract(self, wins, align=None, upsampling_ms=None)
+    copy(self)
+    set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None)
+    merge_reg(self, extra: pd.DataFrame, **kwargs)
+    drop(self, *args, **kwargs)
+    _apply_mask(self, mask) -> Self
+    _replace_reg(self, reg) -> Self
+    shape(self)
+    values(self)
+    time(self)
+    tloc(self)
+    lookup(self, times, interp=True) -> pd.Series
+    apply(self, *args, **kwargs)
+    applymap(self, func)
+    replace_traces(self, others: dict | np.ndarray | pd.DataFrame)
+    sort_values(self, *args, **kwargs)
+    sort_index(self, *args, **kwargs)
+    contains_nan(self)
+    drop_missing(self, how='any')
+    drop_empty(self, how='all')
+    drop_tight(self)
+    get_global_win(self) -> timeslice.Win
+    sampling_period(self) -> float
+    sampling_rate(self) -> float
+    gradient(self)
+    diff(self)
+    max(self, *args, **kwargs)
+    min(self, *args, **kwargs)
+    idxmax(self, *args, **kwargs)
+    idxmin(self, *args, **kwargs)
+    mean(self, *args, **kwargs)
+    cumsum(self, *args, **kwargs)
+    mean_rolling(self, *args, center=True, min_periods=1, **kwargs)
+    mean_rolling_gaussian(self, std_ms, center=True, min_periods=None)
+    sum_rolling(self, *args, center=True, min_periods=1, **kwargs)
+    median_rolling(self, *args, center=True, min_periods=1, **kwargs)
+    std_rolling(self, *args, center=True, min_periods=1, **kwargs)
+    zscore_rolling(self, sliding_win_ms)
+    median(self, *args, **kwargs)
+    quantile(self, *args, **kwargs)
+    std(self, *args, **kwargs)
+    var(self, *args, **kwargs)
+    sum(self, *args, **kwargs)
+    zscore(self)
+    center(self)
+    resample(self, period, start=None, stop=None)
+    downsample_factor(self, factor, offset=None)
+    are_continuously_sampled(self, atol=1e-06) -> bool
+    downsample(self, period)
+    interp(self, times: pd.Series, fill_value=None)
+    filter_pass(self, hz: tuple, **kwargs)
+    filtfilt(self, *params)
+    band_pass(self, low_hz, high_hz, *, order=2)
+    low_pass(self, high_hz, *, order=2)
+    high_pass(self, low_hz, *, order=2)
+    _spectral_analysis_single(self, k, spec_func, take_abs, **kwargs)
+    _spectral_analysis(self, spec_func, pbar=tqdm, take_abs=True, db=True, **kwargs)
+    spectral_analysis_stft(self, nperseg=256, noverlap=128, **kwargs)
+    spectral_analysis_wavelet(self, freqs=None, wavelet='morl', **kwargs)
+    spectrograms_overlapping(self, nperseg=256, noverlap=192, window=('tukey', 0.25), **kwargs)
+    spectrograms(self, segment_ms=1000, overlap_ms=None, **kwargs)
+    welch(self, win_len_ms=None, db=False, **kwargs)
+    welch_rolling(self, win_len_ms=None, db=False, sliding_len_ms=timeslice.ms(seconds=10), sliding_step_ms=timeslice.ms(seconds=1), pbar=None, **kwargs)
+    band_power(self, bands=sleep.FREQ_BANDS, add_total=True, welch_ms=None, db=False)
+    band_power_rolling(self, bands=sleep.FREQ_BANDS, sliding_len_ms=timeslice.ms(seconds=10), sliding_step_ms=timeslice.ms(seconds=1), db=False, add_total=True, pbar=None, welch_ms=None)
+    apply_rolling(self, func, length_ms, step_ms=None, pbar=None, name='')
+
+nocte/core/windows.py
+  to_ms(t) -> float
+  ms(**kwargs) -> float
+  _ms_scale(scale) -> float
+  ms_round(value: float, scale='milliseconds', decimals=0) -> float
+  ms_floor(value: float, scale='milliseconds')
+  ms_ceil(value: float, scale='milliseconds')
+  ms_remainder(value: float, scale='days')
+  ms_to_str(value, plus_sign=False, strip=True, show_days=False) -> str
+  str_to_ms(timestamp) -> float
+  TimeRef
+    __init__(self, ref: datetime)
+    _relative_time_offset(self, hour=0, minute=0, second=0, microsecond=0)
+    solar_offset(self)
+    circ_offset(self)
+    solar_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray
+    rec_to_solar(self, t_ms: float | np.ndarray) -> float | np.ndarray
+    circ_to_rec(self, t_ms: float | np.ndarray) -> float | np.ndarray
+    rec_to_circ(self, t_ms: float | np.ndarray) -> float | np.ndarray
+  SamplingRate
+    __init__(self, rate: float)
+    from_period(cls, period_ms)
+    period(self) -> float
+    get_stride(self, load_hz) -> float
+    match_load_hz(self, load_hz, thresh=None) -> float
+    check_stride(self, downsample_hz: float) -> bool
+    assert_stride(self, downsample_hz, numerator_name='sampling_hz', denominator_name='downsample_hz')
+    ms_to_idcs(self, time_ms: np.array) -> np.array
+    idcs_to_ms(self, idcs: np.array) -> np.array
+    adjust_sampling_period(self, quiet=False) -> float
+    adjust_to_sampling_period(self, length, desc=None) -> float
+  Win(tuple)
+    __new__(cls, start, stop)
+    build_around(cls, ref, pre=0, post=0)
+    build_centered(cls, ref, duration)
+    from_str(cls, s)
+    start(self)
+    start_s(self)
+    start_td(self)
+    stop(self)
+    stop_s(self)
+    stop_td(self)
+    length(self)
+    length_s(self)
+    length_td(self)
+    mid(self)
+    is_empty(self) -> bool
+    before(self, duration, offset=0)
+    after(self, duration, offset=0)
+    centered(self, duration, q='mid')
+    arange(self, step)
+    contains(self, t)
+    contained_in(self, win, fully=True) -> bool
+    overlaps(self, win) -> bool
+    quantile_time(self, q: float) -> pd.Series
+    relative_time(self, q) -> float
+    to_relative_time(self, time: float) -> float
+    assert_positive(self)
+    to_str(self, plus_sign=False, strip=True, show_days=True)
+    __str__(self)
+    _repr_html_(self)
+    change(self, pre=0.0, post=0.0)
+    shrink(self, duration=0.0)
+    expand(self, duration=0.0)
+    subtract(self, exclusion_win)
+    split(self, length_ms)
+    shift(self, by=0.0)
+    shift_to_fit(self, other)
+    take_centered(self, max_duration)
+    round(self, decimals=0, start=True, stop=True, scale='milliseconds')
+    floor(self, start=True, stop=True, scale='milliseconds')
+    ceil(self, start=True, stop=True, scale='milliseconds')
+    floor_ceil(self, scale='milliseconds')
+    ceil_floor(self, scale='milliseconds')
+    round_loose(self, scale='milliseconds')
+    round_tight(self, scale='milliseconds')
+    clip(self, other)
+    to_slice_idx(self, stored_hz, load_hz=None)
+    to_slice_ms(self, step=None)
+    crop_df(self, df: pd.DataFrame | pd.Series, reset=None, by=None) -> pd.DataFrame
+    crop_ts(self, ts: np.ndarray, reset=None) -> np.array
+    interp_series(self, series: pd.Series, step, reset=None, shift=0, bounds_error=False) -> pd.Series
+    interp_df(self, df: pd.DataFrame, step, pbar=None, **kwargs) -> pd.DataFrame
+  Windows(DataFrameWrapper)
+    __init__(self, windows)
+    wins(self)
+    store_hdf(self, path: str, key='wins')
+    load_hdf(cls, path: str, key)
+    to_str(self, split='\n', strip=False, plus_sign=False, show_days=True, col='cat')
+    from_str(cls, string, name='cat')
+    build_around_df(cls, df, win=(0.0, 0.0), col='time')
+    build_around(cls, marks, win=(0.0, 0.0))
+    around(self, win, q='mid', old=None)
+    centered(self, duration, q='mid', old=None)
+    before(self, duration, offset=0, q='start', old=None)
+    after(self, duration, offset=0, q='stop', old=None)
+    before_after(self, pre, post, pre_q='start', post_q='stop', pre_name='pre', post_name='post', col='when')
+    build_centered(cls, marks, duration)
+    build_around_multiple(cls, marks, **wins)
+    from_arrays(cls, start: np.ndarray, stop: np.ndarray, ref=0.5)
+    build_from_dict(cls, wins: dict, columns=('start', 'stop'), name='cat')
+    to_dict(self, col='exp_name') -> dict
+    build_sliding(cls, start_ms, stop_ms, length_ms, sampling_rate, start_off_ms=0, stop_off_ms=0, **kwargs)
+    build_sliding_samples(cls, start_ms, stop_ms, length_ms, sampling_rate, step_ms=None, ignore_remaining=True)
+    build_between(cls, times: np.ndarray, start=None, stop=None)
+    build_from_transitions(cls, values: pd.Series, sampling_period: float)
+    build_from_contiguous_values(cls, values, mid_sr=True, include_right=False)
+    concat(cls, many, cycle_name='cycle_idx', local_name=None, **kwargs)
+    concat_list(cls, many, axis=0, reset_index=True, **kwargs)
+    rename_index(self, name)
+    generate_cat(self, times: pd.Index, col='cat', right=False) -> pd.Series
+    generate_cat_contiguous(self, sampling_period, start=None, stop=None, dim='cat', pbar=None, fillna=False) -> pd.Series
+    reset_index(self, sort_by=('start', 'stop', 'ref'), drop=True)
+    scale(self, factor, cols=('start', 'stop', 'ref'))
+    ms_to_sample(self, sampling_rate)
+    sample_to_ms(self, sampling_rate, tstart=0)
+    sample_to_ms_by_time_index(self, index)
+    rename_cat(self, renaming, *, col='cat', **renaming_kwargs)
+    complement(self, cat='unknown', reset_index=False, start=None, stop=None)
+    iter_wins(self, col=None, *, pbar=None)
+    iter_wins_ref(self, *, pbar=None)
+    iter_wins_items(self, *, pbar=None)
+    iter_groupby(self, *args, pbar=None, **kwargs)
+    get(self, win_id=None) -> Win
+    iget(self, win_idx=0) -> Win
+    get_rel(self, win_idx=None) -> Win
+    get_props(self, win_idx=None) -> pd.Series
+    crop_df(self, df: pd.DataFrame, reset='ref', by=None, pbar=None) -> dict
+    interp_series(self, s: pd.Series, step: float, reset='ref', pbar=None)
+    interp_df(self, df: pd.DataFrame, step: float, reset='ref', pbar=None)
+    copy(self)
+    groupby(self, *args, **kwargs)
+    drop(self, *args, **kwargs)
+    columns_extra(self)
+    loc(self)
+    iloc(self)
+    _repr_html_(self)
+    describe(self, quiet=False)
+    are_uniform(self, atol=1e-08) -> bool
+    are_alternating(self, col='cat')
+    force_uniform(self, length=None)
+    get_edges(self)
+    get_breaks(self)
+    are_exclusive(self) -> bool
+    are_integer(self) -> bool
+    are_tight(self, inclusive=None) -> bool
+    are_in_samples(self) -> bool
+    is_ref_inside(self) -> pd.Series
+    is_within(self, win: Win) -> pd.Series
+    is_within_any(self, other) -> pd.Series
+    is_empty(self) -> bool
+    crop_to_main(self, win_ms, reset=False)
+    crop(self, win_ms: Win, reset=False)
+    crop_to_multiple(self, others, pbar=None, drop=False)
+    crop_to_minimum_common(self)
+    extract(self, others, align=None, by='exp_name', copy=None)
+    _extract(self, outer, by='exp_name', copy=None)
+    __len__(self)
+    lengths(self) -> pd.Series
+    mid(self) -> pd.Series
+    contain(self, t, how='any', pbar=None)
+    contained_in(self, win, fully=True) -> pd.Series
+    contained_in_others(self, outer, by='exp_name', fully=True, how='any')
+    quantile_time(self, q: float) -> pd.Series
+    relative_time(self, q) -> pd.Series
+    reset_ref(self, q)
+    total(self) -> float
+    total_by_cat(self, by='cat')
+    get_global_win(self)
+    get_global_win_grouped(self, by)
+    add_cols(self, extra: pd.DataFrame)
+    merge_cols(self, extra: pd.DataFrame, **kwargs)
+    set_cols(self, extra: pd.DataFrame, *, suffix=None, prefix=None)
+    sel_length_between(self, vmin=-np.inf, vmax=+np.inf)
+    split(self, length_ms, align='left')
+    shift_time(self, shifts, dropmissing=True)
+    shift(self, shifts, dropmissing=True)
+    defrag(self, start=0)
+    defrag_events(self, times: pd.Series, push_inbetween=False)
+    defrag_series(self, traces: pd.DataFrame)
+    _merge_consecutive(self, criteria, take='first')
+    merge_tight(self, same_cat=False, take='first')
+    merge_overlap(self, same_cat=False)
+    overlap(self)
+    drop_overlap(self, quiet=True)
+    drop_empty(self)
+    drop_duplicates(self, subset=('start', 'stop'))
+    prev_cat(self, dim='cat') -> pd.Series
+    next_cat(self, dim='cat') -> pd.Series
+    sandwiched(self, dim='cat', max_length=None, cat=None) -> pd.Series
+    merge_sandwiched(self, dim='cat', max_length=None, cat=None)
+    invert(self, start=None, stop=None, keep_prev=tuple(), keep_next=tuple(), drop_empty=True)
+    classify_events(self, times, ref_col='ref', merge_wincols=None, right=False) -> pd.DataFrame
+    annotate_events(self, events: pd.DataFrame, prefix=None, col='time', drop=False, ref_col='ref', merge_wincols=None, right=False) -> pd.DataFrame
+    classify_windows(self, others, align_to='ref', edges='crop') -> dict
+    get_inter_intervals(self, first='stop', second='start', sortby='ref', ascending=True, shift=1) -> pd.Series
+    get_inter_intervals_by(self, cat0, cat1, by='cat', first='ref', second='ref', sortby='ref', ascending=True, reindex=True) -> pd.Series
+    get_histogram(self, name, bins=100) -> pd.Series
+    get_histogram_length(self, bins) -> pd.Series
+    get_histograms_by(self, name, bins=100, by='cat') -> pd.DataFrame
+    get_histograms_length_by(self, bins, by='cat') -> pd.DataFrame
+    is_isolated(self, at_least: float) -> pd.Series
+    interval_to_closest(self) -> pd.Series
+    interval_to_prev(self, shift=1) -> pd.Series
+    interval_to_next(self, shift=1) -> pd.Series
+    change(self, pre=0.0, post=0.0)
+    shrink(self, duration=0.0)
+    expand(self, duration=0.0)
+  _classify_events_exclusive(windows: pd.DataFrame, times, ref_col, merge_wincols, right)
+
+nocte/io/common.py
+  DataLoader(abc.ABC)
+    sample_count(self) -> int
+    sampling_period(self) -> float
+    channels(self) -> pd.DataFrame
+    load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray
+    slice_size(s: slice, total: int)
+    sampling_rate(self) -> float
+    duration_ms(self)
+    win_ms(self)
+    win_idcs(self)
+    ms_to_idcs(self, time_ms: np.array)
+    idcs_to_ms(self, idcs: np.array)
+    describe(self, quiet=False)
+    channel_probes_to_global(self, channels_per_probe: list) -> np.array
+  MultiDataLoader(DataLoader)
+    __init__(self, loaders: dict)
+    sel_channels(self, which)
+    sample_count(self) -> int
+    sampling_period(self) -> float
+    channels(self) -> pd.DataFrame
+    load(self, sample_idcs, channels: pd.Index, adjust_gain=True) -> np.ndarray
+    describe(self, quiet=False)
+
+nocte/io/neuralynx.py
+  NeuralynxBaseLoader
+    load_header(path: str, record_dtype) -> pd.Series
+    _read_header(fid)
+    _parse_header(raw_header: bytes) -> pd.Series
+    parse_neuralynx_time_string(time_string)
+    read_records(fid, record_dtype, start=0, stop=-1) -> np.ndarray
+    _record_count(file_path, record_dtype)
+    get_channel_id(header)
+  NCSLoader(common.DataLoader)
+    __init__(self, header)
+    from_file(cls, file_path)
+    sample_count(self) -> int
+    sampling_rate_raw(self) -> float
+    sampling_period(self) -> float
+    channels(self) -> pd.DataFrame
+    _get_probe_id(self) -> int
+    _get_total_valid_samples(self) -> int
+    _get_channel_number(self) -> int
+    _load_records(self, start, stop, adjust_gain=True, verify_timestamps=False) -> np.ndarray
+    load(self, sample_idcs: slice, channels=(0,), adjust_gain=True, verify_timestamps=False) -> np.ndarray
+    get_first_timestamp(self)
+  NCSLoaderUneven(NCSLoader)
+    __init__(self, header)
+    _get_records_props(header, load_step=10000) -> pd.DataFrame
+    _find_records(self, sample_idcs)
+    _get_total_valid_samples(self) -> int
+    _load_records(self, start, stop, adjust_gain=True, verify_timestamps=False)
+    load(self, sample_idcs: slice, channels=None, adjust_gain=True, verify_timestamps=False) -> np.ndarray
+  NEVLoader
+    __init__(self, header, records)
+    load_nev(cls, file_path)
+    to_df(self)
+  MultiNCSLoader(common.MultiDataLoader)
+    __init__(self, loaders: dict)
+    get_first_timestamp(self)
+    get_joint_header(self) -> pd.DataFrame
+    get_timestamp_start(self, align_duration=False)
+    from_paths(cls, paths: list[str], loader_class=NCSLoader)
+    locate_paths(folder: str, channels=None, name='CSC{channel}.ncs') -> list
+    from_folder(cls, folder, channels=None, name='CSC{channel}.ncs', loader_class=NCSLoader)
+
+nocte/io/neuropixel.py
+  read_meta(meta_path: Path)
+  _read_meta_raw(meta_path: Path)
+  _process_meta_channelids(meta)
+  _process_meta_imec(meta, prefix='im')
+  _process_meta_nidq(meta, prefix='ni')
+  make_memmap_raw(bin_path, channel_count, sample_count, mode='r')
+  get_probe() -> pd.DataFrame
+  DataLoader(common.DataLoader)
+    __init__(self, meta, memmap)
+    channels(self) -> pd.DataFrame
+    sample_count(self) -> int
+    sampling_period(self) -> float
+    sampling_rate_raw(self) -> float
+    from_spikegl(cls, meta_path, bin_path, expected_sampling_rate=None)
+    from_interp_data(cls, meta_path, bin_path)
+    load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray
+    locate_files_spikeglx(probe_path: Path, accept_lf=False) -> (str, str)
+  MultiProbeLoader(common.MultiDataLoader)
+    __init__(self, loaders)
+    locate_probes_spikeglx(folder_path: str) -> dict
+    locate_probes_interp(folder_path: str, interp_name='interp') -> dict
+    multiprobe_spikeglx(cls, folder_path)
+    multiprobe_interp(cls, folder_path, interp_name='interp')
+  DataLoaderBaseline(DataLoader)
+    __init__(self, meta, memmap, ref_channels=None, ref_time_ms=None, ref_duration_mins=10, ref_load_hz=None)
+    load(self, sample_idcs: slice, channels='all', adjust_gain=True) -> np.ndarray
+    _calibrate_channels(self, ref_ms, duration_min, load_hz)
+
+nocte/io/neuropixel_interp.py
+  extract_onsets(raw: neuropixel.DataLoader, load_win_ms=None, chunk_length_ms=timeslice.ms(minutes=15)) -> pd.Series
+  extract_onsets_multiprobe(all_raw, load_win_ms)
+  _make_simple_meta(original, channels, target_hz)
+  interpolate_data(meta_path_out, bin_path_out, raw, channels, ref_times, target_hz=30000)
+  multi_npix_from_folder(folder_path, clean=True, quiet=False)
+  get_all_onsets(onsets_filename, all_raw, load_win_ms)
+  onset_idcs_to_ms(all_raw, all_onset_idcs)
+  estimate_onset_actual_time(all_raw, all_onset_idcs)
+  get_common_onset_times(folder_path, folder_path_out, load_win_ms)
+  main(raw_path: Path, channels_per_probe: dict, target_hz=30000, output_name='interp', load_win_ms=None, clean=True, overwrite=False)
+
+nocte/io/neuropixel_writer.py
+  _as_2d_float(arr: np.ndarray) -> np.ndarray
+  _microvolts_per_bit(im_ai_range_max_v: float, ap_gain_index: int) -> float
+  _float_microvolts_to_int16(data_microvolts: np.ndarray, im_ai_range_max_v: float, ap_gain_index: int) -> np.ndarray
+  write_ap_bin(bin_path: Path, chunks: list[np.ndarray], im_ai_range_max_v: float=0.6, ap_gain_index: int=500)
+  write_ap_meta(meta_path: Path, n_channels: int, n_samples: int, sampling_rate_hz: float, im_ai_range_max_v: float=0.6, ap_gain_index: int=500)
+  store_neuropixels_data(output_folder: str | Path, chunks: list[np.ndarray], sampling_rate_hz: float, im_ai_range_max_v: float=0.6, ap_gain_index: int=500, stem: str='data', overwrite=False)
+
+nocte/io/openephys.py
+  ContinuousLoader(common.DataLoader)
+    __init__(self, channels: pd.DataFrame, stream)
+    sample_count(self) -> int
+    sampling_period(self) -> float
+    channels(self) -> pd.DataFrame
+    sel_channels(self, which)
+    load(self, sample_idcs: slice, channels: pd.Index, adjust_gain=True) -> np.ndarray
+    from_session(cls, session_path: str | Path, recording_node_idx=0, recording_idx=0, continuous_idx=0)
+
+nocte/plot/plot.py
+  _make_ch_cmaps(seq=('_light', '', '_dark')) -> dict
+  set_time_ticks(ax, major=None, minor=None, which='x', scale=None, label=None, tight=True, lim=None, offset=0, ref=0)
+  _auto_select_tick_steps(ax, which='x') -> tuple[float, float]
+  set_ticks_solar_time(ax, which='x', skip_zero=False, offset=ms(hours=0), show_days=True)
+  drop_spine(ax, which: str)
+  drop_spines_grid(axs, bottom=True, bottom_edge=False, bottom_label=True, left=True, left_edge=False, left_label=True, rows=True)
+  set_ax_spine_color(ax, side, color)
+  set_ax_spine_side(ax, side)
+  set_ax_ticks_si(ax, axis='y', fmt_str='.0f')
+  plot_wins_fill(ax, windows: timeslice.Windows, ymin=0, ymax=1, which='y', by='cat', window_colors=None, show_excluded=False, show_edges=False, transform=None, facecolor=None, **kwargs)
+  plot_wins_line(ax, wins, yval, by='cat', colors=None, solid_capstyle='butt', **kwargs)
+  plot_wins_rectangle(ax, wins, y0=0.0, y1=1.0, transform=None, clip_on=False, colors=None, by='cat', how='face', **kwargs)
+  plot_win_rectangle(ax, win, y0=0.0, y1=1.0, transform=None, clip_on=False, colors=None, how='edge', color='k', **kwargs)
+  plot_spectrogram(ax, spec, yscale='log', ylim=None, scale='minutes', shading='nearest', cmap='jet', norm=None)
+  _set_axis_label(ax, label, which)
+  make_axs_long_experiment(win_ms, tbin_width=timeslice.ms(hours=2), sharey='all', constrained_layout=True, figsize=None, major=timeslice.ms(minutes=10), minor=timeslice.ms(minutes=1), show_timestamp=True, tstart_timestamp=None, time_scale='minutes', suptitle=None, ylim=None, leftspine=True, show_days=False) -> dict
+  plot_events_vline(ax, events: pd.DataFrame, colors=None, *, time_col='time', color_col='desc', **kwargs)
+  plot_wrapped_lines(axs, all_traces: pd.DataFrame, colors=None, linewidth=0.5, **kwargs)
+  plot_wrapped_im(axs, all_traces: pd.DataFrame, **kwargs)
+  plot_wrapped_fills(axs, all_traces: pd.DataFrame, y0=0, colors=None, **kwargs)
+  plot_wrapped_scatter(axs, series, **kwargs)
+  plot_wrapped_lines_highlighted(axs, all_traces: pd.DataFrame, wins, styles=None, **kwargs)
+  plot_wrapped_wins_fill(axs, wins, colors=None, alpha=0.5, **kwargs)
+  plot_wrapped_events_vline(axs, events: pd.DataFrame, *, time_col='time', **kwargs)
+  plot_wrapped_wins_lines(axs, wins: timeslice.Windows, **kwargs)
+  plot_wrapped_wins_edges(axs, wins: timeslice.Windows, **kwargs)
+  plot_wins_edges(ax, wins: timeslice.Windows, ymin=0, ymax=1, transform=None, linewidth=0.5, color='xkcd:black', skip_ends=False, **kwargs)
+  _get_stack_extent(s, xcol, ycol)
+  add_desc(ax: matplotlib.axes.Axes, desc, loc='upper right', bkg_color='w', bkg_edgecolor='none', fontsize=6, loc_pad=0.05, bkg_alpha=0.75, **kwargs)
+  filter_desc(hz: tuple, decimals=None) -> str
+  make_ax_with_marginals(figsize=(3, 2), constrained_layout=True, size_ratio=3)
+  make_axs_grid_with_marginals(nrows=1, ncols=1, figsize=(9, 5), constrained_layout=True, size_ratio=3, hspace=0, wspace=0, xmargin=True, ymargin=True, sharex=True, sharey=True, spines=False)
+  get_colors_with_defaults(given, states) -> dict
+  plot_scat_with_marginals(samples, by=None, alpha=1, s=0.5, figsize=(3, 3), colors=None, suptitle='', density=False, xlabel=None, ylabel=None, rasterized=False, constrained_layout=True, size_ratio=3, clip_on=True, bin_count=50, facecolor=None, **kwargs)
+  plot_trace_highlighted(ax, trace: pd.Series, wins: timeslice.Windows, styles: dict | None=None, **kwargs)
+  add_yscale_bar(ax, *args, **kwargs)
+  add_scale_bar(ax, which, clip_on=False, desc=None, pos=0, vmin=0, vmax=1, nospine=True, color='k', linewidth=None, zorder=1000000.0, fontsize=None, unit='', offset_pts=None, va=None, ha=None, **kwargs)
+  darken_color(original_color_name, darken_factor)
+  plot_racorr(ax, acorr, cmap=XCORR_CMAP_SOFT, norm=None, aspect='auto', interpolation='none', yscale=None, xscale=None, **kwargs)
+  plot_df_as_im(ax, df: pd.DataFrame, cmap='viridis', norm=None, aspect='auto', interpolation='none', origin='lower', **kwargs)
+  plot_df_as_im_sym(ax, df, cmap='seismic', norm=None, aspect='auto', interpolation='none', yscale=None, xscale=None, **kwargs)
+  plot_light_protocol_bar(ax, light_wins, y0=1, y1=1.05, divisor=None, transform=None, edgecolor='k', clip_on=False, colors=None)
+  p_value_stars_level(p_value: float) -> int
+  p_value_stars(p_value: float, star_char='$\\text{*}$') -> str
+  plot_pulse_shade(ax, pulse_win, ymin=0, ymax=1, transform=None)
+  format_p_value(p, min_p_digits=4)
+  plot_test(ax, p, stat_name, stat, ns, baseline_x=0, effect_x=1, y=0.9, transform=None, sig_color=None, ticks=None, desc=None, tick_height=0.025, detailed=True, fontsize=None, ha=None, va='bottom', zorder=1000000.0, clip_on=False, linewidth=None) -> str
+  wilcoxon_test(ax, baseline, effect, alternative='two-sided', effect_size=False, **kwargs) -> str
+  mannwhitneyu_test(ax, baseline, effect, alternative='two-sided', **kwargs) -> str
+  hide_plots(off=True)
+  savefig(f, name, base_path='')
+  plot_segmented_line(ax: matplotlib.axes.Axes, x, y, num_segments=100, **line_kwargs) -> matplotlib.collections.LineCollection
+  _slice_series_window_interp(x: pd.Series, y: pd.Series, start: float, stop: float) -> tuple[np.ndarray, np.ndarray]
+  plot_segmented_line_highlighted(ax: matplotlib.axes.Axes, x: pd.Series, y: pd.Series, wins: pd.DataFrame, styles: dict, num_segments=100, default_style=None, start_col='start', stop_col='stop', cat_col='cat', **line_kwargs) -> list[matplotlib.collections.LineCollection]
+  plot_segmented_line_cmap(ax: matplotlib.axes.Axes, x, y, c, cmap='viridis', norm=None, num_segments=12, **line_kwargs) -> matplotlib.collections.LineCollection
+  _get_index_extent(index) -> tuple
+  plot_df2d(ax, df, origin='lower', interpolation='none', **kwargs)
+  plot_violin_scatter(ax, y, x, y_range=None, scale=0.2, bw_method=None, shade_facecolor='xkcd:magenta', shade_edgecolor='w', shade_linewidth=0.25, shade_alpha=0.25, facecolor='xkcd:magenta', alpha=0.75, edgecolor='w', linewidth=0.25, s=50)
+  plot_scatter_many(dfs, ycol, xcol, colors, s=3, alpha=0.25, xscale='linear', yscale='linear', max_dots=10000, figsize=None)
+
+nocte/plot/plot_grid.py
+  _edges_from_centers(values)
+  _axis_edges_and_ticks(index)
+  dataframe_heatmap(ax, df, *, cmap='viridis', shading='auto', colorbar=False, colorbar_kwargs=None, xtick_rotation=0, ytick_rotation=0, set_labels=True, **pcolormesh_kwargs)
+  Cell
+    __init__(self, ax, variables: tuple, x_edge: str, y_edge: str)
+    is_1d(self)
+    is_2d(self)
+    is_3d(self)
+    dim(self)
+    set_spine_visible(self, edge, inner)
+    set_ticks_visible(self, edge, inner)
+    set_axis_labels(self, label_aliases, edge, inner)
+  Grid
+    __init__(self, fig, cells, nrows, ncols)
+    iter_cells(self, dim=None)
+    iter_1d(self)
+    iter_2d(self)
+    iter_3d(self)
+    _keep_triangle(i, j, n, triangle)
+    _compute_edge_position(i, j, n, xlabel_side, ylabel_side)
+    _get_default_sides(triangle)
+    _normalize_sides(triangle, xlabel_side, ylabel_side)
+    _share_yaxes(cells, exclude_3d=True, exclude_1d=True)
+    _share_xaxes(cells, exclude_3d=True, exclude_1d=False)
+    make_grid(cls, labels: list[str], *, triangle: str='bottom left', show_marginals: bool=True, xlabel_side: str | None=None, ylabel_side: str | None=None, figsize: tuple[float, float] | None=None, label_aliases: dict | None=None)
+    make_grid_3d(cls, labels: list[str], *, triangle: str='bottom left', xlabel_side: str | None=None, ylabel_side: str | None=None, figsize: tuple[float, float] | None=None, label_aliases: dict | None=None, var_triples: dict | None=None)
+    set_ticks_visible(self, edge=True, inner=False)
+    set_spine_visible(self, edge=True, inner=True)
+    set_axis_labels(self, label_aliases=None, edge=True, inner=False)
+    plot_2d_scatter(self, df, /, styles=None, **kwargs)
+    plot_2d_scatter_cmap(self, df, c, /, styles=None, **kwargs)
+    plot_2d_line(self, df, /, styles=None, **kwargs)
+    plot_2d_heatmap(self, df, /, which, func='mean', styles=None, **kwargs)
+    plot_1d_scatter(self, df, /, which, styles=None, **kwargs)
+    plot_1d_hist(self, df, /, styles=None, **kwargs)
+    plot_2d_line_segmented(self, df, /, styles=None, **kwargs)
+    plot_2d_line_segmented_cmap(self, df, /, c, styles=None, **kwargs)
+    plot_2d_line_segmented_highlighted(self, df, /, wins, styles=None, **kwargs)
+    plot_3d_scatter(self, df, /, styles=None, **kwargs)
+    plot_3d_line_segmented(self, df, /, styles=None, **kwargs)
+    add_colorbar(self, cmap, norm, location='top right', orientation='horizontal', label=None, size=None, pad=0.04, margin=0.04, **colorbar_kwargs)
