@@ -1,7 +1,7 @@
 """
 Manage conversion between timescales & sampling rates, as well as defining windows of time
 that can be used to cut data.
-"""  # noqa: EXE002
+"""
 
 from __future__ import annotations
 

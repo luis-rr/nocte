@@ -1,7 +1,7 @@
 """
 Data container for generic LFP events that have a start/stop/reference time.
 Internally stored as a simple pd.DataFrame.
-"""  # noqa: EXE002
+"""
 
 import functools
 import itertools

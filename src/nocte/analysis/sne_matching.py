@@ -1,6 +1,6 @@
 """
 Code to match pairs of Sharp Negative Events
-"""  # noqa: EXE002
+"""
 
 import logging
 

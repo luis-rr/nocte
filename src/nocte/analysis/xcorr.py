@@ -10,7 +10,7 @@ Actual side/lesion/electrode depend on experiment, but usually we match what is 
 In the x-corr we compare ch0 to an offset version of ch1.
 If x-corr is high with a positive lag, it means we are comparing ch0 with future ch1, so ch0 (red) leads.
 
-"""  # noqa: EXE002
+"""
 
 import numpy as np
 from numba import njit, prange

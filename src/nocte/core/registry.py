@@ -2,7 +2,7 @@
 Locate files (raw data and partial results).
 All information is in an excel sheet that we process here (the Registry).
 All partial results and processed data are stored in HDF5 files within a folder next to the data.
-"""  # noqa: EXE002
+"""
 
 import datetime
 import io

@@ -5,7 +5,7 @@ the sampling rates differ in a few decimals, which accumulate over several hours
 
 The recorded square signal is common to everyone and is assumed here to be exactly 30kHz.
 The times of this reference are extracted in "extract_onsets" and stored as a csv.
-"""  # noqa: EXE002
+"""
 
 import itertools
 import logging

@@ -1,6 +1,6 @@
 """
 Code to extract, analyse and plot the lags that yield the highest x-corr
-"""  # noqa: EXE002
+"""
 
 import logging
 from pathlib import Path

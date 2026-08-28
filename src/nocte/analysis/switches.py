@@ -1,6 +1,6 @@
 """
 Code to analyse the switches of inter-hemispheric dominance.
-"""  # noqa: EXE002
+"""
 
 import logging
 

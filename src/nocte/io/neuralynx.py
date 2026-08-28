@@ -16,7 +16,7 @@ class MutiNCSLoader makes it easier to handle multiple NCS files (multiple chann
 
 NCS data is stored in a series of "records", each with multiple samples.
 NCSLoader provides an api that hides these records and lets you index by sample idx.
-"""  # noqa: EXE002
+"""
 
 import datetime
 import logging

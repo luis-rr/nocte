@@ -1,6 +1,6 @@
 """
 Code to analyise trains of pulses
-"""  # noqa: EXE002
+"""
 
 import numpy as np
 import pandas as pd

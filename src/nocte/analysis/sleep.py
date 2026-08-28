@@ -1,6 +1,6 @@
 """
 Analyse dragon sleep.
-"""  # noqa: EXE002
+"""
 
 import logging
 

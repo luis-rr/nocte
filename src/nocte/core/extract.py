@@ -1,7 +1,7 @@
 """
 Process data to extract spectral power, SNs and SWR.
 Experiments are long (> 10h) and require processing in chunks or using sliding windows.
-"""  # noqa: EXE002
+"""
 
 import gc
 import logging

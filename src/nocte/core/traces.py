@@ -1,4 +1,4 @@
-import functools  # noqa: EXE002
+import functools
 import logging
 from typing import Self
 

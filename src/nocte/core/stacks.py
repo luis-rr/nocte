@@ -28,7 +28,7 @@ A "raw" object must implement:
 
 The Stack class wraps a xarray.DataArray object to simplify the API and
 add a couple of methods. The underlying data can be accessed as stack.data.
-"""  # noqa: EXE002
+"""
 
 import functools
 import itertools

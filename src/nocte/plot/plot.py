@@ -1,6 +1,6 @@
 """
 General utility code to plot traces and spike trains
-"""  # noqa: EXE002
+"""
 
 import colorsys
 import itertools

@@ -1,6 +1,6 @@
 """
 Common code to load or save ephys data.
-"""  # noqa: EXE002
+"""
 
 import abc
 import logging
