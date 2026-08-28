@@ -5,7 +5,7 @@ import pytest
 import nocte.core.collections
 
 
-class _DummyCollection(nocte.core.collections.Collection):
+class _DummyCollection(nocte.core.collections.Collection[float]):
     def __init__(
         self,
         data: np.ndarray,
@@ -19,7 +19,7 @@ class _DummyCollection(nocte.core.collections.Collection):
     def __len__(self) -> int:
         return len(self.data)
 
-    def _take_pos(
+    def _sel_pos(
         self,
         positions: np.ndarray,
     ):
@@ -27,6 +27,12 @@ class _DummyCollection(nocte.core.collections.Collection):
             data=self.data[positions],
             meta=self.meta.iloc[positions].copy(),
         )
+
+    def _get_pos(
+        self,
+        position: int,
+    ) -> float:
+        return self.data[position]
 
 
 @pytest.fixture
@@ -76,6 +82,20 @@ def test_validate_meta_unique_index():
     with pytest.raises(ValueError, match='index must be unique'):
         _DummyCollection(
             data=np.array([100, 100]),
+            meta=meta,
+        )
+
+
+@pytest.mark.parametrize(
+    'index',
+    [[10.0, 20.0], ['10', '20'], [10, None]],
+)
+def test_validate_meta_integer_index(index):
+    meta = pd.DataFrame(index=index)
+
+    with pytest.raises(ValueError, match='index .* integer|index .* missing'):
+        _DummyCollection(
+            data=np.array([100, 200]),
             meta=meta,
         )
 
@@ -195,7 +215,7 @@ def test_sel_mask_rejects_invalid_masks(
         collection.sel_mask(mask)
 
 
-def test_sel_mask_requires_matching_series_index(
+def test_sel_mask_aligns_series_by_item_identity(
     collection,
 ):
     mask = pd.Series(
@@ -203,10 +223,17 @@ def test_sel_mask_requires_matching_series_index(
         index=[40, 20, 30, 10],
     )
 
-    with pytest.raises(
-        ValueError,
-        match='mask index does not match',
-    ):
+    selected = collection.sel_mask(mask)
+
+    assert selected.index.tolist() == [30, 40]
+    assert_aligned(selected)
+
+
+@pytest.mark.parametrize('index', [[40, 20, 30], [40, 20, 30, 50], [40, 20, 20, 10]])
+def test_sel_mask_rejects_nonmatching_series_identities(collection, index):
+    mask = pd.Series([True] * len(index), index=index)
+
+    with pytest.raises(ValueError, match='exactly the collection index'):
         collection.sel_mask(mask)
 
 
@@ -242,32 +269,34 @@ def test_sort_index_reorders_meta_and_payload(collection):
     assert_aligned(sorted_collection)
 
 
-def test_sort_allows_explicit_non_inplace(collection):
-    selected = collection.sort_values(
-        'value',
-        inplace=False,
-        ignore_index=False,
-    )
-
-    assert_aligned(selected)
-
-
-def test_sample_is_deterministic_with_random_state(
+def test_sample_selects_requested_number_of_items(
     collection,
 ):
-    first = collection.sample(
-        n=2,
-        random_state=123,
-        replace=False,
-    )
-    second = collection.sample(
-        n=2,
-        random_state=123,
-        replace=False,
-    )
+    sampled = collection.sample(n=2)
 
-    assert first.index.equals(second.index)
-    assert_aligned(first)
+    assert len(sampled) == 2
+    assert sampled.index.isin(collection.index).all()
+    assert_aligned(sampled)
+
+
+@pytest.mark.parametrize(
+    ('method', 'kwargs'),
+    [
+        ('sort_values', {'axis': 1}),
+        ('sort_index', {'axis': 1}),
+        ('sample', {'axis': 1}),
+    ],
+)
+def test_ordering_operations_reject_dataframe_axes(
+    collection,
+    method,
+    kwargs,
+):
+    func = getattr(collection, method)
+    args = ('value',) if method == 'sort_values' else ()
+
+    with pytest.raises(TypeError):
+        func(*args, **kwargs)
 
 
 def test_shuffle_preserves_items(collection):
@@ -280,12 +309,16 @@ def test_shuffle_preserves_items(collection):
 @pytest.mark.parametrize(
     ('method', 'kwargs'),
     [
-        ('sort_values', {'inplace': True}),
-        ('sort_values', {'ignore_index': True}),
-        ('sort_index', {'inplace': True}),
-        ('sort_index', {'ignore_index': True}),
-        ('sample', {'ignore_index': True}),
-        ('sample', {'replace': True}),
+        ('sort_values', {'inplace': False}),
+        ('sort_values', {'ignore_index': False}),
+        ('sort_values', {'key': None}),
+        ('sort_index', {'inplace': False}),
+        ('sort_index', {'ignore_index': False}),
+        ('sort_index', {'key': None}),
+        ('sample', {'ignore_index': False}),
+        ('sample', {'replace': False}),
+        ('sample', {'weights': None}),
+        ('sample', {'random_state': None}),
     ],
 )
 def test_operations_reject_broken_index_semantics(

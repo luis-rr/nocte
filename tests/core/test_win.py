@@ -1,31 +1,17 @@
-# tests/core/test_windows.py
-
 import numpy as np
+import pandas as pd
 import pytest
 
-import nocte.core.time
-import nocte.core.windows
+from nocte.core.windows import Win
 
-Win = nocte.core.windows.Win
-
-
-def test_win():
-    win = Win(-100, 500, ref=1000)
-
-    assert win.start == -100.0
-    assert win.stop == 500.0
-    assert win.ref == 1000.0
+# -----------------------------------------------------------------------------
+# construction and geometry
 
 
-def test_win_defaults_ref_to_zero():
-    win = Win(-100, 500)
+def test_win_normalizes_to_float_and_defaults_ref():
+    win = Win(1, 3)
 
-    assert win.ref == 0.0
-
-
-def test_win_normalizes_to_float():
-    win = Win(-1, 2, ref=3)
-
+    assert win == Win(1.0, 3.0, ref=0.0)
     assert isinstance(win.start, float)
     assert isinstance(win.stop, float)
     assert isinstance(win.ref, float)
@@ -35,306 +21,70 @@ def test_win_normalizes_to_float():
     ('start', 'stop', 'ref'),
     [
         (np.nan, 1, 0),
-        (0, np.nan, 0),
-        (0, 1, np.nan),
-        (-np.inf, 1, 0),
         (0, np.inf, 0),
+        (0, 1, -np.inf),
     ],
 )
-def test_win_rejects_nonfinite_values(start, stop, ref):
+def test_win_rejects_nonfinite_geometry(start, stop, ref):
     with pytest.raises(ValueError):
         Win(start, stop, ref=ref)
 
 
 def test_win_rejects_negative_length():
     with pytest.raises(ValueError):
-        Win(10, 5)
+        Win(2, 1)
 
 
 def test_empty_win_is_valid():
-    win = Win(10, 10)
+    win = Win(5, 5, ref=10)
 
     assert win.is_empty()
-    assert win.length == 0.0
+    assert win.length == 0
 
 
 def test_in_units():
-    win = Win.in_units(-10, 20, 'minutes')
-
-    assert win.start == nocte.core.time.ms(minutes=-10)
-    assert win.stop == nocte.core.time.ms(minutes=20)
-    assert win.ref == 0.0
+    assert Win.in_units(-1, 2, 'seconds') == Win(-1000, 2000)
 
 
 def test_from_center():
-    win = Win.from_center(
-        center=1000,
-        duration=400,
-        ref=700,
-    )
-
-    assert win == Win(100, 500, ref=700)
-    assert win.mid == 1000.0
+    assert Win.from_center(100, 20, ref=50) == Win(40, 60, ref=50)
 
 
-def test_length():
-    assert Win(-100, 500).length == 600.0
-
-
-def test_time_at():
-    win = Win(-100, 500, ref=1000)
-
-    assert win.time_at('start') == 900.0
-    assert win.time_at('ref') == 1000.0
-    assert win.time_at('mid') == 1200.0
-    assert win.time_at('stop') == 1500.0
-
-    assert win.time_at(0.0) == 900.0
-    assert win.time_at(0.25) == 1050.0
-    assert win.time_at(1.0) == 1500.0
-
-
-@pytest.mark.parametrize('q', [-0.1, 1.1])
-def test_time_at_rejects_outside_window(q):
+def test_from_center_rejects_negative_duration():
     with pytest.raises(ValueError):
-        Win(0, 100).time_at(q)
+        Win.from_center(0, -1)
 
 
-def test_mid_is_in_enclosing_coordinate():
-    win = Win(-100, 300, ref=1000)
+def test_geometry_is_expressed_in_enclosing_coordinate():
+    win = Win(-10, 30, ref=100)
 
-    assert win.mid == 1100.0
+    assert win.length == 40
+    assert win.mid == 110
+    assert win.time_at('start') == 90
+    assert win.time_at('ref') == 100
+    assert win.time_at('mid') == 110
+    assert win.time_at('stop') == 130
+    assert win.time_at(0.25) == 100
+
+
+@pytest.mark.parametrize('q', [-0.01, 1.01, 'unknown'])
+def test_time_at_rejects_invalid_position(q):
+    with pytest.raises(ValueError):
+        Win(0, 10).time_at(q)  # type: ignore[arg-type]
+
+
+# -----------------------------------------------------------------------------
+# evaluation
 
 
 def test_contains_is_half_open():
-    win = Win(-100, 500, ref=1000)
-
-    assert not win.contains(899)
-    assert win.contains(900)
-    assert win.contains(1499)
-    assert not win.contains(1500)
-
-
-def test_contains_array():
-    win = Win(-100, 500, ref=1000)
-
-    result = win.contains(np.array([899, 900, 1000, 1499, 1500]))
-
-    np.testing.assert_array_equal(
-        result,
-        [False, True, True, True, False],
-    )
-
-
-def test_contained_in_with_different_refs():
-    inner = Win(-50, 50, ref=1000)  # [950, 1050)
-    outer = Win(-200, 200, ref=1000)  # [800, 1200)
-
-    assert inner.contained_in(outer)
-    assert not outer.contained_in(inner)
-
-
-def test_contained_in_accounts_for_ref():
-    inner = Win(0, 100, ref=1000)  # [1000, 1100)
-    outer = Win(400, 600, ref=500)  # [900, 1100)
-
-    assert inner.contained_in(outer)
-
-
-def test_overlaps():
-    assert Win(0, 100).overlaps(Win(50, 150))
-    assert not Win(0, 100).overlaps(Win(100, 200))
-
-
-def test_overlaps_accounts_for_ref():
-    first = Win(0, 100, ref=1000)  # [1000, 1100)
-    second = Win(0, 100, ref=1050)  # [1050, 1150)
-
-    assert first.overlaps(second)
-
-
-def test_before():
-    win = Win(-100, 500, ref=1000)
-
-    before = win.before(200)
-
-    assert before == Win(-300, -100, ref=1000)
-
-
-def test_before_with_offset():
-    win = Win(0, 100, ref=1000)
-
-    before = win.before(50, offset=20)
-
-    assert before == Win(-70, -20, ref=1000)
-
-
-def test_after():
-    win = Win(-100, 500, ref=1000)
-
-    after = win.after(200)
-
-    assert after == Win(500, 700, ref=1000)
-
-
-def test_after_with_offset():
-    win = Win(0, 100, ref=1000)
-
-    after = win.after(50, offset=20)
-
-    assert after == Win(120, 170, ref=1000)
-
-
-def test_centered():
-    win = Win(-100, 300, ref=1000)
-
-    centered = win.centered(100)
-
-    assert centered == Win(50, 150, ref=1000)
-    assert centered.mid == win.mid
-
-
-def test_change_preserves_ref():
-    win = Win(-100, 500, ref=1000)
-
-    changed = win.change(pre=-50, post=100)
-
-    assert changed == Win(-150, 600, ref=1000)
-
-
-def test_expand():
-    win = Win(-100, 500, ref=1000)
-
-    assert win.expand(50) == Win(-150, 550, ref=1000)
-
-
-def test_shrink():
-    win = Win(-100, 500, ref=1000)
-
-    assert win.shrink(50) == Win(-50, 450, ref=1000)
-
-
-def test_shift_changes_ref_not_geometry():
-    win = Win(-100, 500, ref=1000)
-
-    shifted = win.shift(250)
-
-    assert shifted == Win(-100, 500, ref=1250)
-    assert shifted.length == win.length
-
-
-def test_crop():
-    win = Win(-100, 500, ref=1000)  # [900, 1500)
-    other = Win(0, 300, ref=1000)  # [1000, 1300)
-
-    cropped = win.crop(other)
-
-    assert cropped == Win(0, 300, ref=1000)
-
-
-def test_crop_preserves_self_ref():
-    win = Win(-100, 500, ref=1000)  # [900, 1500)
-    other = Win(0, 200, ref=1200)  # [1200, 1400)
-
-    cropped = win.crop(other)
-
-    assert cropped == Win(200, 400, ref=1000)
-
-
-def test_crop_disjoint_returns_empty_window():
-    win = Win(0, 100, ref=0)
-    other = Win(200, 300, ref=0)
-
-    cropped = win.crop(other)
-
-    assert cropped == Win(200, 200, ref=0)
-    assert cropped.is_empty()
-
-
-def test_shift_to_fit_left():
-    win = Win(-100, 100, ref=0)  # [-100, 100)
-    outer = Win(0, 1000, ref=0)
-
-    shifted = win.shift_to_fit(outer)
-
-    assert shifted == Win(-100, 100, ref=100)
-
-
-def test_shift_to_fit_right():
-    win = Win(900, 1100, ref=0)
-    outer = Win(0, 1000, ref=0)
-
-    shifted = win.shift_to_fit(outer)
-
-    assert shifted == Win(900, 1100, ref=-100)
-
-
-def test_shift_to_fit_does_nothing_when_already_inside():
-    win = Win(100, 200, ref=0)
-    outer = Win(0, 1000, ref=0)
-
-    assert win.shift_to_fit(outer) == win
-
-
-def test_shift_to_fit_rejects_window_that_is_too_large():
-    with pytest.raises(ValueError):
-        Win(0, 200).shift_to_fit(Win(0, 100))
-
-
-def test_take_centered():
-    win = Win(-200, 400, ref=1000)
-
-    result = win.take_centered(200)
-
-    assert result.length == 200.0
-    assert result.mid == win.mid
-
-
-def test_take_centered_keeps_shorter_window_unchanged():
-    win = Win(-100, 100, ref=1000)
-
-    assert win.take_centered(500) == win
-
-
-def test_arange_is_half_open():
-    win = Win(-100, 200, ref=1000)
-
-    result = win.arange(100)
-
-    np.testing.assert_array_equal(
-        result,
-        [900, 1000, 1100],
-    )
-
-
-@pytest.mark.parametrize('step', [0, -1])
-def test_arange_rejects_invalid_step(step):
-    with pytest.raises(ValueError):
-        Win(0, 100).arange(step)
-
-
-def test_round():
-    win = Win(-61_234, 61_234, ref=123)
-
-    rounded = win.round(scale='minutes')
-
-    assert rounded == Win(-60_000, 60_000, ref=123)
-
-
-def test_round_loose():
-    win = Win(-61_000, 61_000, ref=123)
-
-    rounded = win.round_loose('minutes')
-
-    assert rounded == Win(-120_000, 120_000, ref=123)
-
-
-def test_round_tight():
-    win = Win(-61_000, 61_000, ref=123)
-
-    rounded = win.round_tight('minutes')
-
-    assert rounded == Win(-60_000, 60_000, ref=123)
+    win = Win(0, 10, ref=100)
+
+    assert win.contains(100)
+    assert win.contains(109.999)
+    assert not win.contains(110)
+    assert 100 in win
+    assert 110 not in win
 
 
 def test_empty_win_contains_no_time():
@@ -343,17 +93,219 @@ def test_empty_win_contains_no_time():
     assert not win.contains(5)
 
 
-@pytest.mark.parametrize(
-    'empty',
-    [
-        Win(0, 0),
-        Win(5, 5),
-        Win(10, 10),
-        Win(0, 0, ref=5),
-    ],
-)
-def test_empty_win_does_not_overlap(empty):
+def test_contains_many_preserves_input_index():
+    times = pd.Series(
+        [99, 100, 109, 110],
+        index=pd.Index([10, 20, 30, 40], name='event_id'),
+    )
+
+    result = Win(0, 10, ref=100).contains_many(times)
+
+    pd.testing.assert_series_equal(
+        result,
+        pd.Series(
+            [False, True, True, False],
+            index=times.index,
+            name='contains',
+        ),
+    )
+
+
+def test_contains_many_array_gets_default_index():
+    result = Win(0, 10).contains_many([0, 10])
+
+    pd.testing.assert_series_equal(
+        result,
+        pd.Series([True, False], name='contains'),
+    )
+
+
+def test_contained_in_accounts_for_reference():
+    inner = Win(-5, 5, ref=100)
+    outer = Win(90, 110)
+
+    assert inner.contained_in(outer)
+    assert not outer.contained_in(inner)
+
+
+def test_overlaps_is_half_open_and_accounts_for_reference():
+    win = Win(0, 10, ref=100)
+
+    assert win.overlaps(Win(105, 115))
+    assert not win.overlaps(Win(110, 120))
+    assert not Win(105, 105).overlaps(win)
+
+
+# -----------------------------------------------------------------------------
+# relative construction
+
+
+def test_around_uses_selected_point_and_template_reference():
+    base = Win(-10, 30, ref=100)
+
+    result = base.around(Win(-2, 4, ref=3), q='ref')
+
+    assert result == Win(-2, 4, ref=103)
+
+
+def test_centered_can_target_reference():
+    result = Win(-10, 30, ref=100).centered(20, q='ref')
+
+    assert result == Win(-10, 10, ref=100)
+
+
+def test_before_and_after_support_offset_and_selected_point():
+    win = Win(0, 20, ref=100)
+
+    before = win.before(10, offset=2, q='mid')
+    after = win.after(10, offset=2, q='mid')
+
+    assert before == Win(-12, -2, ref=110)
+    assert after == Win(2, 12, ref=110)
+
+
+@pytest.mark.parametrize('method', ['before', 'after'])
+def test_relative_construction_rejects_negative_duration(method):
+    with pytest.raises(ValueError):
+        getattr(Win(0, 10), method)(-1)
+
+
+# -----------------------------------------------------------------------------
+# geometry transformations
+
+
+def test_change_preserves_reference():
+    win = Win(-10, 20, ref=100)
+
+    assert win.change(pre=-5, post=10) == Win(-15, 30, ref=100)
+
+
+def test_shrink_and_expand():
+    win = Win(0, 20, ref=100)
+
+    assert win.shrink(5) == Win(5, 15, ref=100)
+    assert win.expand(5) == Win(-5, 25, ref=100)
+
+
+@pytest.mark.parametrize('method', ['shrink', 'expand'])
+def test_resize_rejects_negative_duration(method):
+    with pytest.raises(ValueError):
+        getattr(Win(0, 10), method)(-1)
+
+
+def test_shift_moves_interval_but_reanchor_preserves_it():
+    win = Win(-10, 20, ref=100)
+
+    shifted = win.shift(50)
+    reanchored = win.reanchor('start')
+
+    assert shifted == Win(-10, 20, ref=150)
+    assert reanchored == Win(0, 30, ref=90)
+    assert reanchored.time_at('start') == win.time_at('start')
+    assert reanchored.time_at('stop') == win.time_at('stop')
+
+
+def test_crop_preserves_reference_and_returns_intersection():
+    win = Win(-10, 20, ref=100)
+
+    assert win.crop(Win(95, 105)) == Win(-5, 5, ref=100)
+
+
+def test_crop_disjoint_returns_empty_at_nearest_boundary():
     win = Win(0, 10)
 
-    assert not empty.overlaps(win)
-    assert not win.overlaps(empty)
+    assert win.crop(Win(20, 30)) == Win(20, 20)
+    assert win.crop(Win(-30, -20)) == Win(-20, -20)
+
+
+def test_shift_within_moves_by_minimum_required_amount():
+    bounds = Win(0, 100)
+
+    assert Win(-20, 30).shift_within(bounds) == Win(-20, 30, ref=20)
+    assert Win(80, 130).shift_within(bounds) == Win(80, 130, ref=-30)
+
+    inside = Win(20, 40)
+    assert inside.shift_within(bounds) is inside
+
+
+def test_shift_within_rejects_window_that_is_too_long():
+    with pytest.raises(ValueError):
+        Win(0, 20).shift_within(Win(0, 10))
+
+
+@pytest.mark.parametrize(
+    ('q', 'expected'),
+    [
+        ('start', Win(0, 40)),
+        ('mid', Win(30, 70)),
+        ('stop', Win(60, 100)),
+        (0.25, Win(15, 55)),
+    ],
+)
+def test_cap_preserves_selected_position(q, expected):
+    assert Win(0, 100).cap(40, q=q) == expected
+
+
+def test_cap_leaves_shorter_window_unchanged():
+    win = Win(0, 20)
+
+    assert win.cap(40) is win
+
+
+@pytest.mark.parametrize(
+    ('max_duration', 'q'),
+    [
+        (-1, 'mid'),
+        (np.inf, 'mid'),
+        (10, -0.1),
+        (10, 1.1),
+        (10, 'ref'),
+    ],
+)
+def test_cap_rejects_invalid_arguments(max_duration, q):
+    with pytest.raises(ValueError):
+        Win(0, 100).cap(max_duration, q=q)  # type: ignore[arg-type]
+
+
+# -----------------------------------------------------------------------------
+# time generation and quantization
+
+
+def test_arange_is_half_open():
+    np.testing.assert_array_equal(
+        Win(0, 10, ref=100).arange(3),
+        [100, 103, 106, 109],
+    )
+
+
+@pytest.mark.parametrize('step', [0, -1, np.inf, np.nan])
+def test_arange_rejects_invalid_step(step):
+    with pytest.raises(ValueError):
+        Win(0, 10).arange(step)
+
+
+def test_round_can_target_individual_edges():
+    win = Win(1234, 2678)
+
+    assert win.round(scale='seconds') == Win(1000, 3000)
+    assert win.round(start=True, stop=False, scale='seconds') == Win(1000, 2678)
+
+
+def test_floor_and_ceil():
+    win = Win(1234, 2678)
+
+    assert win.floor(scale='seconds') == Win(1000, 2000)
+    assert win.ceil(scale='seconds') == Win(2000, 3000)
+
+
+def test_snap_modes():
+    win = Win(1200, 2400)
+
+    assert win.snap(scale='seconds') == Win(1000, 2000)
+    assert win.snap('loose', scale='seconds') == Win(1000, 3000)
+    assert win.snap('tight', scale='seconds') == Win(2000, 2000)
+
+
+def test_snap_rejects_unknown_mode():
+    with pytest.raises(ValueError):
+        Win(0, 10).snap('unknown')  # type: ignore[arg-type]

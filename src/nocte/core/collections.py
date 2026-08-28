@@ -10,20 +10,24 @@ from tqdm.auto import tqdm
 
 How = typing.Literal['all', 'any']
 
-ItemId = int
-
 IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
 
 MaskLike = collections.abc.Sequence[bool] | np.ndarray | pd.Series
 
+ItemT = typing.TypeVar('ItemT')
+PbarT = typing.TypeVar('PbarT')
 
-class Collection(abc.ABC):
+
+class Collection(abc.ABC, typing.Generic[ItemT]):
     """Common metadata selection API for nocte collections."""
 
     meta: pd.DataFrame
 
     @abc.abstractmethod
-    def _take_pos(self, positions: np.ndarray) -> typing.Self: ...
+    def _sel_pos(self, positions: np.ndarray) -> typing.Self: ...
+
+    @abc.abstractmethod
+    def _get_pos(self, position: int) -> ItemT: ...
 
     @staticmethod
     def _default_meta(n_items: int) -> pd.DataFrame:
@@ -60,6 +64,12 @@ class Collection(abc.ABC):
         if not self.meta.index.is_unique:
             raise ValueError('collection index must be unique')
 
+        if not pd.api.types.is_integer_dtype(self.meta.index.dtype):
+            raise ValueError('collection index must contain integers')
+
+        if self.meta.index.hasnans:
+            raise ValueError('collection index cannot contain missing values')
+
     def _positions(self, labels: IndexLike) -> np.ndarray:
         labels = self._as_index(labels)
         positions = self.index.get_indexer(labels)
@@ -70,6 +80,20 @@ class Collection(abc.ABC):
             raise KeyError(f'item labels not found: {labels[missing].tolist()}')
 
         return positions
+
+    def _align_series(self, values: pd.Series, name: str) -> pd.Series:
+        if (
+            len(values) != len(self.index)
+            or not values.index.is_unique
+            or not self.index.difference(values.index).empty
+            or not values.index.difference(self.index).empty
+        ):
+            raise ValueError(f'{name} index must contain exactly the collection index')
+
+        return values.reindex(self.index)
+
+    # ------------------------------------------------------------------
+    # item access
 
     @staticmethod
     def _as_index(
@@ -82,6 +106,22 @@ class Collection(abc.ABC):
             return pd.Index([labels])
 
         return pd.Index(labels)
+
+    def get(self, item_id: int | None = None) -> ItemT:
+        if item_id is None:
+            if len(self) != 1:
+                raise ValueError(
+                    f'get() without an item ID requires exactly one item, got {len(self)}'
+                )
+            position = 0
+        else:
+            position = int(self._positions(item_id)[0])
+
+        return self._get_pos(position)
+
+    def items(self) -> collections.abc.Iterator[tuple[int, ItemT]]:
+        for position, item_id in enumerate(self.index):
+            yield int(item_id), self._get_pos(position)
 
     # ------------------------------------------------------------------
     # selection
@@ -119,7 +159,7 @@ class Collection(abc.ABC):
             mask[positions] = False
             positions = np.flatnonzero(mask)
 
-        return self._take_pos(positions)
+        return self._sel_pos(positions)
 
     def sel_mask(
         self,
@@ -129,10 +169,7 @@ class Collection(abc.ABC):
         invert: bool = False,
     ) -> typing.Self:
         if isinstance(mask, pd.Series):
-            if not mask.index.equals(self.index):
-                raise ValueError('mask index does not match collection index')
-
-            mask = mask.to_numpy()
+            mask = self._align_series(mask, 'mask').to_numpy()
 
         mask = np.asarray(mask)
 
@@ -148,7 +185,7 @@ class Collection(abc.ABC):
         if invert:
             mask = ~mask
 
-        return self._take_pos(np.flatnonzero(mask))
+        return self._sel_pos(np.flatnonzero(mask))
 
     def is_match(
         self,
@@ -294,67 +331,46 @@ class Collection(abc.ABC):
 
     def sort_values(
         self,
-        *args: typing.Any,
-        **kwargs: typing.Any,
+        by: str | collections.abc.Sequence[str],
+        *,
+        ascending: bool | collections.abc.Sequence[bool] = True,
+        na_position: typing.Literal['first', 'last'] = 'last',
     ) -> typing.Self:
-        inplace = kwargs.pop('inplace', False)
-        ignore_index = kwargs.pop('ignore_index', False)
-
-        if inplace:
-            raise TypeError("'inplace=True' is not supported")
-
-        if ignore_index:
-            raise TypeError("'ignore_index=True' is not supported")
-
         meta = self.meta.sort_values(
-            *args,
+            by=by,
+            ascending=ascending,
+            na_position=na_position,
             inplace=False,
             ignore_index=False,
-            **kwargs,
         )
 
         return self.sel_index(meta.index)
 
     def sort_index(
         self,
-        *args: typing.Any,
-        **kwargs: typing.Any,
+        *,
+        ascending: bool | collections.abc.Sequence[bool] = True,
+        na_position: typing.Literal['first', 'last'] = 'first',
     ) -> typing.Self:
-        inplace = kwargs.pop('inplace', False)
-        ignore_index = kwargs.pop('ignore_index', False)
-
-        if inplace:
-            raise TypeError("'inplace=True' is not supported")
-
-        if ignore_index:
-            raise TypeError("'ignore_index=True' is not supported")
-
         meta = self.meta.sort_index(
-            *args,
+            ascending=ascending,
+            na_position=na_position,
             inplace=False,
             ignore_index=False,
-            **kwargs,
         )
 
         return self.sel_index(meta.index)
 
     def sample(
         self,
-        *args: typing.Any,
-        **kwargs: typing.Any,
+        n: int | None = None,
+        frac: float | None = None,
     ) -> typing.Self:
-        ignore_index = kwargs.pop('ignore_index', False)
-
-        if ignore_index:
-            raise TypeError("'ignore_index=True' is not supported")
-
-        if kwargs.get('replace', False):
-            raise TypeError("'replace=True' is not supported")
-
         labels = self.meta.sample(
-            *args,
+            n=n,
+            frac=frac,
+            replace=False,
             ignore_index=False,
-            **kwargs,
         ).index
 
         return self.sel_index(labels)
@@ -362,20 +378,19 @@ class Collection(abc.ABC):
     def shuffle(self) -> typing.Self:
         return self.sample(
             frac=1,
-            replace=False,
         )
 
     @staticmethod
     def _optional_pbar(
-        iterable,
+        iterable: collections.abc.Iterable[PbarT],
         *,
         total: int | None = None,
         pbar: bool
         | str
         | None
-        | collections.abc.Callable[..., typing.Iterable] = False,
+        | collections.abc.Callable[..., collections.abc.Iterable[PbarT]] = False,
         desc: str | None = None,
-    ):
+    ) -> collections.abc.Iterable[PbarT]:
 
         if pbar is None or pbar is False:
             return iterable
