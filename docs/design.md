@@ -57,7 +57,9 @@ The package is organized by responsibility:
 src/nocte/
 ├── core/
 │   ├── collection.py
-│   ├── datadict.py
+│   ├── hdf.py
+│   ├── grouping.py
+│   ├── frames.py
 │   ├── traces.py
 │   ├── stored.py
 │   ├── windows.py
@@ -157,7 +159,7 @@ StoredTraces → select recordings or channels
 Registry     → select experiments or recordings
 ```
 
-Grouping is implemented via `DataDict`: grouping a collection produces a homogeneous `DataDict` containing collections of the original specific type. This provides a simple iterable representation of groups that can subsequently be mapped, reduced, or concatenated where appropriate.
+Grouping is implemented via `Grouping`: grouping a collection produces a homogeneous `Grouping` object containing collections of the original specific type. This provides a simple iterable representation of groups that can subsequently be mapped, reduced, or concatenated where appropriate.
 
 Collections also provide ways to aggregate multiple collections of the same type, verifying compatible global properties.
 
@@ -184,14 +186,14 @@ HDF5 is the standard format for serialized `nocte` analysis objects and intermed
 * compact payload data;
 * format/version information.
 
-HDF serialization is collection-specific and shares a common public API. Each serializable collection knows the representation of its own payload and implements its corresponding `to_hdf` / `from_hdf` logic directly. Small generic HDF helpers may be shared where useful, but there is no central serializer that needs to know or dispatch over all collection types.
+HDF serialization is collection-specific and shares a common public API. It is implemented by the base collection subclass `HDFCollection`. Each serializable collection knows the representation of its own payload and implements its corresponding abstract methods directly.
 
 ## Core classes
 
 
-### `DataDict`
+### `Grouping`
 
-`DataDict[T]` is an indexed collection whose payload items are of a single homogeneous type `T`.
+`Grouping[T]` is an indexed collection whose payload items are of a single homogeneous collection type.
 
 It provides a lightweight bridge between grouping and homogeneous collection operations:
 
@@ -209,7 +211,11 @@ Typical uses include:
 * homogeneous intermediate results;
 * results that are not yet or cannot be concatenated.
 
-In particular, grouping a specific collection produces a `DataDict` containing collections of that same type, for example `DataDict[Traces]` or `DataDict[Windows]`. Such groups can be iterated, transformed, reduced, or concatenated where the contained type supports it.
+In particular, grouping a specific collection produces a `Grouping` containing collections of that same type, for example `Grouping[Traces]` or `Grouping[Windows]`. Such groups can be iterated, transformed, reduced, or concatenated where the contained type supports it.
+
+### `Frames`
+
+Frames is a collection of standard pandas DataFrames with associated metadata.
 
 
 ### `Win` and `Windows`
