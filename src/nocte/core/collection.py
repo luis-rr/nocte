@@ -121,17 +121,34 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
 
         return pd.Index(labels)
 
-    def get(self, item_id: int | None = None) -> ItemT:
-        if item_id is None:
-            if len(self) != 1:
-                raise ValueError(
-                    f'get() without an item ID requires exactly one item, got {len(self)}'
-                )
-            position = 0
-        else:
-            position = int(self._positions(item_id)[0])
+    def get(
+        self,
+        item_id: int | None = None,
+        /,
+        **kwargs: typing.Any,
+    ) -> ItemT:
+        """Get a single item by ID or metadata values."""
 
-        return self._get_pos(position)
+        if item_id is None and not kwargs:
+            selected = self
+
+        elif item_id is not None:
+            if kwargs:
+                raise ValueError(
+                    'get() with an item ID does not support metadata values'
+                )
+
+            selected = self.sel([item_id])
+
+        else:
+            selected = self.sel(**kwargs)
+
+        if len(selected) != 1:
+            raise ValueError(
+                f'get() with metadata values requires exactly one item, got {len(selected)}'
+            )
+
+        return selected._get_pos(0)
 
     def items(self) -> collections.abc.Iterator[tuple[int, ItemT]]:
         for position, item_id in enumerate(self.index):

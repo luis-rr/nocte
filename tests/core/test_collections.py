@@ -142,6 +142,34 @@ def test_sel_match_nan(collection):
     assert_aligned(selected)
 
 
+def test_get_without_arguments_returns_the_single_item():
+    collection = _DummyCollection(
+        data=np.array([200]),
+        meta=pd.DataFrame(index=pd.Index([20], name='item_id')),
+    )
+
+    assert collection.get() == 200
+
+
+def test_get_with_selector_returns_the_single_item():
+    collection = _DummyCollection(
+        data=np.array([200]),
+        meta=pd.DataFrame({'prop': [42]}),
+    )
+
+    assert collection.get(prop=42) == 200
+
+
+def test_get_with_selector_multiple_matches_raises():
+    collection = _DummyCollection(
+        data=np.array([200, 400]),
+        meta=pd.DataFrame({'prop': [42, 42]}),
+    )
+
+    with pytest.raises(ValueError, match='exactly'):
+        collection.get(prop=42)
+
+
 def test_sel_match_requires_scalar(collection):
     with pytest.raises(TypeError, match='use sel_in'):
         collection.sel_match(
