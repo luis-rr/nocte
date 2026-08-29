@@ -62,8 +62,12 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         """Validate the core metadata invariants of a collection."""
         if len(self.meta) != n_items:
             raise ValueError(
-                f'meta has {len(self.meta)} rows, but the collection has {n_items} items'
+                f'meta has {len(self.meta)} rows, '
+                f'but the collection has {n_items} items'
             )
+
+        if isinstance(self.meta.index, pd.MultiIndex):
+            raise TypeError('collection index must be single-level')
 
         if not self.meta.index.is_unique:
             raise ValueError('collection index must be unique')
@@ -76,6 +80,10 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
 
     def _positions(self, labels: IndexLike) -> np.ndarray:
         labels = self._as_index(labels)
+
+        if not labels.is_unique:
+            raise ValueError('item labels must be unique')
+
         positions = self.index.get_indexer(labels)
 
         missing = positions < 0
@@ -337,7 +345,7 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         self,
         by: str | collections.abc.Sequence[str],
         *,
-        ascending: bool | collections.abc.Sequence[bool] = True,
+        ascending: bool = True,
         na_position: typing.Literal['first', 'last'] = 'last',
     ) -> typing.Self:
         meta = self.meta.sort_values(
