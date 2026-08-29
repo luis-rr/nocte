@@ -18,7 +18,6 @@ IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
 MaskLike = collections.abc.Sequence[bool] | np.ndarray | pd.Series
 
 ItemT = typing.TypeVar('ItemT')
-PbarT = typing.TypeVar('PbarT')
 
 
 class Collection(abc.ABC, typing.Generic[ItemT]):
@@ -413,16 +412,21 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         )
 
 
+PBarT = typing.TypeVar('PBarT')
+
+
+PBarParamT = (
+    bool | str | None | collections.abc.Callable[..., collections.abc.Iterable[PBarT]]
+)
+
+
 def optional_pbar(
-    iterable: collections.abc.Iterable[PbarT],
+    iterable: collections.abc.Iterable[PBarT],
     *,
     total: int | None = None,
-    pbar: bool
-    | str
-    | None
-    | collections.abc.Callable[..., collections.abc.Iterable[PbarT]] = False,
+    pbar: PBarParamT = False,
     desc: str | None = None,
-) -> collections.abc.Iterable[PbarT]:
+) -> collections.abc.Iterable[PBarT]:
 
     if pbar is None or pbar is False:
         return iterable

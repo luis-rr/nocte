@@ -32,17 +32,14 @@ class CollectionLike(typing.Protocol):
     ) -> typing.Self: ...
 
 
-class SerializableCollectionLike(
-    CollectionLike,
-    nocte.core.hdf.SerializableCollection,
-    typing.Protocol,
-):
-    """Collection-like object with nocte HDF serialization."""
-
-
 GroupedT = typing.TypeVar(
     'GroupedT',
     bound=CollectionLike,
+)
+
+HDFGroupedT = typing.TypeVar(
+    'HDFGroupedT',
+    bound=nocte.core.hdf.HDFCollection[typing.Any],
 )
 
 MappedT = typing.TypeVar(
@@ -51,11 +48,6 @@ MappedT = typing.TypeVar(
 )
 
 ResultT = typing.TypeVar('ResultT')
-
-SerializableGroupedT = typing.TypeVar(
-    'SerializableGroupedT',
-    bound=SerializableCollectionLike,
-)
 
 
 def _resolve_type(
@@ -77,7 +69,7 @@ def _resolve_type(
 
 LoadedT = typing.TypeVar(
     'LoadedT',
-    bound=SerializableCollectionLike,
+    bound=nocte.core.hdf.HDFCollection,
 )
 
 
@@ -122,11 +114,11 @@ class _GroupingData(typing.Generic[GroupedT]):
         return self
 
     def to_hdf(
-        self: _GroupingData[SerializableGroupedT],
+        self: _GroupingData[HDFGroupedT],
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
     ) -> None:
         """
         Store the grouped payload.
@@ -165,7 +157,7 @@ class _GroupingData(typing.Generic[GroupedT]):
         *,
         key: str,
         item_type: type[LoadedT],
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
     ) -> _GroupingData[LoadedT]:
         """
         Load a homogeneous grouped payload.
@@ -393,7 +385,7 @@ class Grouping(
         function: collections.abc.Callable[..., MappedT],
         /,
         *args: typing.Any,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
         **kwargs: typing.Any,
     ) -> Grouping[MappedT]:
         """
@@ -431,7 +423,7 @@ class Grouping(
         function: collections.abc.Callable[..., ResultT],
         /,
         *args: typing.Any,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
         **kwargs: typing.Any,
     ) -> pd.Series:
         """
@@ -466,12 +458,12 @@ class Grouping(
     # serialization
 
     def to_hdf(
-        self: Grouping[SerializableGroupedT],
+        self: Grouping[HDFGroupedT],
         path: str | pathlib.Path,
         *,
         key: str = 'grouping',
         overwrite: bool = False,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = False,
     ) -> None:
         """
         Store this Grouping in HDF5.
@@ -527,33 +519,23 @@ class Grouping(
         cls,
         path: str | pathlib.Path,
         *,
-        item_type: type[LoadedT],
+        item_type: type[HDFGroupedT],
         key: str = 'grouping',
-        pbar: bool | str | None = None,
-    ) -> Grouping[LoadedT]:
-        """
-        Load a Grouping of ``item_type`` from HDF5.
-
-        The HDF5 file stores the Grouping structure but does not store or
-        dynamically reconstruct its Python child type. The caller supplies the
-        concrete child collection type responsible for loading each item.
-        """
+        pbar: nocte.core.collection.PBarParamT = False,
+    ) -> Grouping[HDFGroupedT]:
         key = nocte.core.hdf.check_hdf_collection_attrs(
             path,
             key,
             expected_kind='grouping',
         )
 
-        loaded_meta = pd.read_hdf(
+        meta = pd.read_hdf(
             path,
             key=f'{key}/meta',
         )
 
-        if not isinstance(
-            loaded_meta,
-            pd.DataFrame,
-        ):
-            raise TypeError('stored Grouping metadata must be a DataFrame')
+        if not isinstance(meta, pd.DataFrame):
+            raise TypeError(f'HDF metadata at {key!r}/meta is not a DataFrame')
 
         data = _GroupingData.from_hdf(
             path,
@@ -562,4 +544,7 @@ class Grouping(
             pbar=pbar,
         )
 
-        return Grouping[LoadedT](data, loaded_meta)
+        return Grouping[HDFGroupedT](
+            data=data,
+            meta=meta,
+        )

@@ -1,29 +1,13 @@
+import abc
 import importlib.metadata
 import pathlib
 import typing
 import warnings
 
 import h5py
+import pandas as pd
 
-
-class SerializableCollection(typing.Protocol):
-    """Object with self-contained HDF serialization."""
-
-    def to_hdf(
-        self,
-        path: str | pathlib.Path,
-        *,
-        key: str,
-        overwrite: bool = False,
-    ) -> None: ...
-
-    @classmethod
-    def from_hdf(
-        cls,
-        path: str | pathlib.Path,
-        *,
-        key: str,
-    ) -> typing.Self: ...
+from nocte.core.collection import Collection, ItemT, PBarParamT
 
 
 def normalize_hdf_key(key: str) -> str:
@@ -166,3 +150,110 @@ def check_hdf_collection_attrs(
         )
 
     return key
+
+
+class HDFCollection(Collection[ItemT], abc.ABC):
+    """
+    Collection using the standard nocte HDF storage envelope.
+
+    Subclasses only define how their payload is written and how a complete
+    collection is reconstructed from its stored payload. Metadata and the
+    collection-level HDF structure are handled here.
+    """
+
+    # ------------------------------------------------------------------------------
+    # abstract methods
+
+    @classmethod
+    def _hdf_kind(cls) -> str:
+        """Stable HDF kind used for this collection class."""
+        return cls.__name__.lower()
+
+    @abc.abstractmethod
+    def _to_hdf_data(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> None:
+        """Write the collection-specific payload to ``key``."""
+        ...
+
+    @classmethod
+    @abc.abstractmethod
+    def _from_hdf_data(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+        meta: pd.DataFrame,
+    ) -> typing.Self:
+        """Read the collection-specific payload and construct the collection."""
+        ...
+
+    # ------------------------------------------------------------------------------
+    # public serialization methods
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str | None = None,
+        overwrite: bool = False,
+    ) -> None:
+        """Write the collection to HDF5."""
+        if key is None:
+            key = self._hdf_kind()
+
+        key = prepare_hdf_key(path, key, overwrite=overwrite)
+
+        self.meta.to_hdf(path, key=f'{key}/meta', mode='a')
+
+        write_hdf_collection_attrs(path, key, kind=self._hdf_kind())
+
+        self._to_hdf_data(path, key=key)
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str | None = None,
+    ) -> typing.Self:
+        """Load a collection from HDF5."""
+        if key is None:
+            key = cls._hdf_kind()
+
+        key = check_hdf_collection_attrs(
+            path,
+            key,
+            expected_kind=cls._hdf_kind(),
+        )
+
+        meta = pd.read_hdf(
+            path,
+            key=f'{key}/meta',
+        )
+
+        if not isinstance(meta, pd.DataFrame):
+            raise TypeError(f'HDF metadata at {key!r}/meta is not a DataFrame')
+
+        return cls._from_hdf_data(path, key=key, meta=meta)
+
+    @classmethod
+    def from_hdf_grouping(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str = 'grouping',
+        pbar: PBarParamT = False,
+    ):
+        """Load a grouping containing collections of this type."""
+        import nocte.core.grouping
+
+        return nocte.core.grouping.Grouping.from_hdf(
+            path,
+            item_type=cls,
+            key=key,
+            pbar=pbar,
+        )

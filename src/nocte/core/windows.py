@@ -15,7 +15,7 @@ import pandas as pd
 
 import nocte.core.hdf
 from nocte.core import time
-from nocte.core.collection import Collection
+from nocte.core.hdf import HDFCollection
 
 logger = logging.getLogger(__name__)
 
@@ -586,7 +586,7 @@ class _WindowsData:
         return cls(values)
 
 
-class Windows(Collection[Win]):
+class Windows(HDFCollection[Win]):
     """
     Indexed collection of temporal windows.
 
@@ -1739,78 +1739,26 @@ class Windows(Collection[Win]):
         result[current] = start[following] - stop[current]
         return result
 
-    def to_hdf(
+    def _to_hdf_data(
         self,
         path: str | pathlib.Path,
         *,
-        key: str = 'windows',
-        overwrite: bool = False,
+        key: str = 'traces',
     ) -> None:
-        """
-        Store Windows in HDF5.
-
-        Layout
-        ------
-        /<key>
-            attrs:
-                kind = 'windows'
-                nocte_version = <current version>
-
-            /meta
-                window metadata
-
-            /data
-                two-dimensional floating-point dataset with columns
-                (start, stop, ref)
-
-        If ``overwrite`` is False, an existing collection root raises
-        FileExistsError. If True, the complete existing subtree is removed
-        before writing.
-        """
-        key = nocte.core.hdf.prepare_hdf_key(path, key, overwrite=overwrite)
-
-        self.meta.to_hdf(path, key=f'{key}/meta', mode='a', format='fixed')
-
-        nocte.core.hdf.write_hdf_collection_attrs(path, key, kind='windows')
-
         self._data.to_hdf(path, key=f'{key}/data')
 
     @classmethod
-    def from_hdf(
+    def _from_hdf_data(
         cls,
         path: str | pathlib.Path,
         *,
-        key: str = 'windows',
+        key: str,
+        meta: pd.DataFrame,
     ) -> typing.Self:
-        """
-        Load Windows previously stored with to_hdf().
-        """
-        key = nocte.core.hdf.check_hdf_collection_attrs(
-            path,
-            key,
-            expected_kind='windows',
-        )
 
-        loaded_meta = pd.read_hdf(
-            path,
-            key=f'{key}/meta',
-        )
+        data = _WindowsData.from_hdf(path, key=f'{key}/data')
 
-        if not isinstance(
-            loaded_meta,
-            pd.DataFrame,
-        ):
-            raise TypeError('stored Windows metadata must be a DataFrame')
-
-        data = _WindowsData.from_hdf(
-            path,
-            key=f'{key}/data',
-        )
-
-        return cls(
-            data,
-            loaded_meta,
-        )
+        return cls(data=data, meta=meta)
 
 
 def _position_fraction(q: float | WinPosition) -> float:

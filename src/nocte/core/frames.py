@@ -78,7 +78,7 @@ class _FramesData:
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
     ) -> None:
         """
         Store the DataFrame payload.
@@ -115,7 +115,7 @@ class _FramesData:
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
     ) -> typing.Self:
         """
         Load a DataFrame payload previously stored with to_hdf().
@@ -185,7 +185,7 @@ class _FramesData:
 
 
 class Frames(
-    nocte.core.collection.Collection[pd.DataFrame],
+    nocte.core.hdf.HDFCollection[pd.DataFrame],
 ):
     """
     Indexed collection with one pandas DataFrame per item.
@@ -264,7 +264,7 @@ class Frames(
         function: collections.abc.Callable[..., pd.DataFrame],
         /,
         *args: typing.Any,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
         **kwargs: typing.Any,
     ) -> typing.Self:
         """
@@ -300,7 +300,7 @@ class Frames(
         function: collections.abc.Callable[..., ResultT],
         /,
         *args: typing.Any,
-        pbar: bool | str | None = None,
+        pbar: nocte.core.collection.PBarParamT = None,
         **kwargs: typing.Any,
     ) -> pd.Series:
         """
@@ -333,64 +333,24 @@ class Frames(
 
     # ------------------------------------------------------------------
     # serialization
-    def to_hdf(
+
+    def _to_hdf_data(
         self,
         path: str | pathlib.Path,
         *,
-        key: str = 'frames',
-        overwrite: bool = False,
-        pbar: bool | str | None = None,
+        key: str = 'traces',
     ) -> None:
-        """
-        Store Frames in HDF5.
-
-        Layout
-        ------
-        /<key>
-            attrs:
-                kind = 'frames'
-                nocte_version = <current version>
-
-            /meta
-                item metadata
-
-            /data
-                /item_0
-                /item_1
-                ...
-
-        If ``overwrite`` is False, an existing collection root raises
-        FileExistsError. If True, the complete existing subtree is removed
-        before writing.
-        """
-        key = nocte.core.hdf.prepare_hdf_key(path, key, overwrite=overwrite)
-
-        self.meta.to_hdf(path, key=f'{key}/meta', mode='a', format='fixed')
-
-        nocte.core.hdf.write_hdf_collection_attrs(path, key, kind='frames')
-
-        self._data.to_hdf(path, key=f'{key}/data', pbar=pbar)
+        self._data.to_hdf(path, key=f'{key}/data')
 
     @classmethod
-    def from_hdf(
+    def _from_hdf_data(
         cls,
         path: str | pathlib.Path,
         *,
-        key: str = 'frames',
-        pbar: bool | str | None = None,
+        key: str,
+        meta: pd.DataFrame,
     ) -> typing.Self:
-        """
-        Load Frames previously stored with to_hdf().
-        """
-        key = nocte.core.hdf.check_hdf_collection_attrs(
-            path, key, expected_kind='frames'
-        )
 
-        loaded_meta = pd.read_hdf(path, key=f'{key}/meta')
+        data = _FramesData.from_hdf(path, key=f'{key}/data')
 
-        if not isinstance(loaded_meta, pd.DataFrame):
-            raise TypeError('stored Frames metadata must be a DataFrame')
-
-        data = _FramesData.from_hdf(path, key=f'{key}/data', pbar=pbar)
-
-        return cls(data, loaded_meta)
+        return cls(data=data, meta=meta)

@@ -15,7 +15,7 @@ import pandas as pd
 import scipy.signal
 
 import nocte.core.hdf
-from nocte.core.collection import Collection
+from nocte.core.hdf import HDFCollection
 from nocte.core.sampling import SamplingRate
 from nocte.core.windows import Win
 
@@ -771,7 +771,7 @@ class _TracesData(typing.Generic[FloatT]):
         )
 
 
-class Traces(Collection[pd.Series], typing.Generic[FloatT]):
+class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     """
     Indexed collection of regularly sampled continuous signals.
 
@@ -1428,68 +1428,23 @@ class Traces(Collection[pd.Series], typing.Generic[FloatT]):
             values = (self.values - mean.values) / std.values
         return self._with_values(values)
 
-    def to_hdf(
+    def _to_hdf_data(
         self,
         path: str | pathlib.Path,
         *,
         key: str = 'traces',
-        overwrite: bool = False,
     ) -> None:
-        """
-        Store Traces in HDF5.
-
-        Layout
-        ------
-        /<key>
-            attrs:
-                kind = 'traces'
-                nocte_version = <current version>
-
-            /meta
-                trace metadata
-
-            /data
-                attrs:
-                    sampling_rate_hz
-                    start_ms
-
-                two-dimensional floating-point dataset with shape
-                (n_traces, n_samples)
-
-        If ``overwrite`` is False, an existing collection root raises
-        FileExistsError. If True, the complete existing subtree is removed
-        before writing.
-        """
-        key = nocte.core.hdf.prepare_hdf_key(path, key, overwrite=overwrite)
-
-        self.meta.to_hdf(path, key=f'{key}/meta', mode='a', format='fixed')
-
-        nocte.core.hdf.write_hdf_collection_attrs(path, key, kind='traces')
-
         self._data.to_hdf(path, key=f'{key}/data')
 
     @classmethod
-    def from_hdf(
+    def _from_hdf_data(
         cls,
         path: str | pathlib.Path,
         *,
-        key: str = 'traces',
+        key: str,
+        meta: pd.DataFrame,
     ) -> typing.Self:
-        """
-        Load Traces previously stored with to_hdf().
-        """
-        key = nocte.core.hdf.check_hdf_collection_attrs(
-            path, key, expected_kind='traces'
-        )
-
-        loaded_meta = pd.read_hdf(path, key=f'{key}/meta')
-
-        if not isinstance(
-            loaded_meta,
-            pd.DataFrame,
-        ):
-            raise TypeError('stored Traces metadata must be a DataFrame')
 
         data = _TracesData.from_hdf(path, key=f'{key}/data')
 
-        return cls(data, loaded_meta)
+        return cls(data=data, meta=meta)
