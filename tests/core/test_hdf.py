@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import nocte.core.frames
 import nocte.core.hdf
 import nocte.core.traces
 import nocte.core.windows
@@ -296,4 +297,92 @@ def test_empty_windows_hdf_roundtrip(tmp_path: pathlib.Path):
     pd.testing.assert_series_equal(
         loaded.ref,
         windows.ref,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Frames
+
+
+def test_frames_hdf_roundtrip(tmp_path: pathlib.Path):
+    path = tmp_path / 'frames.h5'
+
+    frame0 = pd.DataFrame(
+        {
+            'x': [1.0, 2.0, np.nan],
+            'y': [10, 20, 30],
+        },
+        index=pd.Index(
+            [100, 200, 300],
+            name='time',
+        ),
+    )
+
+    frame1 = pd.DataFrame(
+        {
+            'value': [4.0, 5.0],
+            'label': ['a', 'b'],
+        },
+        index=pd.Index(
+            [7, 9],
+            name='sample',
+        ),
+    )
+
+    meta = pd.DataFrame(
+        {
+            'animal': ['a', 'b'],
+            'channel': [3, 7],
+        },
+        index=pd.Index(
+            [10, 20],
+            name='frame_id',
+        ),
+    )
+
+    frames = nocte.core.frames.Frames.from_items(
+        [frame0, frame1],
+        meta=meta,
+    )
+
+    frames.to_hdf(
+        path,
+        key='test',
+    )
+
+    loaded = nocte.core.frames.Frames.from_hdf(
+        path,
+        key='test',
+    )
+
+    pd.testing.assert_frame_equal(
+        loaded.meta,
+        frames.meta,
+    )
+
+    assert len(loaded) == len(frames)
+
+    for idx in frames.index:
+        pd.testing.assert_frame_equal(
+            loaded.get(idx),
+            frames.get(idx),
+        )
+
+
+def test_empty_frames_hdf_roundtrip(tmp_path: pathlib.Path):
+    path = tmp_path / 'frames_empty.h5'
+
+    frames = nocte.core.frames.Frames.from_items(
+        [],
+    )
+
+    frames.to_hdf(path)
+
+    loaded = nocte.core.frames.Frames.from_hdf(path)
+
+    assert len(loaded) == 0
+
+    pd.testing.assert_frame_equal(
+        loaded.meta,
+        frames.meta,
     )
