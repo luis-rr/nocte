@@ -115,7 +115,7 @@ class DataDict(Collection):
         """
         self.meta.to_hdf(filename, key=f'{key}_reg')
 
-        index = self._optional_pbar(
+        index = nocte.core.collections.optional_pbar(
             self.index, total=len(self.index), desc='storing', pbar=pbar
         )
 
@@ -256,7 +256,9 @@ class DataDict(Collection):
 
         """
         # Note we want to respect the order of the registry, not of the dict
-        for k in self._optional_pbar(self.index, total=len(self.index), pbar=pbar):
+        for k in nocte.core.collections.optional_pbar(
+            self.index, total=len(self.index), pbar=pbar
+        ):
             idx = k if col is None else self.meta.loc[k, col]
             yield idx, self.data[k]
 
@@ -298,7 +300,7 @@ class DataDict(Collection):
     def iterby(self, by, pbar=None):  # TODO homogenize names
         groups = self.meta.groupby(by).groups.items()
 
-        for k, uids in self._optional_pbar(
+        for k, uids in nocte.core.collections.optional_pbar(
             groups, total=len(groups), desc=str(by), pbar=pbar
         ):
             subset = self.sel_mask(uids)

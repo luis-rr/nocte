@@ -5,12 +5,15 @@ from __future__ import annotations
 import collections.abc
 import dataclasses
 import logging
+import pathlib
 import typing
 import warnings
 
+import h5py
 import numpy as np
 import pandas as pd
 
+import nocte.core.hdf
 from nocte.core import time
 from nocte.core.collections import Collection
 
@@ -531,6 +534,56 @@ class _WindowsData:
             stop=self.stop[position],
             ref=self.ref[position],
         )
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> None:
+        """
+        Store the window geometry payload.
+
+        The payload is a two-dimensional HDF5 dataset with columns
+        ``(start, stop, ref)``.
+
+        The target key must not already exist.
+        """
+        key = nocte.core.hdf.normalize_hdf_key(key)
+
+        with h5py.File(path, mode='a') as file:
+            if key in file:
+                raise FileExistsError(f'HDF5 key {key!r} already exists')
+
+            file.create_dataset(
+                key,
+                data=self.values,
+            )
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> typing.Self:
+        """
+        Load window geometry previously stored with to_hdf().
+        """
+        key = nocte.core.hdf.normalize_hdf_key(key)
+
+        with h5py.File(path, mode='r') as file:
+            if key not in file:
+                raise KeyError(f'HDF5 key {key!r} does not exist')
+
+            node = file[key]
+
+            if not isinstance(node, h5py.Dataset):
+                raise TypeError(f'Windows payload {key!r} must be an HDF5 dataset')
+
+            values = np.asarray(node[...])
+
+        return cls(values)
 
 
 class Windows(Collection[Win]):
@@ -1685,6 +1738,79 @@ class Windows(Collection[Win]):
         following = order[n:]
         result[current] = start[following] - stop[current]
         return result
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str = 'windows',
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Store Windows in HDF5.
+
+        Layout
+        ------
+        /<key>
+            attrs:
+                kind = 'windows'
+                nocte_version = <current version>
+
+            /meta
+                window metadata
+
+            /data
+                two-dimensional floating-point dataset with columns
+                (start, stop, ref)
+
+        If ``overwrite`` is False, an existing collection root raises
+        FileExistsError. If True, the complete existing subtree is removed
+        before writing.
+        """
+        key = nocte.core.hdf.prepare_hdf_key(path, key, overwrite=overwrite)
+
+        self.meta.to_hdf(path, key=f'{key}/meta', mode='a', format='fixed')
+
+        nocte.core.hdf.write_hdf_collection_attrs(path, key, kind='windows')
+
+        self._data.to_hdf(path, key=f'{key}/data')
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str = 'windows',
+    ) -> typing.Self:
+        """
+        Load Windows previously stored with to_hdf().
+        """
+        key = nocte.core.hdf.check_hdf_collection_attrs(
+            path,
+            key,
+            expected_kind='windows',
+        )
+
+        loaded_meta = pd.read_hdf(
+            path,
+            key=f'{key}/meta',
+        )
+
+        if not isinstance(
+            loaded_meta,
+            pd.DataFrame,
+        ):
+            raise TypeError('stored Windows metadata must be a DataFrame')
+
+        data = _WindowsData.from_hdf(
+            path,
+            key=f'{key}/data',
+        )
+
+        return cls(
+            data,
+            loaded_meta,
+        )
 
 
 def _position_fraction(q: float | WinPosition) -> float:

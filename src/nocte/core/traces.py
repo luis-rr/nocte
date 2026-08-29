@@ -4,14 +4,17 @@ import collections.abc
 import fractions
 import itertools
 import logging
+import pathlib
 import typing
 import warnings
 
+import h5py
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import scipy.signal
 
+import nocte.core.hdf
 from nocte.core.collections import Collection
 from nocte.core.sampling import SamplingRate
 from nocte.core.windows import Win
@@ -682,6 +685,91 @@ class _TracesData(typing.Generic[FloatT]):
 
         return result
 
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> None:
+        """
+        Store the trace payload.
+
+        The payload is a two-dimensional HDF5 dataset containing the trace
+        values. Shared sampling state is stored as attributes on that dataset.
+
+        The target key must not already exist.
+        """
+        key = nocte.core.hdf.normalize_hdf_key(key)
+
+        with h5py.File(path, mode='a') as file:
+            if key in file:
+                raise FileExistsError(f'HDF5 key {key!r} already exists')
+
+            dataset = file.create_dataset(
+                key,
+                data=self._values,
+            )
+
+            dataset.attrs['sampling_rate_hz'] = self.sampling.rate
+            dataset.attrs['start_ms'] = self.start
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> typing.Self:
+        """
+        Load a trace payload previously stored with to_hdf().
+        """
+        key = nocte.core.hdf.normalize_hdf_key(key)
+
+        with h5py.File(path, mode='r') as file:
+            if key not in file:
+                raise KeyError(f'HDF5 key {key!r} does not exist')
+
+            node = file[key]
+
+            if not isinstance(node, h5py.Dataset):
+                raise TypeError(f'Traces payload {key!r} must be an HDF5 dataset')
+
+            sampling_rate_raw = node.attrs.get('sampling_rate_hz')
+
+            if sampling_rate_raw is None:
+                raise ValueError(f'Traces payload {key!r} is missing sampling_rate_hz')
+
+            start_raw = node.attrs.get('start_ms')
+
+            if start_raw is None:
+                raise ValueError(f'Traces payload {key!r} is missing start_ms')
+
+            values = np.asarray(node[...])
+
+        if values.ndim != 2:
+            raise ValueError(f'Traces payload {key!r} must be two-dimensional')
+
+        if not np.issubdtype(
+            values.dtype,
+            np.floating,
+        ):
+            raise TypeError(f'Traces payload {key!r} must have a floating dtype')
+
+        sampling_rate = float(sampling_rate_raw)
+        start = float(start_raw)
+
+        if not np.isfinite(sampling_rate) or sampling_rate <= 0:
+            raise ValueError('stored sampling_rate_hz must be finite and positive')
+
+        if not np.isfinite(start):
+            raise ValueError('stored start_ms must be finite')
+
+        return cls(
+            values,
+            SamplingRate(sampling_rate),
+            start,
+        )
+
 
 class Traces(Collection[pd.Series], typing.Generic[FloatT]):
     """
@@ -1339,3 +1427,69 @@ class Traces(Collection[pd.Series], typing.Generic[FloatT]):
         with np.errstate(divide='ignore', invalid='ignore'):
             values = (self.values - mean.values) / std.values
         return self._with_values(values)
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str = 'traces',
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Store Traces in HDF5.
+
+        Layout
+        ------
+        /<key>
+            attrs:
+                kind = 'traces'
+                nocte_version = <current version>
+
+            /meta
+                trace metadata
+
+            /data
+                attrs:
+                    sampling_rate_hz
+                    start_ms
+
+                two-dimensional floating-point dataset with shape
+                (n_traces, n_samples)
+
+        If ``overwrite`` is False, an existing collection root raises
+        FileExistsError. If True, the complete existing subtree is removed
+        before writing.
+        """
+        key = nocte.core.hdf.prepare_hdf_key(path, key, overwrite=overwrite)
+
+        self.meta.to_hdf(path, key=f'{key}/meta', mode='a', format='fixed')
+
+        nocte.core.hdf.write_hdf_collection_attrs(path, key, kind='traces')
+
+        self._data.to_hdf(path, key=f'{key}/data')
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str = 'traces',
+    ) -> typing.Self:
+        """
+        Load Traces previously stored with to_hdf().
+        """
+        key = nocte.core.hdf.check_hdf_collection_attrs(
+            path, key, expected_kind='traces'
+        )
+
+        loaded_meta = pd.read_hdf(path, key=f'{key}/meta')
+
+        if not isinstance(
+            loaded_meta,
+            pd.DataFrame,
+        ):
+            raise TypeError('stored Traces metadata must be a DataFrame')
+
+        data = _TracesData.from_hdf(path, key=f'{key}/data')
+
+        return cls(data, loaded_meta)

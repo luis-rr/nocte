@@ -886,7 +886,9 @@ class Registry(Collection):
 
         grouped = self.meta.groupby(*args, **kwargs)
 
-        grouped = self._optional_pbar(list(grouped), total=len(grouped), pbar=pbar)
+        grouped = nocte.core.collections.optional_pbar(
+            list(grouped), total=len(grouped), pbar=pbar
+        )
 
         for k, sreg in grouped:
             yield k, self.__class__(sreg)
@@ -984,7 +986,7 @@ class Registry(Collection):
 
         to_load = self.experiment_names
 
-        to_load = self._optional_pbar(
+        to_load = nocte.core.collections.optional_pbar(
             to_load, desc='load beta', pbar=pbar, total=len(to_load)
         )
 
@@ -1159,7 +1161,7 @@ class Registry(Collection):
         """Attempt to extract solar offsets from the loaders of each recording"""
         offsets = {}
 
-        for exp_name in self._optional_pbar(
+        for exp_name in nocte.core.collections.optional_pbar(
             self.index, total=len(self.index), pbar=pbar
         ):
             loader = self.get_loader(exp_name)

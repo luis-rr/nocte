@@ -14,7 +14,8 @@ dependencies = [
     "matplotlib>=3.8",
     "tqdm>=4.65",
     "numba>=0.59",
-    "h5py>=3.9",
+    "h5py>=3.10",
+    "tables>=3.10",
 ]
 
 [project.optional-dependencies]

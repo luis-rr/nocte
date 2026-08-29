@@ -380,30 +380,30 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
             frac=1,
         )
 
-    @staticmethod
-    def _optional_pbar(
-        iterable: collections.abc.Iterable[PbarT],
-        *,
-        total: int | None = None,
-        pbar: bool
-        | str
-        | None
-        | collections.abc.Callable[..., collections.abc.Iterable[PbarT]] = False,
-        desc: str | None = None,
-    ) -> collections.abc.Iterable[PbarT]:
 
-        if pbar is None or pbar is False:
-            return iterable
+def optional_pbar(
+    iterable: collections.abc.Iterable[PbarT],
+    *,
+    total: int | None = None,
+    pbar: bool
+    | str
+    | None
+    | collections.abc.Callable[..., collections.abc.Iterable[PbarT]] = False,
+    desc: str | None = None,
+) -> collections.abc.Iterable[PbarT]:
 
-        if isinstance(pbar, str):
-            desc = pbar
-            pbar = True
+    if pbar is None or pbar is False:
+        return iterable
 
-        if pbar is True:
-            pbar = tqdm
+    if isinstance(pbar, str):
+        desc = pbar
+        pbar = True
 
-        return pbar(
-            iterable,
-            total=total,
-            desc=desc,
-        )
+    if pbar is True:
+        pbar = tqdm
+
+    return pbar(
+        iterable,
+        total=total,
+        desc=desc,
+    )
