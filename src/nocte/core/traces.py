@@ -15,7 +15,7 @@ import pandas as pd
 import scipy.signal
 
 import nocte.core.hdf
-from nocte.core.collections import Collection
+from nocte.core.collection import Collection
 from nocte.core.sampling import SamplingRate
 from nocte.core.windows import Win
 

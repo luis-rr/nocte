@@ -56,7 +56,7 @@ The package is organized by responsibility:
 ```text
 src/nocte/
 ├── core/
-│   ├── collections.py
+│   ├── collection.py
 │   ├── datadict.py
 │   ├── traces.py
 │   ├── stored.py

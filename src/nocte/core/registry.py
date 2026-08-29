@@ -21,7 +21,7 @@ import nocte.core.events
 import nocte.core.time
 import nocte.core.traces
 from nocte.core import windows as timeslice
-from nocte.core.collections import Collection
+from nocte.core.collection import Collection
 from nocte.core.datadict import DataDict
 from nocte.core.stacks import Stack
 
@@ -886,7 +886,7 @@ class Registry(Collection):
 
         grouped = self.meta.groupby(*args, **kwargs)
 
-        grouped = nocte.core.collections.optional_pbar(
+        grouped = nocte.core.collection.optional_pbar(
             list(grouped), total=len(grouped), pbar=pbar
         )
 
@@ -986,7 +986,7 @@ class Registry(Collection):
 
         to_load = self.experiment_names
 
-        to_load = nocte.core.collections.optional_pbar(
+        to_load = nocte.core.collection.optional_pbar(
             to_load, desc='load beta', pbar=pbar, total=len(to_load)
         )
 
@@ -1161,7 +1161,7 @@ class Registry(Collection):
         """Attempt to extract solar offsets from the loaders of each recording"""
         offsets = {}
 
-        for exp_name in nocte.core.collections.optional_pbar(
+        for exp_name in nocte.core.collection.optional_pbar(
             self.index, total=len(self.index), pbar=pbar
         ):
             loader = self.get_loader(exp_name)

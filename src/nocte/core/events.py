@@ -15,7 +15,7 @@ import nocte.core.time
 from nocte.core import datadict as dd
 from nocte.core import stacks
 from nocte.core import windows as timeslice
-from nocte.core.collections import Collection
+from nocte.core.collection import Collection
 from nocte.plot import plot as splot
 
 

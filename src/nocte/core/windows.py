@@ -15,7 +15,7 @@ import pandas as pd
 
 import nocte.core.hdf
 from nocte.core import time
-from nocte.core.collections import Collection
+from nocte.core.collection import Collection
 
 logger = logging.getLogger(__name__)
 

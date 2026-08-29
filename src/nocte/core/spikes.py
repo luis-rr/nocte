@@ -11,7 +11,7 @@ import pandas as pd
 
 import nocte.core.time
 from nocte.core import windows as timeslice
-from nocte.core.collections import Collection
+from nocte.core.collection import Collection
 from nocte.core.datadict import DataDict
 from nocte.core.events import Events
 from nocte.core.traces import Traces
