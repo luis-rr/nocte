@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import nocte.core.frames
+import nocte.core.grouping
 import nocte.core.hdf
 import nocte.core.traces
 import nocte.core.windows
@@ -385,4 +386,135 @@ def test_empty_frames_hdf_roundtrip(tmp_path: pathlib.Path):
     pd.testing.assert_frame_equal(
         loaded.meta,
         frames.meta,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Grouping
+
+
+def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
+    path = tmp_path / 'grouping.h5'
+
+    traces0 = nocte.core.traces.Traces.from_array(
+        np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [4.0, 5.0, 6.0],
+            ],
+            dtype=np.float32,
+        ),
+        hz=1_000,
+        start=0,
+        meta=pd.DataFrame(
+            {
+                'channel': [1, 2],
+            },
+            index=pd.Index(
+                [10, 20],
+                name='trace_id',
+            ),
+        ),
+    )
+
+    traces1 = nocte.core.traces.Traces.from_array(
+        np.array(
+            [
+                [10.0, 20.0],
+            ],
+            dtype=np.float32,
+        ),
+        hz=1_000,
+        start=100,
+        meta=pd.DataFrame(
+            {
+                'channel': [7],
+            },
+            index=pd.Index(
+                [30],
+                name='trace_id',
+            ),
+        ),
+    )
+
+    meta = pd.DataFrame(
+        {
+            'animal': ['a', 'b'],
+            'condition': ['control', 'stim'],
+        },
+        index=pd.Index(
+            [100, 200],
+            name='group_id',
+        ),
+    )
+
+    grouping = nocte.core.grouping.Grouping.from_items(
+        [traces0, traces1],
+        meta=meta,
+    )
+
+    grouping.to_hdf(
+        path,
+        key='test',
+    )
+
+    loaded = nocte.core.grouping.Grouping.from_hdf(
+        path,
+        item_type=nocte.core.traces.Traces,
+        key='test',
+    )
+
+    pd.testing.assert_frame_equal(
+        loaded.meta,
+        grouping.meta,
+    )
+
+    assert len(loaded) == len(grouping)
+
+    for idx in grouping.index:
+        expected = grouping.get(idx)
+        actual = loaded.get(idx)
+
+        pd.testing.assert_frame_equal(
+            actual.meta,
+            expected.meta,
+        )
+
+        np.testing.assert_allclose(
+            actual.values,
+            expected.values,
+            rtol=0,
+            atol=0,
+            equal_nan=True,
+        )
+
+        assert actual.dtype == expected.dtype
+        assert actual.shape == expected.shape
+        assert actual.hz == expected.hz
+        assert actual.start == expected.start
+
+
+def test_empty_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
+    path = tmp_path / 'grouping_empty.h5'
+
+    grouping = nocte.core.grouping.Grouping.from_items(
+        [],
+    )
+
+    grouping.to_hdf(
+        path,
+        key='test',
+    )
+
+    loaded = nocte.core.grouping.Grouping.from_hdf(
+        path,
+        item_type=nocte.core.traces.Traces,
+        key='test',
+    )
+
+    assert len(loaded) == 0
+
+    pd.testing.assert_frame_equal(
+        loaded.meta,
+        grouping.meta,
     )

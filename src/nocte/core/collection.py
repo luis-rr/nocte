@@ -41,6 +41,10 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         return len(self.meta)
 
     @property
+    def empty(self) -> bool:
+        return len(self) == 0
+
+    @property
     def index(self) -> pd.Index:
         return self.meta.index
 
