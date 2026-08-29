@@ -474,6 +474,7 @@ class Grouping(
             attrs:
                 kind = 'grouping'
                 nocte_version = <current version>
+                timestamp = <ISO 8601 timestamp>
 
             /meta
                 outer group metadata
@@ -502,11 +503,8 @@ class Grouping(
             format='fixed',
         )
 
-        nocte.core.hdf.write_hdf_collection_attrs(
-            path,
-            key,
-            kind='grouping',
-        )
+        info = nocte.core.hdf.HDFCollectionInfo.new(kind='grouping')
+        info.to_hdf(path, key)
 
         self._data.to_hdf(
             path,
@@ -523,11 +521,8 @@ class Grouping(
         key: str = 'grouping',
         pbar: nocte.core.collection.PBarParamT = False,
     ) -> Grouping[HDFGroupedT]:
-        key = nocte.core.hdf.check_hdf_collection_attrs(
-            path,
-            key,
-            expected_kind='grouping',
-        )
+        info = nocte.core.hdf.HDFCollectionInfo.from_hdf(path, key)
+        info.validate(key, 'grouping')
 
         meta = pd.read_hdf(
             path,

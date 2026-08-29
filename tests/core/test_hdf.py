@@ -1,3 +1,4 @@
+import datetime
 import pathlib
 
 import h5py
@@ -64,17 +65,25 @@ def test_prepare_hdf_key_overwrite(tmp_path: pathlib.Path):
         assert 'keep' in file
 
 
+def test_get_hdf_save_timestamp():
+    timestamp = nocte.core.hdf.get_hdf_save_timestamp()
+
+    assert isinstance(timestamp, str)
+    assert datetime.datetime.fromisoformat(timestamp).tzinfo is not None
+
+
 def test_collection_hdf_attrs(tmp_path: pathlib.Path):
     path = tmp_path / 'test.h5'
 
     with h5py.File(path, mode='w') as file:
         file.create_group('object')
 
-    nocte.core.hdf.write_hdf_collection_attrs(
-        path,
-        'object',
-        kind='traces',
-    )
+    before = datetime.datetime.now(datetime.timezone.utc)
+
+    info = nocte.core.hdf.HDFCollectionInfo.new(kind='traces')
+    info.to_hdf(path, 'object')
+
+    after = datetime.datetime.now(datetime.timezone.utc)
 
     with h5py.File(path, mode='r') as file:
         node = file['object']
@@ -83,40 +92,54 @@ def test_collection_hdf_attrs(tmp_path: pathlib.Path):
         assert nocte.core.hdf.hdf_attr_as_str(node.attrs['kind']) == 'traces'
         assert 'nocte_version' in node.attrs
 
-    key = nocte.core.hdf.check_hdf_collection_attrs(
+        timestamp = datetime.datetime.fromisoformat(
+            nocte.core.hdf.hdf_attr_as_str(node.attrs['timestamp'])
+        )
+
+        assert before <= timestamp <= after
+
+    info = nocte.core.hdf.HDFCollectionInfo.from_hdf(
         path,
         '/object/',
+    )
+
+    info.validate(
+        key='object',
         expected_kind='traces',
     )
 
-    assert key == 'object'
-
     with pytest.raises(ValueError, match='expected'):
-        nocte.core.hdf.check_hdf_collection_attrs(
-            path,
-            'object',
+        info.validate(
+            key='object',
             expected_kind='windows',
         )
 
 
-def test_collection_hdf_attrs_warn_on_version_mismatch(
-    tmp_path: pathlib.Path,
-):
+def test_hdf_collection_info_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'test.h5'
 
     with h5py.File(path, mode='w') as file:
-        group = file.create_group('object')
-        group.attrs['kind'] = 'traces'
-        group.attrs['nocte_version'] = 'definitely-not-this-version'
+        file.create_group('object')
 
-    with pytest.warns(UserWarning):
-        key = nocte.core.hdf.check_hdf_collection_attrs(
-            path,
-            'object',
-            expected_kind='traces',
-        )
+    info = nocte.core.hdf.HDFCollectionInfo.new(kind='traces')
+    info.to_hdf(path, 'object')
 
-    assert key == 'object'
+    info = nocte.core.hdf.HDFCollectionInfo.from_hdf(path, 'object')
+
+    assert info.kind == 'traces'
+    assert info.nocte_version == nocte.core.hdf.get_nocte_version()
+    assert isinstance(info.timestamp, str)
+    assert datetime.datetime.fromisoformat(info.timestamp).tzinfo is not None
+
+
+def test_hdf_collection_info_missing_attrs(tmp_path: pathlib.Path):
+    path = tmp_path / 'test.h5'
+
+    with h5py.File(path, mode='w') as file:
+        file.create_group('object')
+
+    with pytest.raises(KeyError, match='missing attributes'):
+        nocte.core.hdf.HDFCollectionInfo.from_hdf(path, 'object')
 
 
 # -----------------------------------------------------------------------------
@@ -179,6 +202,24 @@ def test_traces_hdf_roundtrip(tmp_path: pathlib.Path):
     assert loaded.shape == traces.shape
     assert loaded.hz == traces.hz
     assert loaded.start == traces.start
+
+
+def test_hdf_collection_hdf_info(tmp_path: pathlib.Path):
+    path = tmp_path / 'traces.h5'
+
+    traces = nocte.core.traces.Traces.from_array(
+        np.array([[1.0, 2.0]], dtype=np.float32),
+        hz=100,
+        start=0,
+    )
+
+    traces.to_hdf(path, key='test')
+
+    info = nocte.core.traces.Traces.hdf_info(path, key='test')
+
+    assert info.kind == 'traces'
+    assert info.nocte_version == nocte.core.hdf.get_nocte_version()
+    assert isinstance(info.timestamp, str)
 
 
 def test_empty_traces_hdf_roundtrip(tmp_path: pathlib.Path):

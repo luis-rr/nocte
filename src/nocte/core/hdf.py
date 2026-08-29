@@ -1,4 +1,5 @@
 import abc
+import datetime
 import importlib.metadata
 import pathlib
 import typing
@@ -26,11 +27,111 @@ def get_nocte_version() -> str:
         return 'unknown'
 
 
+def get_hdf_save_timestamp() -> str:
+    """Current UTC time as an ISO 8601 string, for provenance."""
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
 def hdf_attr_as_str(value: object) -> str:
     if isinstance(value, bytes):
         return value.decode()
 
     return str(value)
+
+
+class HDFCollectionInfo(typing.NamedTuple):
+    """Provenance attributes stored alongside a collection root."""
+
+    kind: str
+    nocte_version: str
+    timestamp: str
+
+    @classmethod
+    def new(cls, *, kind: str) -> typing.Self:
+        return cls(
+            kind=kind,
+            nocte_version=get_nocte_version(),
+            timestamp=get_hdf_save_timestamp(),
+        )
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        key: str,
+    ) -> None:
+        """Write these attributes to an existing collection root."""
+        key = normalize_hdf_key(key)
+
+        with h5py.File(path, mode='a') as file:
+            node = _require_hdf_group(file, key)
+
+            node.attrs['kind'] = self.kind
+            node.attrs['nocte_version'] = self.nocte_version
+            node.attrs['timestamp'] = self.timestamp
+
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        key: str,
+    ) -> typing.Self:
+        """Read the attributes stored at a collection root."""
+        key = normalize_hdf_key(key)
+
+        with h5py.File(path, mode='r') as file:
+            node = _require_hdf_group(file, key)
+
+            missing = {'kind', 'nocte_version', 'timestamp'} - node.attrs.keys()
+
+            if missing:
+                raise KeyError(
+                    f'HDF5 collection {key!r} is missing attributes: {sorted(missing)}'
+                )
+
+            kind = hdf_attr_as_str(node.attrs['kind'])
+            nocte_version = hdf_attr_as_str(node.attrs['nocte_version'])
+            timestamp = hdf_attr_as_str(node.attrs['timestamp'])
+
+        return cls(kind=kind, nocte_version=nocte_version, timestamp=timestamp)
+
+    def validate(self, key: str, expected_kind: str):
+        """
+        Validate stored attributes.
+
+        A wrong kind is an error. A different nocte version emits a warning
+        and loading continues. Returns the normalized key.
+        """
+        if self.kind != expected_kind:
+            raise ValueError(
+                f'HDF5 collection {key!r} has kind {self.kind!r}; '
+                f'expected {expected_kind!r}'
+            )
+
+        current_version = get_nocte_version()
+
+        if self.nocte_version != current_version:
+            warnings.warn(
+                f'HDF5 collection {key!r} was written with nocte '
+                f'{self.nocte_version!r}, but the current version is '
+                f'{current_version!r}; attempting to load it anyway.',
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def _require_hdf_group(
+    file: h5py.File,
+    key: str,
+) -> h5py.Group:
+    if key not in file:
+        raise KeyError(f'HDF5 key {key!r} does not exist')
+
+    node = file[key]
+
+    if not isinstance(node, h5py.Group):
+        raise TypeError(f'HDF5 collection root {key!r} must be a group')
+
+    return node
 
 
 def prepare_hdf_key(
@@ -61,93 +162,6 @@ def prepare_hdf_key(
             raise FileExistsError(f'HDF5 key {key!r} already exists in {path}')
 
         del file[key]
-
-    return key
-
-
-def write_hdf_collection_attrs(
-    path: str | pathlib.Path,
-    key: str,
-    *,
-    kind: str,
-) -> None:
-    """Write standard nocte collection attributes to an existing root."""
-    key = normalize_hdf_key(key)
-
-    with h5py.File(path, mode='a') as file:
-        if key not in file:
-            raise KeyError(f'HDF5 key {key!r} does not exist')
-
-        node = file[key]
-
-        if not isinstance(node, h5py.Group):
-            raise TypeError(f'HDF5 collection root {key!r} must be a group')
-
-        node.attrs['kind'] = kind
-        node.attrs['nocte_version'] = get_nocte_version()
-
-
-def check_hdf_collection_attrs(
-    path: str | pathlib.Path,
-    key: str,
-    *,
-    expected_kind: str,
-) -> str:
-    """
-    Validate standard collection attributes before loading.
-
-    A wrong collection kind is an error. A missing or different nocte
-    version emits a warning and loading continues.
-
-    Returns the normalized key.
-    """
-    key = normalize_hdf_key(key)
-
-    with h5py.File(path, mode='r') as file:
-        if key not in file:
-            raise KeyError(f'HDF5 key {key!r} does not exist')
-
-        node = file[key]
-
-        if not isinstance(node, h5py.Group):
-            raise TypeError(f'HDF5 collection root {key!r} must be a group')
-
-        stored_kind_raw = node.attrs.get('kind')
-        stored_version_raw = node.attrs.get('nocte_version')
-
-    if stored_kind_raw is None:
-        raise ValueError(f'HDF5 collection {key!r} is missing its kind attribute')
-
-    stored_kind = hdf_attr_as_str(stored_kind_raw)
-
-    if stored_kind != expected_kind:
-        raise ValueError(
-            f'HDF5 collection {key!r} has kind {stored_kind!r}; '
-            f'expected {expected_kind!r}'
-        )
-
-    current_version = get_nocte_version()
-
-    if stored_version_raw is None:
-        warnings.warn(
-            f'HDF5 collection {key!r} does not record a nocte version; '
-            'attempting to load it anyway.',
-            UserWarning,
-            stacklevel=2,
-        )
-
-        return key
-
-    stored_version = hdf_attr_as_str(stored_version_raw)
-
-    if stored_version != current_version:
-        warnings.warn(
-            f'HDF5 collection {key!r} was written with nocte '
-            f'{stored_version!r}, but the current version is '
-            f'{current_version!r}; attempting to load it anyway.',
-            UserWarning,
-            stacklevel=2,
-        )
 
     return key
 
@@ -209,7 +223,9 @@ class HDFCollection(Collection[ItemT], abc.ABC):
 
         self.meta.to_hdf(path, key=f'{key}/meta', mode='a')
 
-        write_hdf_collection_attrs(path, key, kind=self._hdf_kind())
+        info = HDFCollectionInfo.new(kind=self._hdf_kind())
+
+        info.to_hdf(path, key)
 
         self._to_hdf_data(path, key=key)
 
@@ -224,11 +240,9 @@ class HDFCollection(Collection[ItemT], abc.ABC):
         if key is None:
             key = cls._hdf_kind()
 
-        key = check_hdf_collection_attrs(
-            path,
-            key,
-            expected_kind=cls._hdf_kind(),
-        )
+        info = HDFCollectionInfo.from_hdf(path, key)
+
+        info.validate(key=key, expected_kind=cls._hdf_kind())
 
         meta = pd.read_hdf(
             path,
@@ -239,6 +253,19 @@ class HDFCollection(Collection[ItemT], abc.ABC):
             raise TypeError(f'HDF metadata at {key!r}/meta is not a DataFrame')
 
         return cls._from_hdf_data(path, key=key, meta=meta)
+
+    @classmethod
+    def hdf_info(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str | None = None,
+    ) -> HDFCollectionInfo:
+        """Read stored provenance attributes without loading the collection."""
+        if key is None:
+            key = cls._hdf_kind()
+
+        return HDFCollectionInfo.from_hdf(path, key)
 
     @classmethod
     def from_hdf_grouping(
