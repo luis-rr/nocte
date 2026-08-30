@@ -1,823 +1,447 @@
-"""
-Data container for generic LFP events that have a start/stop/reference time.
-Internally stored as a simple pd.DataFrame.
-"""
+"""Point-event temporal collection."""
 
-import functools
-import itertools
-import logging
+from __future__ import annotations
 
-import numba as nb
+import collections.abc
+import pathlib
+import typing
+import warnings
+
+import h5py
 import numpy as np
 import pandas as pd
 
+import nocte.core._point_process
+import nocte.core.hdf
 import nocte.core.time
-from nocte.core import datadict as dd
-from nocte.core import stacks
-from nocte.core import windows as timeslice
-from nocte.core.collection import Collection
-from nocte.plot import plot as splot
+import nocte.core.windows
+
+TimeArrayLike = float | collections.abc.Sequence[float] | np.ndarray | pd.Index
+TimesLike = TimeArrayLike | pd.Series
+EventValue = float | collections.abc.Sequence[float] | np.ndarray | pd.Series
 
 
-@nb.njit(parallel=True)
-def _quantile_rolling_nb(
-    time: np.ndarray,
-    values: np.ndarray,
-    new_time: np.ndarray,
-    win: tuple,
-    q: float,
-    nmin: int,
-) -> np.ndarray:
-    """
-    Compute the rolling quantile over a time-based window, using a time-sorted array.
+class _EventsData:
+    """Internal immutable storage for point-event times."""
 
-    Parameters
-    ----------
-    time : np.ndarray
-        1D sorted array of timestamps (sorted once globally).
-    values : np.ndarray
-        1D array of values corresponding to time_s, in the same sorted order.
-    new_time : np.ndarray
-        The times at which we want the window centered.
-    win : tuple (left, right)
-        The half-window offsets. The window around new_time[i] covers
-        [new_time[i] + win[0], new_time[i] + win[1]].
-    q : float
-        The quantile to compute (e.g. 0.5 for median).
-    nmin : int
-        Minimum number of points required to return a valid quantile.
+    def __init__(self, values: np.ndarray):
+        values = np.array(values, dtype=float, order='C', copy=True)
 
-    Returns
-    -------
-    np.ndarray
-        Same shape as new_time. Each entry is the rolling quantile for that window
-        (or NaN if fewer than nmin data points lie in the window).
-    """
-    idx_sort = np.argsort(time)
-    time = time[idx_sort]
-    values = values[idx_sort]
+        if values.ndim != 1:
+            raise ValueError('Event times must be one-dimensional')
 
-    result = np.empty(new_time.shape[0])
+        if not np.isfinite(values).all():
+            raise ValueError('Event times must be finite')
 
-    for i in nb.prange(new_time.shape[0]):
-        center = new_time[i]
-        start = center + win[0]
-        stop = center + win[1]
-
-        # Find the left and right indices for this window
-        left_idx = np.searchsorted(time, start, side='left')
-        right_idx = np.searchsorted(time, stop, side='right')
-
-        # Slice the relevant values
-        window_vals = values[left_idx:right_idx]
-        if window_vals.size >= nmin:
-            result[i] = np.nanquantile(window_vals, q)
-        else:
-            result[i] = np.nan
-
-    return result
-
-
-@nb.njit(parallel=True)
-def _mean_rolling_nb(
-    time: np.ndarray, values: np.ndarray, new_time: np.ndarray, win: tuple, nmin: int
-) -> np.ndarray:
-    """Same as _quantile_rolling_nb but for mean"""
-    idx_sort = np.argsort(time)
-    time = time[idx_sort]
-    values = values[idx_sort]
-
-    result = np.empty(new_time.shape[0])
-
-    for i in nb.prange(new_time.shape[0]):
-        center = new_time[i]
-        start = center + win[0]
-        stop = center + win[1]
-
-        # Find the left and right indices for this window
-        left_idx = np.searchsorted(time, start, side='left')
-        right_idx = np.searchsorted(time, stop, side='right')
-
-        # Slice the relevant values
-        window_vals = values[left_idx:right_idx]
-
-        if window_vals.size >= nmin:
-            result[i] = np.nanmean(window_vals)
-        else:
-            result[i] = np.nan
-
-    return result
-
-
-@nb.njit(parallel=True)
-def _count_rolling_nb(
-    time: np.ndarray,
-    new_time: np.ndarray,
-    win: tuple,
-) -> np.ndarray:
-    """Same as _quantile_rolling_nb but for counting"""
-    idx_sort = np.argsort(time)
-    time = time[idx_sort]
-
-    result = np.empty(new_time.shape[0])
-
-    for i in nb.prange(new_time.shape[0]):
-        center = new_time[i]
-        start = center + win[0]
-        stop = center + win[1]
-
-        # Find the left and right indices for this window
-        left_idx = np.searchsorted(time, start, side='left')
-        right_idx = np.searchsorted(time, stop, side='right')
-
-        # Slice the relevant values
-        result[i] = len(time[left_idx:right_idx])
-
-    return result
-
-
-@nb.njit(parallel=True)
-def _rate_gauss_kernel_nb(
-    time: np.ndarray,
-    new_time: np.ndarray,
-    sigma: float,
-    width: float = 5.0,
-) -> np.ndarray:
-    """
-    Estimate instantaneous rate using a Gaussian kernel.
-
-    time : sorted event times
-    new_time : where to evaluate the rate
-    sigma : std of kernel
-    width : half-width of kernel support in units of sigma
-    """
-    idx_sort = np.argsort(time)
-    time = time[idx_sort]
-
-    result = np.empty(new_time.shape[0])
-
-    norm = 1.0 / (np.sqrt(2.0 * np.pi) * sigma)
-
-    h = width * sigma
-
-    for i in nb.prange(new_time.shape[0]):
-        center = new_time[i]
-        start = center - h
-        stop = center + h
-
-        left_idx = np.searchsorted(time, start, side='left')
-        right_idx = np.searchsorted(time, stop, side='right')
-
-        acc = 0.0
-        for j in range(left_idx, right_idx):
-            u = center - time[j]
-            acc += norm * np.exp(-0.5 * (u / sigma) ** 2)
-
-        result[i] = acc
-
-    return result
-
-
-def interpolate_trace(data: pd.Series, times: np.ndarray) -> pd.Series:
-
-    values = np.interp(
-        times,
-        data.index,
-        data.values,
-        left=np.nan,
-        right=np.nan,
-    )
-
-    return pd.Series(values, index=times)
-
-
-def interpolate_traces(data: pd.DataFrame, times: np.ndarray) -> pd.DataFrame:
-    df = {
-        i: interpolate_trace(trace, times)
-        for i, (col, trace) in enumerate(data.items())
-    }
-
-    df = pd.DataFrame(df)
-
-    df.columns = data.columns
-
-    return df
-
-
-class Events(Collection):
-    """
-    This class acts mostly as a wrapper around a dataframe registry containing
-    metadata about LFP events.
-
-    An event must have a ref_time column and, optionally, a start_time and stop_time.
-    """
-
-    def __init__(self, meta: pd.DataFrame):
-        meta: pd.DataFrame = meta.rename_axis(index='event_id')
-        assert meta.index.is_unique
-        super().__init__(meta)
+        values.flags.writeable = False
+        self.values = values
 
     @classmethod
-    def from_data_dict(cls, data: dd.DataDict):
-        """
-        Flatten a DataDict[Events] into a single Events object.
-        """
-        joint_reg = []
-
-        for k, events in data.items():
-            meta = events.meta.copy()
-
-            row = data.meta.loc[k]
-
-            for col, value in row.items():
-                meta[col] = value
-
-            joint_reg.append(meta)
-
-        joint_reg = pd.concat(joint_reg, axis=0, ignore_index=True)
-
-        return cls(joint_reg)
-
-    @property
-    def loc(self):
-        """pd.DataFrame accessor"""
-        return self.meta.loc
-
-    @property
-    def iloc(self):
-        """pd.DataFrame accessor"""
-        return self.meta.iloc
-
-    @functools.wraps(pd.DataFrame.drop)
-    def drop(self, *args, **kwargs):
-        return self._replace_reg(self.meta.drop(*args, **kwargs))
-
-    @classmethod
-    def from_hdf(cls, path, desc=None):
-        # noinspection PyTypeChecker
-        return cls(pd.read_hdf(path, desc=desc))
-
-    def to_hdf(self, path, desc=None):
-        # noinspection PyTypeChecker
-        return self.meta.to_hdf(path, key=desc)
-
-    def _time_cols(self) -> pd.Index:
-        return self.meta.columns.intersection(['ref_time', 'start_time', 'stop_time'])
-
-    def _time_cols_param(self, cols, strip=False):
-        if cols is None:
-            cols = self._time_cols()
-
-        if isinstance(cols, str):
-            cols = [cols]
-
-        if strip:
-            cols = [c.replace('_time', '') for c in cols]
-
-        return cols
-
-    def set_index(self, idx, sort=True):
-        meta = self.meta.set_index(idx)
-        if sort:
-            meta = meta.sort_index()
-
-        if not meta.index.is_unique:
-            logging.warning('New index is not unique')  # noqa: LOG015
-
-        return self._replace_reg(meta)
-
-    def round(self, cols=None, decimals=0):
-        cols = self._time_cols_param(cols)
-
-        meta = self.meta.copy()
-
-        for col in cols:
-            meta[col] = np.round(meta[col], decimals=decimals)
-
-        return self._replace_reg(meta)
-
-    def __len__(self):
-        return len(self.meta)
-
-    def to_wins(self):
-        wins = self.meta.copy()
-
-        if 'start_time' not in wins.columns:
-            wins['start_time'] = wins['ref_time']
-
-        if 'stop_time' not in wins.columns:
-            wins['stop_time'] = wins['ref_time']
-
-        wins.rename(
-            columns=dict(
-                start_time='start',
-                stop_time='stop',
-                ref_time='ref',
-            ),
-            inplace=True,
-        )
-
-        return timeslice.Windows(wins)
-
-    def to_wins_around(self, win_ms, col='ref_time'):
-        """
-        Creates fixed-sized windows around these events.
-        """
-        wins = self.meta.copy()
-
-        if 'start_time' in wins.columns:
-            logging.warning('Overwriting event column "start_time"')  # noqa: LOG015
-
-        wins['start_time'] = wins[col] + win_ms[0]
-
-        if 'stop_time' in wins.columns:
-            logging.warning('Overwriting event column "start_time"')  # noqa: LOG015
-
-        wins['stop_time'] = wins[col] + win_ms[1]
-
-        wins.rename(
-            columns=dict(
-                start_time='start',
-                stop_time='stop',
-                ref_time='ref',
-            ),
-            inplace=True,
-        )
-
-        return timeslice.Windows(wins)
-
-    def _repr_html_(self):
-        # noinspection PyProtectedMember,PyCallingNonCallable
-        return self.meta._repr_html_()
-
-    def sample_uniformly(self, on, count=10, jitter=0):
-        values = self.meta[on]
-
-        refs = np.linspace(values.min(), values.max(), count)
-
-        indices = np.argmin(
-            np.abs(values.values[:, np.newaxis] - refs[np.newaxis, :]), axis=0
-        )
-
-        max_idx = len(self) - 1
-
-        indices = np.unique(np.clip(indices + jitter, 0, max_idx))
-
-        indices = np.unique(indices)
-
-        return self.sel_mask(values.index[indices])
-
-    def lookup(self, trace: pd.Series, col='ref_time') -> pd.Series:
-        """
-        Look up the value of a signal at the time of each one of these events.
-        If the exact time is not available, it will be generated through linear interpolation.
-
-        Parameters
-        ----------
-        trace: a time series with time as index and data as values
-        col: a column property of these events
-
-        Returns
-        -------
-        A series with index matching these events and value extracted from the trace.
-
-        """
-        values = interpolate_trace(trace, self.meta[col].values).values
-        return pd.Series(values, index=self.index)
-
-    def lookup_traces(self, traces, pbar=None) -> pd.DataFrame:
-        values = {}
-
-        for k, trace in traces.items(pbar=pbar):
-            values[k] = self.lookup(trace)
-
-        values = pd.DataFrame(values)
-
-        values.columns = pd.MultiIndex.from_frame(traces.meta)
-
-        return values
-
-    def lookup_and_set(self, name, data: pd.Series, by, cols=None):  # TODO deprecate
-        """Look up many values at once and return a copy of this object with those values set as new columns"""
-        cols = self._time_cols_param(cols, strip=True)
-
-        if isinstance(cols, str):
-            cols = [cols]
-
-        if not isinstance(data, pd.Series):
-            data = np.asarray(data)
-            data = pd.Series(data, index=np.arange(len(data)))
-
-        new_cols = pd.DataFrame(
-            {
-                f'{col}_{name}': self.lookup(data, col=f'{col}_{by}').values
-                for col in cols
-            },
-            index=self.meta.index,
-        )
-
-        joint = pd.concat([self.meta, new_cols], axis=1)
-        assert joint.columns.is_unique
-
-        return self._replace_reg(joint)
-
-    def combine(self, other):
-        return self.__class__(
-            pd.concat([self.meta, other.meta], axis=0, sort=True, ignore_index=True)
-        )
-
-    def get_time_to_closest(
-        self, stop='stop', start='start', sortby='ref'
-    ) -> pd.Series:
-
-        # noinspection PyTypeChecker,PyNoneFunctionAssignment,PyArgumentList
-        evs: Events = self.sort_values(f'{sortby}_time')
-
-        to_next = evs.get_inter_event_intervals(stop, start, sortby=sortby)
-
-        df = pd.DataFrame(
-            {
-                'next': to_next.abs(),
-                'prev': to_next.shift(1),
-            }
-        )
-
-        times = df.min(axis=1).reindex(self.meta.index)
-
-        bad = np.count_nonzero(times < 0)
-        if bad > 0:
-            logging.warning(  # noqa: LOG015
-                f'{bad:,g} events with negative times to next. Events overlap?'
+    def from_times(cls, times: TimeArrayLike) -> typing.Self:
+        values = np.asarray(times, dtype=float)
+
+        if values.ndim == 0:
+            values = values.reshape(1)
+        elif values.ndim != 1:
+            raise ValueError('Event times must be scalar or one-dimensional')
+
+        return cls(values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def sel_pos(self, positions: np.ndarray) -> typing.Self:
+        return self.__class__(self.values[positions])
+
+    def get_pos(self, position: int) -> float:
+        return float(self.values[position])
+
+    def to_hdf(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> None:
+        """Store event times as one HDF5 dataset."""
+        key = nocte.core.hdf.normalize_hdf_key(key)
+
+        with h5py.File(path, mode='a') as file:
+            if key in file:
+                raise FileExistsError(f'HDF5 key {key!r} already exists')
+
+            file.create_dataset(
+                key,
+                data=self.values,
             )
 
-        return times
+    @classmethod
+    def from_hdf(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> typing.Self:
+        """Load event times previously stored with ``to_hdf()``."""
+        key = nocte.core.hdf.normalize_hdf_key(key)
 
-    def get_time_to_closest_per_channel(self, per='channel', **kwargs) -> pd.Series:
+        with h5py.File(path, mode='r') as file:
+            if key not in file:
+                raise KeyError(f'HDF5 key {key!r} does not exist')
 
-        ts = []
-        for ch in self['channel'].unique():
-            ts.append(self.sel(**{per: ch}).get_time_to_closest(**kwargs))
+            node = file[key]
+            if not isinstance(node, h5py.Dataset):
+                raise TypeError(f'Events payload {key!r} must be an HDF5 dataset')
 
-        ts = pd.concat(ts)
+            values = np.asarray(node[...])
 
-        assert len(ts) == len(self)
+        return cls(values)
 
-        # noinspection PyTypeChecker
-        return ts.reindex(self.meta.index)
 
-    def get_inter_event_intervals(
-        self, first='ref', second='ref', sortby='ref', ascending=True
-    ) -> pd.Series:
+class Events(nocte.core.hdf.HDFCollection[float]):
+    """
+    Indexed collection of point-like temporal occurrences.
 
-        meta = self.meta.sort_values(f'{sortby}_time', ascending=ascending)
-        td = meta[f'{second}_time'].values[1:] - meta[f'{first}_time'].values[:-1]
-        td = pd.Series(td, meta.index[:-1])
+    Each item has exactly one structural time, stored independently from metadata
+    as an immutable finite float in milliseconds. Event identity is defined by
+    the collection index rather than by timestamp value, so duplicate times are
+    valid and represent distinct events.
 
-        return td.reindex(self.meta.index)
+    Public item-aligned values are returned as pandas objects so event identity
+    is retained. Numerical operations use the private NumPy payload directly.
+    """
 
-    def get_inter_event_intervals_between_channels(
-        self, first='ref', second='ref', sortby='ref', first_ch=0, second_ch=1
-    ) -> pd.Series:
+    def __init__(
+        self,
+        data: _EventsData,
+        meta: pd.DataFrame,
+    ):
+        self._data = data
+        self.meta = meta.copy()
 
-        meta = self.meta.sort_values(f'{sortby}_time')
-        meta = meta.loc[meta['channel'].isin([first_ch, second_ch])]
+        if self.meta.index.name is None:
+            self.meta.index = self.meta.index.rename('event_id')
 
-        consecutive = (meta['channel'].values[:-1] == first_ch) & (
-            meta['channel'].values[1:] == second_ch
-        )
-        first_idcs = meta.index[:-1][consecutive]
-        second_idcs = meta.index[1:][consecutive]
+        self._validate_meta(len(self._data))
 
-        assert len(first_idcs) == len(second_idcs)
+    # ------------------------------------------------------------------
+    # core collection and access
 
-        td = (
-            meta.loc[second_idcs, f'{second}_time'].values
-            - meta.loc[first_idcs, f'{first}_time'].values
-        )
-
-        return pd.Series(td, first_idcs)
-
-    def get_counts_in_bins(self, bins, by='ref_time') -> pd.Series:
-
-        counts, edges = np.histogram(self.meta[by], bins)
-
-        # noinspection PyUnresolvedReferences
-        counts = pd.Series(
-            counts,
-            index=pd.IntervalIndex.from_breaks(edges),
-        )
-
-        return counts
-
-    def get_counts(self, load_win, step=1, by='ref_time') -> pd.Series:
-        return self.get_counts_in_bins(
-            np.arange(*load_win, step),
-            by=by,
+    @staticmethod
+    def _default_meta(n_items: int) -> pd.DataFrame:
+        return pd.DataFrame(
+            index=pd.RangeIndex(n_items, name='event_id'),
         )
 
-    def get_histogram2d(self, col='amplitude', tbins=None, vbins=None, by='ref_time'):
+    def _sel_pos(self, positions: np.ndarray) -> typing.Self:
+        return self.__class__(
+            self._data.sel_pos(positions),
+            self.meta.iloc[positions],
+        )
 
-        if tbins is None:
-            global_tbin = timeslice.Win(self[by].min(), self[by].max())
-            tbins = global_tbin.arange(global_tbin.length / 100)
+    def _get_pos(self, position: int) -> float:
+        return self._data.get_pos(position)
 
-        if vbins is None:
-            vbins = np.linspace(self[col].min(), self[col].max(), 101)
+    def copy(self) -> typing.Self:
+        """Return a collection sharing immutable times and copying metadata."""
+        return self.__class__(self._data, self.meta)
 
-        hists = []
+    @property
+    def time(self) -> pd.Series:
+        """Event times indexed by stable event identity."""
+        return pd.Series(
+            self._time.copy(),
+            index=self.index,
+            name='time',
+        )
 
-        for t0, t1 in itertools.pairwise(tbins):
-            sel = self.sel_between(**{by: (t0, t1)})
-            h, _ = np.histogram(sel[col], bins=vbins)
-            hists.append(h)
+    # ------------------------------------------------------------------
+    # construction
 
-        hists = pd.DataFrame(
-            hists,
-            index=pd.IntervalIndex.from_breaks(tbins),
-            columns=pd.IntervalIndex.from_breaks(vbins),
-        ).T
+    @classmethod
+    def from_times(
+        cls,
+        times: TimesLike,
+        *,
+        meta: pd.DataFrame | None = None,
+    ) -> typing.Self:
+        """
+        Build events from scalar or one-dimensional times in milliseconds.
 
-        return hists
+        A pandas Series contributes its index as event identity when ``meta`` is
+        omitted. If both are supplied, their indices must match exactly.
+        """
+        if isinstance(times, pd.Series):
+            values = times.to_numpy(dtype=float)
 
-    def shift_time(self, ts: float | pd.Series | np.ndarray, cols=None, copy=True):
+            if meta is None:
+                meta = pd.DataFrame(index=times.index.copy())
+            elif not meta.index.equals(times.index):
+                raise ValueError('meta index must match times index')
 
-        if not isinstance(ts, pd.Series):
-            ts = pd.Series(ts, index=self.index)
-
-        if not ts.index.equals(self.index):
-            raise ValueError('shift_time Series must be indexed like self')
-
-        ts = ts.reindex(self.index).values
-
-        cols = self._time_cols_param(cols)
-
-        if copy:
-            meta = self.meta.copy()
+            data = _EventsData(values)
         else:
-            meta = self.meta
+            data = _EventsData.from_times(times)
 
-        cols = list(cols)
-        meta[cols] = meta[cols] + ts[:, np.newaxis]
-        return self._replace_reg(meta)
+            if meta is None:
+                meta = cls._default_meta(len(data))
+
+        return cls(data, meta)
+
+    # ------------------------------------------------------------------
+    # ordering and basic temporal transformations
+
+    def sort_time(self, *, ascending: bool = True) -> typing.Self:
+        """Return events ordered chronologically while preserving identities."""
+        values = self._time if ascending else -self._time
+        positions = np.argsort(values, kind='stable')
+        return self._sel_pos(positions)
+
+    def shift(self, by: EventValue) -> typing.Self:
+        """Shift event times by a scalar or one value per event."""
+        offsets = self._broadcast_value(by, name='by')
+        return self.__class__(
+            _EventsData(self._time + offsets),
+            self.meta,
+        )
+
+    def round(
+        self,
+        decimals: int = 0,
+        *,
+        scale: nocte.core.time.TimeScale | float = 'milliseconds',
+    ) -> typing.Self:
+        """Round event times to a temporal scale."""
+        scale_ms = nocte.core.time.scale_to_ms(scale)
+        values = np.round(self._time / scale_ms, decimals=decimals) * scale_ms
+        return self.__class__(
+            _EventsData(values),
+            self.meta,
+        )
+
+    # ------------------------------------------------------------------
+    # temporal restriction and point-process summaries
+
+    def contained_in(self, win: nocte.core.windows.Win) -> pd.Series:
+        """Return an event-indexed mask for the half-open window ``win``."""
+        start = win.time_at('start')
+        stop = win.time_at('stop')
+        mask = (start <= self._time) & (self._time < stop)
+        return pd.Series(mask, index=self.index, name='contained_in')
+
+    def crop(self, win: nocte.core.windows.Win) -> typing.Self:
+        """Keep events inside the half-open window ``win``."""
+        mask = self.contained_in(win).to_numpy()
+        return self._sel_pos(np.flatnonzero(mask))
+
+    def intervals(self) -> pd.Series:
+        """
+        Return time since the previous chronological event.
+
+        Results are aligned back to event identity. The earliest event has NaN;
+        simultaneous events have an interval of zero. Duplicate timestamps keep
+        their stable current ordering.
+        """
+        result = np.full(len(self), np.nan, dtype=float)
+
+        if len(self) >= 2:
+            order = np.argsort(self._time, kind='stable')
+            result[order[1:]] = np.diff(self._time[order])
+
+        return pd.Series(
+            result,
+            index=self.index,
+            name='interval',
+        )
+
+    def count_bins(self, bins: TimeArrayLike) -> pd.Series:
+        """
+        Count events in half-open bins ``[left, right)``.
+
+        Events outside the supplied bin range are ignored. The final right edge
+        remains exclusive so temporal bin semantics are uniform across bins.
+        """
+        edges = nocte.core._point_process.as_bin_edges(bins)
+        values = nocte.core._point_process.count_bins_many(
+            self._point_processes(),
+            edges,
+        )[0]
+
+        return pd.Series(
+            values,
+            index=pd.IntervalIndex.from_breaks(
+                edges,
+                closed='left',
+                name='time',
+            ),
+            name='count',
+        )
 
     def count_rolling(
         self,
-        valid_win: timeslice.Win = None,
-        by='ref_time',
-        sliding_win=1_000,
-        step=10,
+        window: float,
+        *,
+        step: float,
+        within: nocte.core.windows.Win,
     ) -> pd.Series:
-        """Calculate how many items are in a sliding window over time (by)"""
-        valid_win = self.get_global_win(by) if valid_win is None else valid_win
+        """Count events in centered, half-open sliding windows."""
+        window = self._positive_float(window, name='window')
+        step = self._positive_float(step, name='step')
 
-        time = self.meta[by].values
-
-        win = timeslice.Win.build_centered(0, sliding_win)
-        new_time = valid_win.arange(step)
-
-        res = _count_rolling_nb(
-            time=time,
-            win=tuple(win),
-            new_time=new_time,
+        sample_times = nocte.core._point_process.sample_centers(
+            within.time_at('start'),
+            within.time_at('stop'),
+            step,
+            margin=window * 0.5,
         )
-
-        return pd.Series(res, index=new_time)
-
-    def rate_rolling_gauss(
-        self,
-        sigma: float,
-        valid_win: timeslice.Win = None,
-        by='ref_time',
-        step=1_000,
-    ) -> pd.Series:
-        """Estaimate instantaneous rate by convolving with a gaussian kernel. Better for low rates than counting."""
-
-        valid_win = self.get_global_win(by) if valid_win is None else valid_win
-
-        sampling_t = valid_win.arange(step)
-
-        rate = _rate_gauss_kernel_nb(
-            time=self[by].values,
-            new_time=sampling_t,
-            sigma=sigma,
-        )
+        values = nocte.core._point_process.count_rolling_many(
+            self._point_processes(),
+            sample_times,
+            window,
+        )[0]
 
         return pd.Series(
-            rate * nocte.core.time.ms(seconds=1),
-            index=sampling_t,
+            values,
+            index=pd.Index(sample_times, name='time'),
+            name='count',
         )
 
-    def rate_rolling_box(
+    def rate_gaussian(
         self,
-        valid_win: timeslice.Win = None,
-        by='ref_time',
-        sliding_win=10_000,
-        step=1_000,
-    ) -> pd.Series:
-        """Estaimate instantaneous rate by counting in a sliding window"""
-
-        counts = self.count_rolling(
-            valid_win=valid_win, by=by, sliding_win=sliding_win, step=step
-        )
-        return counts / (sliding_win / nocte.core.time.ms(seconds=1))
-
-    def mean_rolling(
-        self,
-        valid_win: timeslice.Win = None,
-        on='amplitude',
-        by='ref_time',
-        sliding_win=1_000,
-        step=10,
-        nmin=1,
-    ) -> pd.Series:
-        """Calculate the mean of a property (on) in a sliding window over time (by)"""
-        return self._rolling_nb(
-            func=_mean_rolling_nb,
-            valid_win=valid_win,
-            on=on,
-            by=by,
-            sliding_win=sliding_win,
-            step=step,
-            nmin=nmin,
-        )
-
-    def quantile_rolling(
-        self,
-        q,
-        valid_win: timeslice.Win = None,
-        on='amplitude',
-        by='ref_time',
-        sliding_win=1_000,
-        step=10,
-        nmin=1,
-    ) -> pd.Series:
-        """Calculate the quantile of a property (on) in a sliding window over time (by)"""
-        return self._rolling_nb(
-            func=_quantile_rolling_nb,
-            valid_win=valid_win,
-            on=on,
-            by=by,
-            sliding_win=sliding_win,
-            step=step,
-            nmin=nmin,
-            q=q,
-        )
-
-    def iqr_rolling(
-        self,
-        low=0.25,
-        mid=0.5,
-        high=0.75,
-        **kwargs,
-    ) -> pd.DataFrame:
-        """Calculate the median and inter-quantile range of a property (on) in a sliding window over time (by)"""
-        return pd.DataFrame(
-            {
-                name: self.quantile_rolling(q=q, **kwargs)
-                for name, q in dict(low=low, mid=mid, high=high).items()
-            }
-        )
-
-    def _rolling_nb(
-        self,
-        func,
-        valid_win: timeslice.Win = None,
-        on='amplitude',
-        by='ref_time',
-        sliding_win=1_000,
-        step=10,
-        nmin=1,
-        **kwargs,
+        sigma: float,
+        *,
+        step: float,
+        within: nocte.core.windows.Win,
+        width: float = 5.0,
     ) -> pd.Series:
         """
-        Wrapper for  numba implementation of rolling calculations.
-        Generally: for every step, take the mean/quantile/etc of all values "on" whose corresponding "by" falls within
-        a given local window.
+        Estimate instantaneous event rate with a truncated Gaussian kernel.
+
+        ``sigma``, ``step``, and ``within`` use milliseconds. The returned rate
+        is expressed in events per second (Hz). ``width`` is the kernel
+        half-width in multiples of ``sigma``. Evaluation centers are restricted
+        so the complete truncated kernel lies inside ``within``.
         """
-        valid_win = self.get_global_win(by) if valid_win is None else valid_win
+        sigma = self._positive_float(sigma, name='sigma')
+        step = self._positive_float(step, name='step')
+        width = self._positive_float(width, name='width')
 
-        x = self.meta[by].values
-        y = self.meta[on].values
+        sample_times = nocte.core._point_process.sample_centers(
+            within.time_at('start'),
+            within.time_at('stop'),
+            step,
+            margin=sigma * width,
+        )
+        values = nocte.core._point_process.gaussian_rate_many(
+            self._point_processes(),
+            sample_times,
+            sigma,
+            width,
+        )[0]
+        values *= nocte.core.time.ms(seconds=1)
 
-        win = timeslice.Win.build_centered(0, sliding_win)
-        xvals = valid_win.arange(step)
-
-        res = func(
-            time=x,
-            values=y,
-            win=tuple(win),
-            new_time=xvals,
-            nmin=nmin,
-            **kwargs,
+        return pd.Series(
+            values,
+            index=pd.Index(sample_times, name='time'),
+            name='rate',
         )
 
-        return pd.Series(res, index=xvals)
+    # ------------------------------------------------------------------
+    # serialization
 
-    def locate_within(
-        self, wins: timeslice.Windows, by='exp_name', on='ref_time'
-    ) -> pd.DataFrame:
-        """calculate the relative time of the events within windows after matching them by a column"""
-        result = []
+    def _to_hdf_data(
+        self,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+    ) -> None:
+        self._data.to_hdf(
+            path,
+            key=f'{key}/data',
+        )
 
-        for by_val, wins_sel in wins.iter_groupby(by):
-            events_sel = self.sel(**{by: by_val})
+    @classmethod
+    def _from_hdf_data(
+        cls,
+        path: str | pathlib.Path,
+        *,
+        key: str,
+        meta: pd.DataFrame,
+    ) -> typing.Self:
+        data = _EventsData.from_hdf(
+            path,
+            key=f'{key}/data',
+        )
+        return cls(data, meta)
 
-            if len(events_sel) > 0:
-                classified: pd.DataFrame = wins_sel.classify_events(events_sel[on])
+    # ------------------------------------------------------------------
+    # representation
 
-                result.append(classified)
+    def to_frame(self) -> pd.DataFrame:
+        """Return structural time and metadata as one inspection DataFrame."""
+        geometry = self.time.to_frame()
+        collisions = geometry.columns.intersection(self.meta.columns)
 
-        if len(result) > 0:
-            result = pd.concat(result)
-
-        else:
-            result = pd.DataFrame(
-                dict(
-                    win_idx=pd.Series(dtype='int'),
-                    delay=pd.Series(dtype='float'),
-                    cat=pd.Series(dtype='str'),
-                )
+        if len(collisions):
+            warnings.warn(
+                'to_frame() returns duplicate columns for structural names also '
+                f'present in meta: {collisions.tolist()}',
+                UserWarning,
+                stacklevel=2,
             )
 
-        result = result.reindex(self.index)
+        return pd.concat([geometry, self.meta], axis=1)
+
+    def _repr_html_(self) -> str:
+        return self.to_frame()._repr_html_()  # type: ignore
+
+    # ------------------------------------------------------------------
+    # private numerical helpers
+
+    @property
+    def _time(self) -> np.ndarray:
+        return self._data.values
+
+    def _point_processes(self) -> tuple[np.ndarray]:
+        """
+        Return this event collection as the singleton point-process case.
+
+        Point-process numerical helpers require sorted timestamps. Events do not
+        require chronological collection order, so sort only when necessary.
+        """
+        times = self._time
+
+        if len(times) >= 2 and np.any(times[1:] < times[:-1]):
+            times = np.sort(times, kind='stable')
+
+        return (times,)
+
+    @staticmethod
+    def _positive_float(value: float, *, name: str) -> float:
+        value = float(value)
+
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError(f'{name} must be finite and positive')
+
+        return value
+
+    def _broadcast_value(
+        self,
+        values: EventValue,
+        *,
+        name: str,
+    ) -> np.ndarray:
+        if isinstance(values, pd.Series):
+            values = self._align_series(values, name)
+            result = values.to_numpy(dtype=float)
+        else:
+            result = np.asarray(values, dtype=float)
+
+            if result.ndim == 0:
+                result = np.full(len(self), float(result))
+            elif result.ndim != 1 or len(result) != len(self):
+                raise ValueError(f'{name} must be scalar or have one value per event')
+
+        if not np.isfinite(result).all():
+            raise ValueError(f'{name} must be finite')
 
         return result
-
-    def classify_by(
-        self, wins: timeslice.Windows, by='exp_name', on='ref_time', col='cat'
-    ) -> pd.Series:
-        """classify each event by the category of selected windows after matching them by a column"""
-        return self.locate_within(wins, by=by, on=on)[col]
-
-    def crop(self, win: timeslice.Win, on='ref_time'):
-        """
-        Extract the events within windows after matching them by a column.
-        Events in no window are dropped.
-        """
-        return self.sel_between(**{on: win})
-
-    def extract(
-        self,
-        wins: timeslice.Windows,
-        by='exp_name',
-        on='ref_time',
-        copy=None,
-        align=None,
-    ):
-
-        locs = self.locate_within(wins, by=by, on=on)
-
-        locs = locs.dropna()
-
-        meta = self.meta.loc[locs.index].copy()
-
-        meta['win_idx'] = locs['win_idx'].astype(wins.index.dtype)
-
-        extracted = self.__class__(meta)
-
-        if align is not None:
-            refs = wins.relative_time(align)
-            shifts = extracted['win_idx'].map(refs).values
-            extracted = extracted.shift_time(-1 * shifts)
-
-        if copy is not None:
-            for col in copy:
-                extracted[col] = extracted['win_idx'].map(wins[col])
-
-        return extracted
-
-    def sel_time(self, win: timeslice.Win, on='ref_time', reset=None):  # TODO deprecate
-        sel = self.crop(win, on=on)
-
-        if reset is not None:
-            sel = sel.shift_time(-win.relative_time('start'))
-
-        return sel
-
-    def get_global_win(self, by='ref_time') -> timeslice.Win:
-        return timeslice.Win(self.meta[by].min(), self.meta[by].max())
-
-    def plot_traces_highlighted(self, ax, traces: stacks.Stack):
-        """
-        Plot the given multi-channel traces with the detected events highlighted.
-        This can be slow if there are many events.
-        """
-        assert len(traces.shape) == 2
-
-        main_win = traces.get_global_win()
-
-        for ch in traces.coords['channel']:
-            styles = {
-                'event': dict(color=splot.COLORS[f'ch{ch}_dark'], linewidth=1, alpha=1),
-                'other': dict(color=splot.COLORS[f'ch{ch}'], linewidth=0.4, alpha=1),
-            }
-
-            wins = self.sel(channel=ch).to_wins()
-            wins['cat'] = 'event'
-            wins = wins.complement(
-                cat='other', start=main_win.start, stop=main_win.stop
-            )
-
-            trace = traces.sel(channel=ch).to_series()
-
-            splot.plot_trace_highlighted(ax, trace, wins, styles)
