@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc
+import dataclasses
 import fractions
 import itertools
 import logging
@@ -14,6 +15,7 @@ import numpy.typing as npt
 import pandas as pd
 import scipy.signal
 
+import nocte.core.collection
 import nocte.core.hdf
 from nocte.core.hdf import HDFCollection
 from nocte.core.sampling import SamplingRate
@@ -176,6 +178,104 @@ def _interpolate_irregular(
     return result
 
 
+@dataclasses.dataclass(frozen=True)
+class TimeGrid:
+    sampling: SamplingRate
+    start: float
+    n_samples: int
+
+    def __post_init__(self):
+        if not isinstance(self.sampling, SamplingRate):
+            raise TypeError('sampling must be a SamplingRate')
+
+        if not np.isfinite(self.start):
+            raise ValueError('start must be finite')
+
+        if not isinstance(self.n_samples, (int, np.integer)):
+            raise TypeError('n_samples must be an integer')
+
+        if self.n_samples < 0:
+            raise ValueError('n_samples must be non-negative')
+
+    @classmethod
+    def from_bounds(
+        cls,
+        *,
+        sampling: SamplingRate,
+        start: float,
+        stop: float,
+    ) -> typing.Self:
+        """
+        Construct the regular grid covering the half-open interval
+        [start, stop).
+        """
+        start = float(start)
+        stop = float(stop)
+
+        if not np.isfinite(start):
+            raise ValueError('start must be finite')
+
+        if not np.isfinite(stop):
+            raise ValueError('stop must be finite')
+
+        if stop < start:
+            raise ValueError('stop must not precede start')
+
+        ratio = (stop - start) / sampling.period_ms
+        nearest = np.round(ratio)
+
+        if np.isclose(
+            ratio,
+            nearest,
+            rtol=1e-10,
+            atol=1e-10,
+        ):
+            ratio = nearest
+
+        return cls(
+            sampling=sampling,
+            start=start,
+            n_samples=int(np.ceil(ratio)),
+        )
+
+    @classmethod
+    def from_hz_bounds(
+        cls,
+        *,
+        hz: float,
+        start: float,
+        stop: float,
+    ) -> typing.Self:
+        return cls.from_bounds(
+            sampling=SamplingRate(hz),
+            start=start,
+            stop=stop,
+        )
+
+    @property
+    def stop(self) -> float:
+        """Exclusive temporal boundary of the grid."""
+        return self.start + self.sampling.samples_to_ms(self.n_samples)
+
+    @property
+    def last(self) -> float | None:
+        """Time of the final sample, or None for an empty grid."""
+        if self.n_samples == 0:
+            return None
+
+        return self.start + self.sampling.samples_to_ms(self.n_samples - 1)
+
+    @property
+    def times(self) -> np.ndarray:
+        """Times of the samples in the grid."""
+        return self.start + self.sampling.samples_to_ms(
+            np.arange(
+                self.n_samples,
+                dtype=np.intp,
+            )
+        )
+
+
 class _TracesData(typing.Generic[FloatT]):
     """
     Internal storage for regularly sampled traces.
@@ -293,7 +393,7 @@ class _TracesData(typing.Generic[FloatT]):
         result._start = start
         return result
 
-    def sel_time(self, win: Win) -> typing.Self:
+    def crop(self, win: Win) -> typing.Self:
         win_start = win.time_at('start')
         win_stop = win.time_at('stop')
 
@@ -500,51 +600,88 @@ class _TracesData(typing.Generic[FloatT]):
 
         return result
 
-    def resample(self, hz: float) -> typing.Self:
-        target_sampling = SamplingRate(hz)
+    def resample_to_grid(
+        self,
+        grid: TimeGrid,
+    ) -> typing.Self:
+        """
+        Represent the signals on an explicitly defined regular time grid.
+
+        No target-grid defaults are inferred here.
+        """
+        if not isinstance(grid, TimeGrid):
+            raise TypeError('grid must be a TimeGrid')
+
+        if (
+            grid.sampling == self.sampling
+            and grid.start == self.start
+            and grid.n_samples == self.n_samples
+        ):
+            return self.copy()
+
+        if grid.n_samples == 0:
+            return self.__class__(
+                np.empty(
+                    (len(self), 0),
+                    dtype=self.dtype,
+                ),
+                grid.sampling,
+                grid.start,
+            )
 
         if self.n_samples == 0:
             return self.__class__(
-                np.empty((len(self), 0), dtype=self.dtype),
-                target_sampling,
-                self.start,
+                np.full(
+                    (len(self), grid.n_samples),
+                    np.nan,
+                    dtype=self.dtype,
+                ),
+                grid.sampling,
+                grid.start,
             )
 
-        last_time = self.start + self.sampling.samples_to_ms(self.n_samples - 1)
-        target_time = _regular_times(
-            self.start,
-            last_time,
-            target_sampling,
-        )
+        target_time = grid.times
 
-        if np.isclose(target_sampling.rate, self.sampling.rate):
-            return self.copy()
+        # Same-rate phase shifts and upsampling require interpolation,
+        # but no anti-alias filtering.
+        if grid.sampling.rate >= self.sampling.rate:
+            values = self._lookup_common(
+                target_time,
+                method='linear',
+            )
 
-        if target_sampling.rate > self.sampling.rate:
-            values = self._lookup_common(target_time, method='linear')
-            return self.__class__(values, target_sampling, self.start)
+            return self.__class__(
+                values,
+                grid.sampling,
+                grid.start,
+            )
 
+        # Downsampling requires anti-alias filtering.
         gapless = self.is_gapless()
+
         if not gapless.all():
             bad = int(np.count_nonzero(~gapless))
+
             raise ValueError(
                 f'Cannot anti-alias {bad} trace(s) with internal NaN gaps; '
                 'use fill_missing() first or select traces without internal gaps'
             )
 
         ratio = fractions.Fraction(
-            target_sampling.rate / self.sampling.rate
+            grid.sampling.rate / self.sampling.rate
         ).limit_denominator(100_000)
+
         up = ratio.numerator
         down = ratio.denominator
-        intermediate_hz = self.sampling.rate * up / down
-        intermediate_sampling = SamplingRate(intermediate_hz)
+
+        sampled_sampling = SamplingRate(self.sampling.rate * up / down)
 
         output = np.full(
-            (len(self), len(target_time)),
+            (len(self), grid.n_samples),
             np.nan,
             dtype=self.dtype,
         )
+
         first = self.first_valid_index()
         last = self.last_valid_index()
 
@@ -554,8 +691,14 @@ class _TracesData(typing.Generic[FloatT]):
 
             i0 = int(first[row])
             i1 = int(last[row])
-            source = self._values[row, i0 : i1 + 1]
+
+            source = self._values[
+                row,
+                i0 : i1 + 1,
+            ]
+
             source_start = self.start + self.sampling.samples_to_ms(i0)
+
             source_last = self.start + self.sampling.samples_to_ms(i1)
 
             if len(source) < 2:
@@ -565,6 +708,7 @@ class _TracesData(typing.Generic[FloatT]):
                     rtol=1e-10,
                     atol=1e-12,
                 )
+
                 output[row, exact] = source[0]
                 continue
 
@@ -573,11 +717,21 @@ class _TracesData(typing.Generic[FloatT]):
                 up,
                 down,
             )
-            sampled = np.asarray(sampled, dtype=self.dtype)
-            sampled_time = source_start + intermediate_sampling.samples_to_ms(
-                np.arange(len(sampled), dtype=np.intp)
+
+            sampled = np.asarray(
+                sampled,
+                dtype=self.dtype,
             )
+
+            sampled_time = source_start + sampled_sampling.samples_to_ms(
+                np.arange(
+                    len(sampled),
+                    dtype=np.intp,
+                )
+            )
+
             inside = sampled_time <= source_last + np.finfo(float).eps * 16
+
             sampled = sampled[inside]
             sampled_time = sampled_time[inside]
 
@@ -590,9 +744,29 @@ class _TracesData(typing.Generic[FloatT]):
 
         return self.__class__(
             output,
-            target_sampling,
-            self.start,
+            grid.sampling,
+            grid.start,
         )
+
+    def resample(
+        self,
+        hz: float,
+        start: float | None = None,
+        stop: float | None = None,
+    ) -> typing.Self:
+        if start is None:
+            start = self.start
+
+        if stop is None:
+            stop = self.stop
+
+        grid = TimeGrid.from_hz_bounds(
+            hz=hz,
+            start=start,
+            stop=stop,
+        )
+
+        return self.resample_to_grid(grid)
 
     def fill_missing(
         self,
@@ -972,10 +1146,10 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     # ------------------------------------------------------------------
     # temporal selection / sampling
 
-    def sel_time(self, win: Win) -> typing.Self:
+    def crop(self, win: Win) -> typing.Self:
         """Select existing samples contained in a window without interpolation."""
         return self.__class__(
-            self._data.sel_time(win),
+            self._data.crop(win),
             self.meta,
         )
 
@@ -1036,10 +1210,27 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             name='value',
         )
 
-    def resample(self, hz: float) -> typing.Self:
-        """Represent the signals on a new regular sampling rate."""
+    def resample_to_grid(
+        self,
+        grid: TimeGrid,
+    ) -> typing.Self:
         return self.__class__(
-            self._data.resample(hz),
+            self._data.resample_to_grid(grid),
+            self.meta,
+        )
+
+    def resample(
+        self,
+        hz: float,
+        start: float | None = None,
+        stop: float | None = None,
+    ) -> typing.Self:
+        return self.__class__(
+            self._data.resample(
+                hz,
+                start=start,
+                stop=stop,
+            ),
             self.meta,
         )
 
@@ -1244,7 +1435,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         if not 0 <= qmin < qmax <= 1:
             raise ValueError('expected 0 <= qmin < qmax <= 1')
 
-        reference = self if win is None else self.sel_time(win)
+        reference = self if win is None else self.crop(win)
         if reference.n_samples == 0:
             raise ValueError('normalization window contains no samples')
 
