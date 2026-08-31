@@ -683,6 +683,42 @@ class TimeGrid:
             stop=stop,
         )
 
+    @classmethod
+    def from_start_last(
+        cls,
+        *,
+        sampling: SamplingRate,
+        start: float,
+        last: float,
+        rtol: float = 1e-10,
+        atol: float = 1e-10,
+    ) -> typing.Self:
+        """Construct a grid from its first coordinate through `last`, inclusive."""
+        if not isinstance(sampling, SamplingRate):
+            raise TypeError('sampling must be a SamplingRate')
+
+        start = float(start)
+        last = float(last)
+
+        if not np.isfinite(start) or not np.isfinite(last):
+            raise ValueError('start and last must be finite')
+
+        if last < start:
+            return cls(sampling=sampling, start=start, n_samples=0)
+
+        position = (last - start) / sampling.period_ms
+        position = sampling._snap_sample_positions(
+            np.asarray(position),
+            rtol=rtol,
+            atol=atol,
+        )
+
+        return cls(
+            sampling=sampling,
+            start=start,
+            n_samples=int(np.floor(position)) + 1,
+        )
+
     @property
     def stop(
         self,

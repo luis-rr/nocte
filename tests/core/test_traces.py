@@ -49,3 +49,13 @@ def test_shift_shares_immutable_payload_and_changes_coordinate():
     assert shifted.start == 15
     assert traces.start == 10
     np.testing.assert_array_equal(shifted.values, traces.values)
+
+
+def test_grid_is_the_authoritative_trace_coordinate():
+    traces = Traces.from_array(np.array([[1, 2, 3]]), hz=1_000, start=10)
+
+    assert traces.grid.sampling == traces.sampling
+    assert traces.grid.start == traces.start
+    assert traces.grid.stop == traces.stop
+    assert traces.grid.n_samples == traces.n_samples
+    np.testing.assert_allclose(traces.grid.times, traces.time)

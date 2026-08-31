@@ -203,3 +203,21 @@ def test_round_to_period_warns_with_description(caplog):
 
     assert result == 10.0
     assert 'window length' in caplog.text
+
+
+@pytest.mark.parametrize(
+    ('start', 'last', 'expected_times'),
+    [
+        (0.0, 20.0, [0.0, 10.0, 20.0]),
+        (0.0, 25.0, [0.0, 10.0, 20.0]),
+        (10.0, 5.0, []),
+    ],
+)
+def test_time_grid_from_start_last(start, last, expected_times):
+    grid = nocte.core.sampling.TimeGrid.from_start_last(
+        sampling=nocte.core.sampling.SamplingRate(100),
+        start=start,
+        last=last,
+    )
+
+    np.testing.assert_allclose(grid.times, expected_times)

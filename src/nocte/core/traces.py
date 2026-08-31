@@ -85,20 +85,6 @@ def _validate_max_gap(max_gap: float) -> float:
     return max_gap
 
 
-def _regular_times(start: float, last: float, sampling: SamplingRate) -> np.ndarray:
-    """Return regular sample coordinates from `start` through `last`, inclusive."""
-    if last < start:
-        return np.empty(0, dtype=float)
-
-    ratio = (last - start) / sampling.period_ms
-    nearest = np.round(ratio)
-    if np.isclose(ratio, nearest, rtol=1e-10, atol=1e-10):
-        ratio = nearest
-
-    n_samples = int(np.floor(ratio)) + 1
-    return start + sampling.samples_to_ms(np.arange(n_samples, dtype=np.intp))
-
-
 def _interpolate_irregular(
     values: np.ndarray,
     times: np.ndarray,
@@ -202,19 +188,16 @@ class _TracesData(typing.Generic[FloatT]):
             raise ValueError('trace values must be a two-dimensional array')
         if not np.issubdtype(values.dtype, np.floating):
             raise TypeError('internal trace values must have a floating dtype')
-        if not isinstance(sampling, SamplingRate):
-            raise TypeError('sampling must be a SamplingRate')
-
-        start = float(start)
-        if not np.isfinite(start):
-            raise ValueError('trace start must be finite')
 
         values = np.array(values, copy=True, order='C', subok=False)
         values.flags.writeable = False
 
         self._values = values
-        self._sampling = sampling
-        self._start = start
+        self._grid = TimeGrid(
+            sampling=sampling,
+            start=start,
+            n_samples=values.shape[1],
+        )
 
     def __len__(self) -> int:
         return self._values.shape[0]
@@ -225,25 +208,27 @@ class _TracesData(typing.Generic[FloatT]):
 
     @property
     def sampling(self) -> SamplingRate:
-        return self._sampling
+        return self._grid.sampling
 
     @property
     def start(self) -> float:
-        return self._start
+        return self._grid.start
 
     @property
     def stop(self) -> float:
-        return self.start + self.sampling.samples_to_ms(self.n_samples)
+        return self._grid.stop
 
     @property
     def n_samples(self) -> int:
-        return self._values.shape[1]
+        return self._grid.n_samples
 
     @property
     def time(self) -> np.ndarray:
-        return self.start + self.sampling.samples_to_ms(
-            np.arange(self.n_samples, dtype=np.intp)
-        )
+        return self._grid.times
+
+    @property
+    def grid(self) -> TimeGrid:
+        return self._grid
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -294,8 +279,7 @@ class _TracesData(typing.Generic[FloatT]):
 
         result = self.__class__.__new__(self.__class__)
         result._values = self._values
-        result._sampling = self._sampling
-        result._start = start
+        result._grid = self._grid.shift_time(start - self.start)
         return result
 
     def crop(self, win: Win) -> typing.Self:
@@ -985,22 +969,22 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         if np.any(np.diff(times) <= 0):
             raise ValueError('times must be strictly increasing')
 
-        target = _regular_times(
-            float(times[0]),
-            float(times[-1]),
-            sampling,
+        grid = TimeGrid.from_start_last(
+            sampling=sampling,
+            start=float(times[0]),
+            last=float(times[-1]),
         )
         interpolated = _interpolate_irregular(
             values,
             times,
-            target,
+            grid.times,
             method=method,
             max_gap=max_gap,
         )
         data = _TracesData(
             interpolated,
             sampling,
-            float(times[0]),
+            grid.start,
         )
 
         return cls(
@@ -1050,6 +1034,11 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     @property
     def sampling(self) -> SamplingRate:
         return self._data.sampling
+
+    @property
+    def grid(self) -> TimeGrid:
+        """The regular temporal grid shared by every trace."""
+        return self._data.grid
 
     @property
     def hz(self) -> float:
