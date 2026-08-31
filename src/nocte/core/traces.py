@@ -282,37 +282,6 @@ class _TracesData(typing.Generic[FloatT]):
         result._grid = self._grid.shift_time(start - self.start)
         return result
 
-    def crop(self, win: Win) -> typing.Self:
-        win_start = win.time_at('start')
-        win_stop = win.time_at('stop')
-
-        if self.n_samples == 0:
-            return self.copy()
-
-        period = self.sampling.period_ms
-        rel_start = (win_start - self.start) / period
-        rel_stop = (win_stop - self.start) / period
-
-        for name, value in (('start', rel_start), ('stop', rel_stop)):
-            nearest = np.round(value)
-            if np.isclose(value, nearest, rtol=1e-10, atol=1e-10):
-                if name == 'start':
-                    rel_start = nearest
-                else:
-                    rel_stop = nearest
-
-        first = int(np.ceil(rel_start))
-        stop = int(np.ceil(rel_stop))
-        first = int(np.clip(first, 0, self.n_samples))
-        stop = int(np.clip(stop, first, self.n_samples))
-
-        new_start = self.start + self.sampling.samples_to_ms(first)
-        return self.__class__(
-            self._values[:, first:stop],
-            self.sampling,
-            new_start,
-        )
-
     def shift(self, by: float) -> typing.Self:
         by = float(by)
         if not np.isfinite(by):
@@ -1095,13 +1064,6 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     # ------------------------------------------------------------------
     # temporal selection / sampling
 
-    def crop(self, win: Win) -> typing.Self:
-        """Select existing samples contained in a window without interpolation."""
-        return self.__class__(
-            self._data.crop(win),
-            self.meta,
-        )
-
     def shift(self, by: float) -> typing.Self:
         """Shift the temporal coordinate without changing sample values."""
         return self.__class__(
@@ -1213,8 +1175,12 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             name='is_empty',
         )
 
-    def are_empty(self) -> bool:
-        return bool(self.is_empty().all())
+    def drop_empty(self) -> typing.Self:
+        """Drop traces containing no observed samples."""
+        return self.sel_mask(
+            self.is_empty(),
+            invert=True,
+        )
 
     def is_complete(self) -> pd.Series:
         is_partial = np.asarray(
@@ -1466,7 +1432,16 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         if not 0 <= qmin < qmax <= 1:
             raise ValueError('expected 0 <= qmin < qmax <= 1')
 
-        reference = self if win is None else self.crop(win)
+        reference = (
+            self
+            if win is None
+            else self.extract_win(
+                win,
+                align=None,
+                drop=False,
+            )
+        )
+
         if reference.n_samples == 0:
             raise ValueError('normalization window contains no samples')
 
@@ -1476,6 +1451,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
 
         values = np.full(self.shape, np.nan, dtype=self.dtype)
         valid_scale = ~np.isnan(scale) & (scale != 0)
+
         with np.errstate(divide='ignore', invalid='ignore'):
             values[valid_scale] = (
                 self.values[valid_scale] - low[valid_scale, None]
@@ -1684,26 +1660,30 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         win: Win,
         *,
         hz: float | None = None,
-        align: float | WinPoint = 'ref',
+        align: float | WinPoint | None = 'ref',
+        drop: bool = True,
     ) -> typing.Self:
-        anchor = win.time_at(align)
-
         sampling = self.sampling if hz is None else SamplingRate(hz)
 
-        grid = TimeGrid.from_aligned_bounds(
+        anchor = win.time_at('start' if align is None else align)
+
+        relative_grid = TimeGrid.from_aligned_bounds(
             sampling=sampling,
             start=win.time_at('start') - anchor,
             stop=win.time_at('stop') - anchor,
             anchor=0.0,
         )
 
-        absolute_grid = TimeGrid(
-            sampling=grid.sampling,
-            start=grid.start + anchor,
-            n_samples=grid.n_samples,
-        )
+        absolute_grid = relative_grid.shift_time(anchor)
+        result = self.resample_to_grid(absolute_grid)
 
-        return self.resample_to_grid(absolute_grid).shift(-anchor)
+        if align is not None:
+            result = result.shift(-anchor)
+
+        if drop:
+            result = result.drop_empty()
+
+        return result
 
     def extract_matched(
         self,
@@ -1712,12 +1692,13 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         *,
         align: float | WinPoint = 'ref',
         hz: float | None = None,
+        drop: bool = True,
     ) -> Traces[FloatT]:
-        """
-        Extract traces according to an explicit Traces-to-Windows relation.
-        """
+        """Extract traces according to an explicit Traces-to-Windows relation."""
         grouped: TracesGrouping[FloatT] = TracesGrouping.from_matches(
-            self, wins, matches
+            self,
+            wins,
+            matches,
         )
 
         grouped = grouped.extract_wins(
@@ -1726,7 +1707,12 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             hz=('same' if hz is None else hz),
         )
 
-        return grouped.concat()
+        result = grouped.concat()
+
+        if drop:
+            result = result.drop_empty()
+
+        return result
 
     def extract_all(
         self,
@@ -1734,10 +1720,9 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         *,
         align: float | WinPoint = 'ref',
         hz: float | None = None,
+        drop: bool = True,
     ) -> Traces[FloatT]:
-        """
-        Extract every trace from every Window.
-        """
+        """Extract every trace from every Window."""
         matches = Matches.from_product(
             self,
             wins,
@@ -1748,6 +1733,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             matches,
             align=align,
             hz=hz,
+            drop=drop,
         )
 
     def extract_by(
@@ -1757,10 +1743,9 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         by: str | collections.abc.Sequence[str],
         align: float | WinPoint = 'ref',
         hz: float | None = None,
+        drop: bool = True,
     ) -> Traces[FloatT]:
-        """
-        Extract traces from Windows matched by metadata equality.
-        """
+        """Extract traces from Windows matched by metadata equality."""
         matches = Matches.from_meta(
             self,
             wins,
@@ -1772,6 +1757,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             matches,
             align=align,
             hz=hz,
+            drop=drop,
         )
 
     def __repr__(self) -> str:
@@ -1838,18 +1824,6 @@ class TracesGrouping(
 
     # ------------------------------------------------------------------
     # temporal operations
-
-    def crop(
-        self,
-        win: Win,
-        *,
-        pbar: nocte.core.collection.PBarParamT = None,
-    ) -> typing.Self:
-        """Select the same temporal window from every group."""
-        return self._map_traces(
-            lambda traces: traces.crop(win),
-            pbar=pbar,
-        )
 
     def shift(
         self,
