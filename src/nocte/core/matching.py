@@ -534,6 +534,103 @@ class Matches(
                 self.left_for(int(right_id)),
             )
 
+    def _side_meta(
+        self,
+        source: Collection[typing.Any],
+        *,
+        side: typing.Literal['left', 'right'],
+    ) -> pd.DataFrame:
+        """
+        Materialize source and match metadata with one row per match.
+
+        The result uses match identities as its index and preserves the source
+        identity as provenance.
+        """
+        if side == 'left':
+            expected_name = self.left_name
+            source_ids = self.left.to_numpy(copy=False)
+            positions = self.left_positions(source)
+        else:
+            expected_name = self.right_name
+            source_ids = self.right.to_numpy(copy=False)
+            positions = self.right_positions(source)
+
+        if source.name != expected_name:
+            raise ValueError(
+                f'source does not correspond to the {side} side of Matches: '
+                f'expected {expected_name!r}, got {source.name!r}'
+            )
+
+        if self.left_name == self.right_name:
+            source_id_name = f'{side}_{source.name}'
+        else:
+            source_id_name = source.name
+
+        meta = source.meta.iloc[positions].copy()
+
+        # Preserve source identity as provenance.
+        if source_id_name in meta.columns:
+            existing = meta[source_id_name].to_numpy(copy=False)
+
+            if not np.array_equal(
+                existing,
+                source_ids,
+            ):
+                raise ValueError(
+                    f'source metadata column {source_id_name!r} '
+                    'contradicts source identity'
+                )
+        else:
+            meta[source_id_name] = source_ids
+
+        # The derived items are matches.
+        meta.index = self.index
+
+        # Match-specific metadata belongs to the derived items too.
+        for column in self.meta.columns:
+            incoming = self.meta[column]
+
+            if column not in meta.columns:
+                meta[column] = incoming
+                continue
+
+            existing = meta[column]
+
+            same = (existing.eq(incoming) | (existing.isna() & incoming.isna())).fillna(
+                False
+            )
+
+            if not same.all():
+                raise ValueError(
+                    f'match metadata column {column!r} contradicts source metadata'
+                )
+
+        return meta
+
+    def left_meta(
+        self,
+        source: Collection[typing.Any],
+    ) -> pd.DataFrame:
+        """
+        Materialize left-source and match metadata with one row per match.
+        """
+        return self._side_meta(
+            source,
+            side='left',
+        )
+
+    def right_meta(
+        self,
+        source: Collection[typing.Any],
+    ) -> pd.DataFrame:
+        """
+        Materialize right-source and match metadata with one row per match.
+        """
+        return self._side_meta(
+            source,
+            side='right',
+        )
+
     # ------------------------------------------------------------------
     # collection primitives
 

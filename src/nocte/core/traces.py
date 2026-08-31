@@ -19,8 +19,9 @@ import nocte.core.collection
 import nocte.core.grouping
 import nocte.core.hdf
 from nocte.core.hdf import HDFCollection
+from nocte.core.matching import Matches
 from nocte.core.sampling import SamplingRate
-from nocte.core.windows import Win
+from nocte.core.windows import Win, Windows, WinPoint
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ FloatU = typing.TypeVar('FloatU', bound=np.floating[typing.Any])
 
 InterpMethod = typing.Literal['linear', 'nearest']
 TimeLike = float | collections.abc.Sequence[float] | np.ndarray | pd.Index | pd.Series
+
+ResampleHz = float | typing.Literal['same', 'min', 'max']
 
 
 def _validate_trace_array(values: np.ndarray) -> np.ndarray:
@@ -199,6 +202,48 @@ class TimeGrid:
             raise ValueError('n_samples must be non-negative')
 
     @classmethod
+    def from_aligned_bounds(
+        cls,
+        *,
+        sampling: SamplingRate,
+        start: float,
+        stop: float,
+        anchor: float,
+    ) -> typing.Self:
+        """
+        Construct a regular grid phase-locked to `anchor`.
+
+        Grid coordinates are
+
+            anchor + k * period
+
+        and include every such coordinate in the half-open interval
+        [start, stop).
+        """
+        start = float(start)
+        stop = float(stop)
+        anchor = float(anchor)
+
+        if not np.all(np.isfinite([start, stop, anchor])):
+            raise ValueError('start, stop, and anchor must be finite')
+
+        if stop < start:
+            raise ValueError('stop must not precede start')
+
+        period = sampling.period_ms
+
+        first = int(np.ceil((start - anchor) / period))
+        last = int(np.ceil((stop - anchor) / period))
+
+        grid_start = anchor + sampling.samples_to_ms(first)
+
+        return cls(
+            sampling=sampling,
+            start=grid_start,
+            n_samples=last - first,
+        )
+
+    @classmethod
     def from_bounds(
         cls,
         *,
@@ -210,33 +255,11 @@ class TimeGrid:
         Construct the regular grid covering the half-open interval
         [start, stop).
         """
-        start = float(start)
-        stop = float(stop)
-
-        if not np.isfinite(start):
-            raise ValueError('start must be finite')
-
-        if not np.isfinite(stop):
-            raise ValueError('stop must be finite')
-
-        if stop < start:
-            raise ValueError('stop must not precede start')
-
-        ratio = (stop - start) / sampling.period_ms
-        nearest = np.round(ratio)
-
-        if np.isclose(
-            ratio,
-            nearest,
-            rtol=1e-10,
-            atol=1e-10,
-        ):
-            ratio = nearest
-
-        return cls(
+        return cls.from_aligned_bounds(
             sampling=sampling,
             start=start,
-            n_samples=int(np.ceil(ratio)),
+            stop=stop,
+            anchor=start,
         )
 
     @classmethod
@@ -274,6 +297,33 @@ class TimeGrid:
                 self.n_samples,
                 dtype=np.intp,
             )
+        )
+
+    def crop(
+        self,
+        start: float,
+        stop: float,
+    ) -> typing.Self:
+        """
+        Restrict the grid to coordinates in the half-open interval
+        [start, stop), preserving its sampling phase.
+        """
+        return self.__class__.from_aligned_bounds(
+            sampling=self.sampling,
+            start=start,
+            stop=stop,
+            anchor=self.start,
+        )
+
+    def shift_time(
+        self,
+        by: float,
+    ) -> typing.Self:
+        """Shift all grid coordinates by a constant amount."""
+        return self.__class__(
+            sampling=self.sampling,
+            start=self.start + float(by),
+            n_samples=self.n_samples,
         )
 
 
@@ -604,21 +654,47 @@ class _TracesData(typing.Generic[FloatT]):
     def resample_to_grid(
         self,
         grid: TimeGrid,
+        *,
+        start: float | None = None,
+        stop: float | None = None,
     ) -> typing.Self:
         """
-        Represent the signals on an explicitly defined regular time grid.
+        Resample onto an explicit regular time grid.
 
-        No target-grid defaults are inferred here.
+        Target coordinates outside the source temporal extent are filled with
+        NaN. If `start` and/or `stop` are provided, target coordinates outside
+        the additional half-open interval [start, stop) are also filled with NaN.
+
+        The source data itself is never cropped before interpolation, so samples
+        outside the requested output bounds may still contribute to interpolation
+        at valid target coordinates.
         """
-        if not isinstance(grid, TimeGrid):
-            raise TypeError('grid must be a TimeGrid')
+        if start is not None:
+            start = float(start)
 
+            if not np.isfinite(start):
+                raise ValueError('start must be finite')
+
+        if stop is not None:
+            stop = float(stop)
+
+            if not np.isfinite(stop):
+                raise ValueError('stop must be finite')
+
+        if start is not None and stop is not None and stop < start:
+            raise ValueError('stop must not precede start')
+
+        # No additional masking and already exactly on the requested grid.
         if (
-            grid.sampling == self.sampling
+            start is None
+            and stop is None
+            and grid.sampling == self.sampling
             and grid.start == self.start
             and grid.n_samples == self.n_samples
         ):
             return self.copy()
+
+        target_time = grid.times
 
         if grid.n_samples == 0:
             return self.__class__(
@@ -630,29 +706,54 @@ class _TracesData(typing.Generic[FloatT]):
                 grid.start,
             )
 
+        output = np.full(
+            (
+                len(self),
+                grid.n_samples,
+            ),
+            np.nan,
+            dtype=self.dtype,
+        )
+
         if self.n_samples == 0:
             return self.__class__(
-                np.full(
-                    (len(self), grid.n_samples),
-                    np.nan,
-                    dtype=self.dtype,
-                ),
+                output,
                 grid.sampling,
                 grid.start,
             )
 
-        target_time = grid.times
+        # Coordinates that are allowed to contain data.
+        #
+        # Source extent is always enforced. Optional bounds further restrict
+        # the output, but do not restrict which source samples interpolation
+        # may use.
+        valid = (target_time >= self.start) & (target_time < self.stop)
 
-        # Same-rate phase shifts and upsampling require interpolation,
-        # but no anti-alias filtering.
+        if start is not None:
+            valid &= target_time >= start
+
+        if stop is not None:
+            valid &= target_time < stop
+
+        if not valid.any():
+            return self.__class__(
+                output,
+                grid.sampling,
+                grid.start,
+            )
+
+        valid_time = target_time[valid]
+
+        # Same-rate phase changes and upsampling need interpolation but not
+        # anti-alias filtering.
         if grid.sampling.rate >= self.sampling.rate:
-            values = self._lookup_common(
-                target_time,
+            output[:, valid] = self._lookup_common(
+                valid_time,
                 method='linear',
             )
 
             return self.__class__(
-                values,
+                output,
                 grid.sampling,
                 grid.start,
             )
@@ -677,12 +778,6 @@ class _TracesData(typing.Generic[FloatT]):
 
         sampled_sampling = SamplingRate(self.sampling.rate * up / down)
 
-        output = np.full(
-            (len(self), grid.n_samples),
-            np.nan,
-            dtype=self.dtype,
-        )
-
         first = self.first_valid_index()
         last = self.last_valid_index()
 
@@ -704,13 +799,17 @@ class _TracesData(typing.Generic[FloatT]):
 
             if len(source) < 2:
                 exact = np.isclose(
-                    target_time,
+                    valid_time,
                     source_start,
                     rtol=1e-10,
                     atol=1e-12,
                 )
 
-                output[row, exact] = source[0]
+                output[
+                    row,
+                    np.flatnonzero(valid)[exact],
+                ] = source[0]
+
                 continue
 
             sampled = scipy.signal.resample_poly(
@@ -736,10 +835,16 @@ class _TracesData(typing.Generic[FloatT]):
             sampled = sampled[inside]
             sampled_time = sampled_time[inside]
 
-            output[row] = _interpolate_irregular(
-                sampled.reshape(1, -1),
+            output[
+                row,
+                valid,
+            ] = _interpolate_irregular(
+                sampled.reshape(
+                    1,
+                    -1,
+                ),
                 sampled_time,
-                target_time,
+                valid_time,
                 method='linear',
             )[0]
 
@@ -1649,6 +1754,128 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     ) -> TracesGrouping[FloatT]:
         return TracesGrouping.from_groupby(self, by=by, sort=sort)
 
+    def extract_win(
+        self,
+        win: Win,
+        *,
+        hz: float | None = None,
+        align: float | WinPoint = 'ref',
+    ) -> typing.Self:
+        anchor = win.time_at(align)
+
+        sampling = self.sampling if hz is None else SamplingRate(hz)
+
+        grid = TimeGrid.from_aligned_bounds(
+            sampling=sampling,
+            start=win.time_at('start') - anchor,
+            stop=win.time_at('stop') - anchor,
+            anchor=0.0,
+        )
+
+        absolute_grid = TimeGrid(
+            sampling=grid.sampling,
+            start=grid.start + anchor,
+            n_samples=grid.n_samples,
+        )
+
+        return self.resample_to_grid(absolute_grid).shift(-anchor)
+
+    def extract_matched(
+        self,
+        wins: Windows,
+        matches: Matches,
+        *,
+        align: float | WinPoint = 'ref',
+        hz: float | None = None,
+    ) -> Traces[FloatT]:
+        """
+        Extract traces according to an explicit Traces-to-Windows relation.
+        """
+        grouped: TracesGrouping[FloatT] = TracesGrouping.from_matches(
+            self, wins, matches
+        )
+
+        grouped = grouped.extract_wins(
+            wins,
+            align=align,
+            hz=('same' if hz is None else hz),
+        )
+
+        return grouped.concat()
+
+    def extract_all(
+        self,
+        wins: Windows,
+        *,
+        align: float | WinPoint = 'ref',
+        hz: float | None = None,
+    ) -> Traces[FloatT]:
+        """
+        Extract every trace from every Window.
+        """
+        matches = Matches.from_product(
+            self,
+            wins,
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+            hz=hz,
+        )
+
+    def extract_by(
+        self,
+        wins: Windows,
+        *,
+        by: str | collections.abc.Sequence[str],
+        align: float | WinPoint = 'ref',
+        hz: float | None = None,
+    ) -> Traces[FloatT]:
+        """
+        Extract traces from Windows matched by metadata equality.
+        """
+        matches = Matches.from_meta(
+            self,
+            wins,
+            by=by,
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+            hz=hz,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f'{type(self).__name__}('
+            f'n_traces={len(self)}, '
+            f'n_samples={self.n_samples}, '
+            f'sampling={self.sampling}, '
+            f'start={self.start:g}'
+            f')\n'
+            f'{self.meta!r}'
+        )
+
+    def _repr_html_(self) -> str:
+        return f'<div>{self._repr_payload_html_()}{self.meta._repr_html_()}</div>'  # type: ignore
+
+    def _repr_payload_html_(self) -> str:
+        return (
+            '<div style="margin-bottom: 0.5em;">'
+            f'<strong>{type(self).__name__}</strong>'
+            '<span style="color: #666;">'
+            f' — {len(self)} traces'
+            f' x {self.n_samples} samples'
+            f', {self.sampling._repr_html_()}'
+            f', start={self.start:g} ms'
+            '</span>'
+            '</div>'
+        )
+
 
 class TracesGrouping(
     nocte.core.grouping.Grouping[Traces[FloatT]],
@@ -1745,7 +1972,7 @@ class TracesGrouping(
 
     def _resolve_hz(
         self,
-        hz: float | typing.Literal['same', 'min', 'max'],
+        hz: ResampleHz = 'same',
     ) -> float:
         rates = np.asarray(
             [traces.hz for _, traces in self.items()],
@@ -1782,7 +2009,7 @@ class TracesGrouping(
 
     def resample(
         self,
-        hz: float | typing.Literal['same', 'min', 'max'] = 'same',
+        hz: ResampleHz = 'same',
         start: float | None = None,
         stop: float | None = None,
     ) -> typing.Self:
@@ -1808,6 +2035,72 @@ class TracesGrouping(
 
         return self.__class__.from_items(
             [traces.resample_to_grid(grid) for traces in groups],
+            meta=self.meta,
+        )
+
+    def extract_wins(
+        self,
+        wins: Windows,
+        *,
+        align: float | WinPoint = 'ref',
+        hz: ResampleHz = 'same',
+    ) -> typing.Self:
+        """
+        Extract each trace group using its corresponding Window.
+
+        A single common relative TimeGrid is constructed for all groups. Its
+        sampling rate is resolved from `hz`, its phase is locked to t=0, and its
+        extent covers all aligned Windows.
+
+        Each group is sampled exactly once from its original data. Coordinates
+        outside its corresponding Window or outside the available source data
+        are filled with NaN.
+        """
+        if len(self) == 0:
+            raise ValueError('cannot extract Windows from an empty TracesGrouping')
+
+        if self.name != wins.name:
+            raise ValueError(
+                'TracesGrouping does not correspond to these Windows: '
+                f'expected {wins.name!r}, got {self.name!r}'
+            )
+
+        missing = self.index.difference(wins.index)
+
+        if not missing.empty:
+            raise KeyError(f'Windows is missing group IDs: {missing.tolist()}')
+
+        sampling = SamplingRate(self._resolve_hz(hz))
+
+        wins = wins.sel_index(self.index)
+
+        shared_start = min(
+            win.time_at('start') - win.time_at(align) for _, win in wins.items()
+        )
+        shared_stop = max(
+            win.time_at('stop') - win.time_at(align) for _, win in wins.items()
+        )
+
+        relative_grid = TimeGrid.from_aligned_bounds(
+            sampling=sampling,
+            start=shared_start,
+            stop=shared_stop,
+            anchor=0.0,
+        )
+
+        groups: list[Traces] = []
+
+        for win_id, traces in self.items():
+            win = wins.get(win_id)
+            anchor = win.time_at(align)
+
+            grid = relative_grid.shift_time(anchor)
+            aligned = traces.resample_to_grid(grid).shift(-anchor)
+
+            groups.append(aligned)
+
+        return self.__class__.from_items(
+            groups,
             meta=self.meta,
         )
 
@@ -1845,3 +2138,52 @@ class TracesGrouping(
             start=reference.start,
             meta=self._concat_meta(),
         )
+
+    def _common_grid(self) -> Traces[FloatT]:
+        groups = [traces for _, traces in self.items()]
+
+        if not groups:
+            raise ValueError('cannot reduce an empty TracesGrouping')
+
+        reference = groups[0]
+
+        for traces in groups[1:]:
+            if (
+                traces.sampling != reference.sampling
+                or traces.start != reference.start
+                or traces.n_samples != reference.n_samples
+            ):
+                raise ValueError(
+                    'all grouped Traces must share the same time grid; resample() first'
+                )
+
+        return reference
+
+    def _reduce_traces(
+        self,
+        function: collections.abc.Callable[[np.ndarray], np.ndarray],
+    ) -> Traces[FloatT]:
+        reference = self._common_grid()
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = np.stack(
+                [function(traces.values) for _, traces in self.items()],
+                axis=0,
+            )
+
+        return Traces.from_array(
+            values,
+            reference.hz,
+            start=reference.start,
+            meta=self.meta,
+        )
+
+    def mean(self) -> Traces[FloatT]:
+        return self._reduce_traces(lambda values: np.nanmean(values, axis=0))
+
+    def median(self) -> Traces[FloatT]:
+        return self._reduce_traces(lambda values: np.nanmedian(values, axis=0))
+
+    def std(self) -> Traces[FloatT]:
+        return self._reduce_traces(lambda values: np.nanstd(values, axis=0, ddof=1))

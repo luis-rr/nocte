@@ -10,6 +10,7 @@ import pandas as pd
 
 import nocte.core.collection
 import nocte.core.hdf
+import nocte.core.matching
 
 
 class CollectionLike(typing.Protocol):
@@ -326,6 +327,111 @@ class Grouping(
             meta=meta,
         )
 
+    @classmethod
+    def from_matches(
+        cls,
+        left: GroupedT,
+        right: nocte.core.collection.Collection[typing.Any],
+        matches: nocte.core.matching.Matches,
+    ) -> typing.Self:
+        """
+        Group the left collection by its matches to the right collection.
+
+        Each right item becomes one outer group. Each match becomes one inner
+        item identified by the match identity. The original left identity is
+        preserved as metadata provenance.
+
+        Right items without matches are retained as empty groups.
+        """
+        if not isinstance(
+            left,
+            nocte.core.collection.Collection,
+        ):
+            raise TypeError('left must be a Collection')
+
+        left_source = typing.cast(
+            nocte.core.collection.Collection[typing.Any],
+            left,
+        )
+
+        left_positions = matches.left_positions(left_source)
+        right_positions = matches.right_positions(right)
+
+        left_relation = matches.left
+        right_relation = matches.right
+
+        left_ids = left_relation.to_numpy(copy=False)
+        match_ids = matches.index.to_numpy(copy=False)
+
+        left_column = str(left_relation.name)
+
+        groups: list[GroupedT] = []
+
+        for right_position in range(len(right)):
+            relation_positions = np.flatnonzero(right_positions == right_position)
+
+            source_positions = left_positions[relation_positions]
+            source_ids = left_ids[relation_positions]
+
+            group = left._sel_pos(source_positions)
+
+            # Preserve the original left identity as provenance.
+            if left_column in group.meta.columns:
+                existing = group.meta[left_column].to_numpy(copy=False)
+
+                if not np.array_equal(
+                    existing,
+                    source_ids,
+                ):
+                    raise ValueError(
+                        f'left metadata column {left_column!r} '
+                        'contradicts matched source identity'
+                    )
+            else:
+                group.meta[left_column] = source_ids
+
+            # Derived items are identified by match identity.
+            group.meta.index = pd.Index(
+                match_ids[relation_positions],
+                name=matches.name,
+            )
+
+            # Preserve pair-specific match metadata.
+            match_meta = matches.meta.iloc[relation_positions].copy()
+
+            match_meta.index = group.meta.index
+
+            for column in match_meta.columns:
+                incoming = match_meta[column]
+
+                if column not in group.meta.columns:
+                    group.meta[column] = incoming
+                    continue
+
+                existing = group.meta[column]
+
+                same = (
+                    existing.eq(incoming) | (existing.isna() & incoming.isna())
+                ).fillna(False)
+
+                if not same.all():
+                    raise ValueError(
+                        f'match metadata column {column!r} contradicts left metadata'
+                    )
+
+            groups.append(group)
+
+        outer_meta = right.meta.copy()
+
+        # Usually this is simply right.name. In a same-name relation Matches
+        # disambiguates it as right_<name>.
+        outer_meta.index = outer_meta.index.rename(str(right_relation.name))
+
+        return cls.from_items(
+            groups,
+            meta=outer_meta,
+        )
+
     # ------------------------------------------------------------------
     # collection primitives
 
@@ -427,6 +533,21 @@ class Grouping(
             index=self.index.copy(),
         )
 
+    def drop_empty(self) -> typing.Self:
+        """
+        Drop groups containing no items.
+
+        Payload dimensions are not considered. For example, a Traces group
+        containing trace items with zero samples is not an empty group.
+        """
+        keep = np.fromiter(
+            (len(group) > 0 for _, group in self.items()),
+            dtype=bool,
+            count=len(self),
+        )
+
+        return self._sel_pos(keep)
+
     # ------------------------------------------------------------------
     # serialization
 
@@ -522,8 +643,13 @@ class Grouping(
         Flatten inner metadata while preserving outer grouping provenance.
 
         Outer group identity and metadata are broadcast onto every inner item.
-        Existing metadata is kept when consistent with the grouping and rejected
-        when contradictory.
+
+        Existing inner metadata is preserved. Outer metadata with the same name is
+        reused when consistent across the grouping; when contradictory, the outer
+        value is preserved under a name prefixed by the group identity namespace.
+
+        Group identity itself is structural and must never contradict existing
+        inner metadata.
 
         All contained collections must share one item identity namespace, and
         flattened item identities must remain unique.
@@ -539,12 +665,36 @@ class Grouping(
             if group.name != item_name:
                 raise ValueError('all grouped collections must use the same item name')
 
+        def _matches_value(existing: pd.Series, value: typing.Any) -> pd.Series:
+            if pd.api.types.is_scalar(value) and bool(pd.isna(value)):
+                return existing.isna()
+
+            return existing.eq(value).fillna(False)
+
+        # Determine conflicts globally so every output row uses the same schema.
+        conflicting_columns: set[str] = set()
+
+        for position, (_, group) in enumerate(groups):
+            outer = self.meta.iloc[position]
+
+            for column, value in outer.items():
+                if column not in group.meta.columns:
+                    continue
+
+                same = _matches_value(
+                    group.meta[column],
+                    value,
+                )
+
+                if not same.all():
+                    conflicting_columns.add(column)
+
         metas: list[pd.DataFrame] = []
 
         for position, (group_id, group) in enumerate(groups):
             meta = group.meta.copy()
 
-            # Outer group identity.
+            # Outer group identity is structural and must agree if already present.
             if self.name in meta.columns:
                 existing = meta[self.name]
 
@@ -560,21 +710,24 @@ class Grouping(
             outer = self.meta.iloc[position]
 
             for column, value in outer.items():
+                if column in conflicting_columns:
+                    output_column = f'{self.name}_{column}'
+
+                    if output_column in meta.columns:
+                        raise ValueError(
+                            'cannot preserve conflicting group metadata: '
+                            f'column {output_column!r} already exists'
+                        )
+
+                    meta[output_column] = value
+                    continue
+
                 if column not in meta.columns:
                     meta[column] = value
                     continue
 
-                existing = meta[column]
-
-                if pd.api.types.is_scalar(value) and bool(pd.isna(value)):
-                    same = existing.isna()
-                else:
-                    same = existing.eq(value).fillna(False)
-
-                if not same.all():
-                    raise ValueError(
-                        f'inner metadata column {column!r} contradicts group metadata'
-                    )
+                # No action needed: the global pass established that the existing
+                # inner column is consistent with the outer metadata.
 
             metas.append(meta)
 
