@@ -8,10 +8,10 @@ import matplotlib.colors
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from tqdm.auto import tqdm
-
 from nocte.analysis.sne import SharpNegativeEvents
 from nocte.core.stacks import Stack
+from tqdm.auto import tqdm
+
 from nocte.core.time import ms
 from nocte.core.windows import Win, Windows
 from nocte.plot import plot as splot

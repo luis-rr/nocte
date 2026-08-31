@@ -13,11 +13,11 @@ If x-corr is high with a positive lag, it means we are comparing ch0 with future
 """
 
 import numpy as np
+from nocte.core.stacks import Stack
 from numba import njit, prange
 from tqdm.auto import tqdm
 
 from nocte.core import windows as timeslice
-from nocte.core.stacks import Stack
 from nocte.core.time import MS_TO_S
 
 
