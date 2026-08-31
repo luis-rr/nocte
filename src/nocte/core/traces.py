@@ -1425,68 +1425,81 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         )
 
     # ------------------------------------------------------------------
-    # per-trace summaries
+    # mathematical manipulations
 
     def _summary(
         self,
-        values: np.ndarray,
+        func: typing.Callable[..., np.ndarray],
         *,
         name: str,
+        each: bool = False,
+        **kwargs,
     ) -> pd.Series:
-        return pd.Series(
-            values,
-            index=self.index.copy(),
-            name=name,
-        )
+        axis = 1 if each else 0
+        index = self.index.copy() if each else pd.Index(self.time, name='time')
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            values = func(self.values, axis=axis, **kwargs)
+
+        return pd.Series(values, index=index, name=name)
 
     def mean(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanmean(self.values, axis=1)
-        return self._summary(values, name='mean')
+        return self._summary(np.nanmean, name='mean')
+
+    def mean_each(self) -> pd.Series:
+        return self._summary(np.nanmean, name='mean', each=True)
 
     def median(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanmedian(self.values, axis=1)
-        return self._summary(values, name='median')
+        return self._summary(np.nanmedian, name='median')
+
+    def median_each(self) -> pd.Series:
+        return self._summary(np.nanmedian, name='median', each=True)
 
     def std(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanstd(self.values, axis=1, ddof=1)
-        return self._summary(values, name='std')
+        return self._summary(np.nanstd, name='std', ddof=1)
+
+    def std_each(self) -> pd.Series:
+        return self._summary(np.nanstd, name='std', each=True, ddof=1)
 
     def var(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanvar(self.values, axis=1, ddof=1)
-        return self._summary(values, name='var')
+        return self._summary(np.nanvar, name='var', ddof=1)
+
+    def var_each(self) -> pd.Series:
+        return self._summary(np.nanvar, name='var', each=True, ddof=1)
 
     def min(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanmin(self.values, axis=1)
-        return self._summary(values, name='min')
+        return self._summary(np.nanmin, name='min')
+
+    def min_each(self) -> pd.Series:
+        return self._summary(np.nanmin, name='min', each=True)
 
     def max(self) -> pd.Series:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanmax(self.values, axis=1)
-        return self._summary(values, name='max')
+        return self._summary(np.nanmax, name='max')
+
+    def max_each(self) -> pd.Series:
+        return self._summary(np.nanmax, name='max', each=True)
 
     def quantile(self, q: float) -> pd.Series:
         q = float(q)
+
         if not 0 <= q <= 1:
             raise ValueError('q must be between 0 and 1')
 
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.nanquantile(self.values, q, axis=1)
-        return self._summary(values, name='quantile')
+        return self._summary(np.nanquantile, name='quantile', q=q)
 
-    # ------------------------------------------------------------------
-    # trace-preserving transforms
+    def quantile_each(self, q: float) -> pd.Series:
+        q = float(q)
+
+        if not 0 <= q <= 1:
+            raise ValueError('q must be between 0 and 1')
+
+        return self._summary(
+            np.nanquantile,
+            name='quantile',
+            each=True,
+            q=q,
+        )
 
     def _with_values(self, values: np.ndarray) -> typing.Self:
         values = np.asarray(values)
@@ -1517,15 +1530,16 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         return self._with_values(values)
 
     def center(self) -> typing.Self:
-        means = self.mean().to_numpy()
+        means = self.mean_each().to_numpy()
         return self._with_values(self.values - means[:, None])
 
     def zscore(self) -> typing.Self:
-        means = self.mean().to_numpy()
-        std = self.std().to_numpy()
+        means = self.mean_each().to_numpy()
+        std = self.std_each().to_numpy()
 
         with np.errstate(divide='ignore', invalid='ignore'):
             values = (self.values - means[:, None]) / std[:, None]
+
         return self._with_values(values)
 
     def normalize_quantiles(
@@ -1557,9 +1571,6 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             ) / scale[valid_scale, None]
 
         return self._with_values(values)
-
-    # ------------------------------------------------------------------
-    # rolling transforms
 
     def _rolling_bounds(
         self,
@@ -1724,6 +1735,9 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         with np.errstate(divide='ignore', invalid='ignore'):
             values = (self.values - mean.values) / std.values
         return self._with_values(values)
+
+    # ------------------------------------------------------------------
+    # serialization
 
     def _to_hdf_data(
         self,
