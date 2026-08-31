@@ -13,11 +13,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from nocte.io import neuropixel
 from tqdm.auto import tqdm
 
 import nocte.core.sampling
 import nocte.core.time
-from nocte.io import neuropixel
 
 # TODO: we should look up channel index by type. We are after SY0, which can be looked up in channel map.
 # For now just pick up the last channel in the saved file (id 768, index 384)

@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import open_ephys.analysis
 import pandas as pd
-
 from nocte.io import common
 
 logger = logging.getLogger(__name__)
