@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import collections.abc
-import dataclasses
 import fractions
 import itertools
 import logging
@@ -20,7 +19,7 @@ import nocte.core.grouping
 import nocte.core.hdf
 from nocte.core.hdf import HDFCollection
 from nocte.core.matching import Matches
-from nocte.core.sampling import SamplingRate
+from nocte.core.sampling import SamplingRate, TimeGrid
 from nocte.core.windows import Win, Windows, WinPoint
 
 logger = logging.getLogger(__name__)
@@ -180,151 +179,6 @@ def _interpolate_irregular(
         result[row, ~inside] = np.nan
 
     return result
-
-
-@dataclasses.dataclass(frozen=True)
-class TimeGrid:
-    sampling: SamplingRate
-    start: float
-    n_samples: int
-
-    def __post_init__(self):
-        if not isinstance(self.sampling, SamplingRate):
-            raise TypeError('sampling must be a SamplingRate')
-
-        if not np.isfinite(self.start):
-            raise ValueError('start must be finite')
-
-        if not isinstance(self.n_samples, (int, np.integer)):
-            raise TypeError('n_samples must be an integer')
-
-        if self.n_samples < 0:
-            raise ValueError('n_samples must be non-negative')
-
-    @classmethod
-    def from_aligned_bounds(
-        cls,
-        *,
-        sampling: SamplingRate,
-        start: float,
-        stop: float,
-        anchor: float,
-    ) -> typing.Self:
-        """
-        Construct a regular grid phase-locked to `anchor`.
-
-        Grid coordinates are
-
-            anchor + k * period
-
-        and include every such coordinate in the half-open interval
-        [start, stop).
-        """
-        start = float(start)
-        stop = float(stop)
-        anchor = float(anchor)
-
-        if not np.all(np.isfinite([start, stop, anchor])):
-            raise ValueError('start, stop, and anchor must be finite')
-
-        if stop < start:
-            raise ValueError('stop must not precede start')
-
-        period = sampling.period_ms
-
-        first = int(np.ceil((start - anchor) / period))
-        last = int(np.ceil((stop - anchor) / period))
-
-        grid_start = anchor + sampling.samples_to_ms(first)
-
-        return cls(
-            sampling=sampling,
-            start=grid_start,
-            n_samples=last - first,
-        )
-
-    @classmethod
-    def from_bounds(
-        cls,
-        *,
-        sampling: SamplingRate,
-        start: float,
-        stop: float,
-    ) -> typing.Self:
-        """
-        Construct the regular grid covering the half-open interval
-        [start, stop).
-        """
-        return cls.from_aligned_bounds(
-            sampling=sampling,
-            start=start,
-            stop=stop,
-            anchor=start,
-        )
-
-    @classmethod
-    def from_hz_bounds(
-        cls,
-        *,
-        hz: float,
-        start: float,
-        stop: float,
-    ) -> typing.Self:
-        return cls.from_bounds(
-            sampling=SamplingRate(hz),
-            start=start,
-            stop=stop,
-        )
-
-    @property
-    def stop(self) -> float:
-        """Exclusive temporal boundary of the grid."""
-        return self.start + self.sampling.samples_to_ms(self.n_samples)
-
-    @property
-    def last(self) -> float | None:
-        """Time of the final sample, or None for an empty grid."""
-        if self.n_samples == 0:
-            return None
-
-        return self.start + self.sampling.samples_to_ms(self.n_samples - 1)
-
-    @property
-    def times(self) -> np.ndarray:
-        """Times of the samples in the grid."""
-        return self.start + self.sampling.samples_to_ms(
-            np.arange(
-                self.n_samples,
-                dtype=np.intp,
-            )
-        )
-
-    def crop(
-        self,
-        start: float,
-        stop: float,
-    ) -> typing.Self:
-        """
-        Restrict the grid to coordinates in the half-open interval
-        [start, stop), preserving its sampling phase.
-        """
-        return self.__class__.from_aligned_bounds(
-            sampling=self.sampling,
-            start=start,
-            stop=stop,
-            anchor=self.start,
-        )
-
-    def shift_time(
-        self,
-        by: float,
-    ) -> typing.Self:
-        """Shift all grid coordinates by a constant amount."""
-        return self.__class__(
-            sampling=self.sampling,
-            start=self.start + float(by),
-            n_samples=self.n_samples,
-        )
 
 
 class _TracesData(typing.Generic[FloatT]):
@@ -1400,29 +1254,97 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     def are_gapless(self) -> bool:
         return bool(self.is_gapless().all())
 
-    def first_valid_time(self) -> pd.Series:
-        indices = self._data.first_valid_index()
-        result = np.full(len(self), np.nan, dtype=float)
-        valid = indices >= 0
-        result[valid] = self.start + self.sampling.samples_to_ms(indices[valid])
+    def valid_bounds(
+        self,
+        positions: np.ndarray | None = None,
+        *,
+        desc: str = 'traces',
+        gaps_ok: bool = False,
+        inf_ok: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Return finite sample bounds for selected traces.
 
-        return pd.Series(
-            result,
-            index=self.index.copy(),
-            name='first_valid_time',
+        Bounds are half-open integer sample positions. Leading and trailing NaNs
+        are allowed and excluded from the returned bounds. Internal NaN gaps and
+        infinite values within the observed extent are rejected.
+
+        The returned arrays have one entry per trace in the collection, regardless
+        of which positions were requested. Unselected and entirely missing traces
+        have empty bounds `(0, 0)`.
+
+        Repeated positions are inspected only once.
+        """
+        if positions is None:
+            selected = np.ones(
+                len(self),
+                dtype=bool,
+            )
+        else:
+            positions = np.asarray(
+                positions,
+                dtype=np.intp,
+            )
+
+            if positions.ndim != 1:
+                raise ValueError('positions must be one-dimensional')
+
+            if np.any(positions < 0) or np.any(positions >= len(self)):
+                raise IndexError('trace position out of bounds')
+
+            selected = np.zeros(
+                len(self),
+                dtype=bool,
+            )
+            selected[positions] = True
+
+        first = np.zeros(
+            len(self),
+            dtype=np.intp,
+        )
+        stop = np.zeros(
+            len(self),
+            dtype=np.intp,
         )
 
-    def last_valid_time(self) -> pd.Series:
-        indices = self._data.last_valid_index()
-        result = np.full(len(self), np.nan, dtype=float)
-        valid = indices >= 0
-        result[valid] = self.start + self.sampling.samples_to_ms(indices[valid])
+        gap_ids: list[int] = []
+        nonfinite_ids: list[int] = []
 
-        return pd.Series(
-            result,
-            index=self.index.copy(),
-            name='last_valid_time',
-        )
+        values = self.values
+
+        for position_ in np.flatnonzero(selected):
+            position = int(position_)
+
+            row = values[position]
+
+            observed = ~np.isnan(row)
+
+            if not observed.any():
+                continue
+
+            row_first = int(np.argmax(observed))
+            row_stop = int(len(row) - np.argmax(observed[::-1]))
+
+            support = row[row_first:row_stop]
+
+            if np.isnan(support).any():
+                gap_ids.append(int(self.index[position]))
+                continue
+
+            if not np.isfinite(support).all():
+                nonfinite_ids.append(int(self.index[position]))
+                continue
+
+            first[position] = row_first
+            stop[position] = row_stop
+
+        if not gaps_ok and gap_ids:
+            raise ValueError(f'{desc} contain internal NaN gaps for IDs {gap_ids}')
+
+        if not inf_ok and nonfinite_ids:
+            raise ValueError(f'{desc} contain infinite values for IDs {nonfinite_ids}')
+
+        return first, stop
 
     # ------------------------------------------------------------------
     # mathematical manipulations
