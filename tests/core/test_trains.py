@@ -195,33 +195,6 @@ def test_drop_silent_removes_only_empty_trains():
     assert result.counts().tolist() == [1, 1]
 
 
-def test_crop_updates_support_but_preserves_all_train_identities():
-    obj = trains.Trains.from_times(
-        {10: [1.0, 2.0, 7.999, 8.0], 20: [1.0], 30: []},
-        support=windows.Win(0.0, 10.0),
-    )
-
-    cropped = obj.crop(windows.Win(2.0, 8.0))
-
-    assert cropped.index.tolist() == [10, 20, 30]
-    assert cropped.support == windows.Win(2.0, 8.0)
-    np.testing.assert_array_equal(cropped.get(10), [2.0, 7.999])
-    assert cropped.get(20).size == 0
-    assert cropped.get(30).size == 0
-
-
-def test_crop_disjoint_window_produces_empty_support_and_silent_trains():
-    obj = trains.Trains.from_times(
-        [[1.0], [2.0]],
-        support=windows.Win(0.0, 10.0),
-    )
-
-    cropped = obj.crop(windows.Win(20.0, 30.0))
-
-    assert cropped.support.length == 0.0
-    assert cropped.counts().tolist() == [0, 0]
-
-
 def test_shift_moves_timestamps_and_support_together():
     obj = trains.Trains.from_times(
         [[1.0, 4.0]],

@@ -12,7 +12,9 @@ import numpy as np
 import pandas as pd
 
 import nocte.core._point_process
+import nocte.core.grouping
 import nocte.core.hdf
+import nocte.core.matching
 import nocte.core.time
 import nocte.core.windows
 
@@ -302,12 +304,11 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
     # ------------------------------------------------------------------
     # temporal transformations
 
-    def crop(self, win: nocte.core.windows.Win) -> typing.Self:
-        """
-        Restrict all trains to the intersection of ``support`` and ``win``.
-
-        Train identities are preserved, including trains that become empty.
-        """
+    def _crop(
+        self,
+        win: nocte.core.windows.Win,
+    ) -> typing.Self:
+        """Restrict all trains and their support to one temporal window."""
         support = self.support.crop(win)
         start = support.time_at('start')
         stop = support.time_at('stop')
@@ -328,6 +329,101 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
             self._data.shift(by),
             self.meta,
             self.support.shift(by),
+        )
+
+    def extract_win(
+        self,
+        win: nocte.core.windows.Win,
+        *,
+        align: float | nocte.core.windows.WinPoint | None = 'ref',
+        drop: bool = True,
+    ) -> typing.Self:
+        """Extract trains inside `win` and optionally align their times."""
+        result = self._crop(win)
+
+        if align is not None:
+            result = result.shift(-win.time_at(align))
+
+        if drop:
+            result = result.drop_silent()
+
+        return result
+
+    def extract_matched(
+        self,
+        wins: nocte.core.windows.Windows,
+        matches: nocte.core.matching.Matches,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Trains:
+        """Extract trains according to an explicit Trains-to-Windows relation."""
+        grouped = TrainsGrouping.from_matches(
+            self,
+            wins,
+            matches,
+        )
+
+        grouped = grouped.extract_wins(
+            wins,
+            align=align,
+            drop=drop,
+        )
+
+        return grouped.concat()
+
+    def extract_all(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Trains:
+        """Extract every train from every Window."""
+        matches = nocte.core.matching.Matches.from_product(
+            self,
+            wins,
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+            drop=drop,
+        )
+
+    def extract_by(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        by: str | collections.abc.Sequence[str],
+        align: float | nocte.core.windows.WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Trains:
+        """Extract trains from Windows matched by metadata equality."""
+        matches = nocte.core.matching.Matches.from_meta(
+            self,
+            wins,
+            by=by,
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+            drop=drop,
+        )
+
+    def groupby(
+        self,
+        by: str | list[str],
+        *,
+        sort: bool = False,
+    ) -> TrainsGrouping:
+        return TrainsGrouping.from_groupby(
+            self,
+            by=by,
+            sort=sort,
         )
 
     # ------------------------------------------------------------------
@@ -573,3 +669,98 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         if not np.isfinite(value) or value <= 0:
             raise ValueError(f'{name} must be finite and positive')
         return value
+
+
+class TrainsGrouping(
+    nocte.core.grouping.Grouping[Trains],
+):
+    """
+    Homogeneous grouping of Trains.
+
+    Provides matched temporal extraction while preserving outer group
+    identities and metadata. Concatenation requires all groups to share
+    exactly the same observation support.
+    """
+
+    def extract_wins(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+        drop: bool = True,
+    ) -> typing.Self:
+        """Extract each train group using its corresponding Window."""
+        if len(self) == 0:
+            raise ValueError('cannot extract Windows from an empty TrainsGrouping')
+
+        missing = self.index.difference(wins.index)
+
+        if not missing.empty:
+            raise KeyError(f'Windows is missing group IDs: {missing.tolist()}')
+
+        wins = wins.sel_index(self.index)
+
+        groups = [
+            trains.extract_win(
+                wins.get(win_id),
+                align=align,
+                drop=drop,
+            )
+            for win_id, trains in self.items()
+        ]
+
+        return self.__class__.from_items(
+            groups,
+            meta=self.meta,
+        )
+
+    def _common_support(self) -> nocte.core.windows.Win:
+        """Return the shared realized support, raising if grouped Trains differ."""
+        groups = [trains for _, trains in self.items()]
+
+        if not groups:
+            raise ValueError('cannot get support from an empty TrainsGrouping')
+
+        supports = [
+            (
+                trains.support.time_at('start'),
+                trains.support.time_at('stop'),
+            )
+            for trains in groups
+        ]
+
+        start, stop = supports[0]
+
+        if any(
+            not np.allclose(
+                other,
+                (start, stop),
+                rtol=1e-10,
+                atol=1e-10,
+            )
+            for other in supports[1:]
+        ):
+            counts = collections.Counter(supports)
+
+            summary = ', '.join(
+                f'{count} x ({other_start:g}, {other_stop:g})'
+                for (other_start, other_stop), count in counts.most_common()
+            )
+
+            raise ValueError(
+                f'all grouped Trains must share the same support; found {summary}'
+            )
+
+        return nocte.core.windows.Win(start, stop)
+
+    def concat(self) -> Trains:
+        """Concatenate groups that share exactly the same observation support."""
+        support = self._common_support()
+
+        values = [times for _, trains in self.items() for times in trains._data.values]
+
+        return Trains(
+            _TrainsData._from_readonly_arrays(values),
+            self._concat_meta(),
+            support,
+        )

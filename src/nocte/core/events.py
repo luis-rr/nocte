@@ -12,7 +12,9 @@ import numpy as np
 import pandas as pd
 
 import nocte.core._point_process
+import nocte.core.grouping
 import nocte.core.hdf
+import nocte.core.matching
 import nocte.core.time
 import nocte.core.windows
 
@@ -217,11 +219,6 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         stop = win.time_at('stop')
         mask = (start <= self._time) & (self._time < stop)
         return pd.Series(mask, index=self.index, name='contained_in')
-
-    def crop(self, win: nocte.core.windows.Win) -> typing.Self:
-        """Keep events inside the half-open window ``win``."""
-        mask = self.contained_in(win).to_numpy()
-        return self._sel_pos(np.flatnonzero(mask))
 
     def intervals(self) -> pd.Series:
         """
@@ -435,3 +432,150 @@ class Events(nocte.core.hdf.HDFCollection[float]):
             raise ValueError(f'{name} must be finite')
 
         return result
+
+    def groupby(
+        self,
+        by: str | list[str],
+        *,
+        sort: bool = False,
+    ) -> EventsGrouping:
+        return EventsGrouping.from_groupby(
+            self,
+            by=by,
+            sort=sort,
+        )
+
+    def extract_win(
+        self,
+        win: nocte.core.windows.Win,
+        *,
+        align: float | nocte.core.windows.WinPoint | None = 'ref',
+    ) -> typing.Self:
+        """Extract events inside `win` and optionally align their times."""
+        mask = self.contained_in(win).to_numpy()
+        result = self._sel_pos(np.flatnonzero(mask))
+
+        if align is not None:
+            result = result.shift(-win.time_at(align))
+
+        return result
+
+    def extract_matched(
+        self,
+        wins: nocte.core.windows.Windows,
+        matches: nocte.core.matching.Matches,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+    ) -> Events:
+        """Extract events according to an explicit Events-to-Windows relation."""
+        grouped = EventsGrouping.from_matches(
+            self,
+            wins,
+            matches,
+        )
+
+        grouped = grouped.extract_wins(
+            wins,
+            align=align,
+        )
+
+        return grouped.concat()
+
+    def extract_by(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        by: str | collections.abc.Sequence[str],
+        align: float | nocte.core.windows.WinPoint = 'ref',
+    ) -> Events:
+        """Extract events from Windows matched by metadata equality."""
+        matches = nocte.core.matching.Matches.from_meta(
+            self,
+            wins,
+            by=by,
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+        )
+
+    def extract_all(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+    ) -> Events:
+        """Extract every event contained in every Window."""
+        pairs = nocte.core.windows._TimeWindowPairs.from_times(
+            wins,
+            self._time,
+        )
+
+        matches = nocte.core.matching.Matches.from_pairs(
+            self,
+            wins,
+            left_ids=self.index.to_numpy()[pairs.time_pos],
+            right_ids=wins.index.to_numpy()[pairs.win_pos],
+        )
+
+        return self.extract_matched(
+            wins,
+            matches,
+            align=align,
+        )
+
+
+class EventsGrouping(
+    nocte.core.grouping.Grouping[Events],
+):
+    """
+    Homogeneous grouping of Events.
+
+    Provides event extraction across corresponding Windows while preserving
+    outer group identities and metadata. Concatenation reduces the grouping
+    back to one Events collection.
+    """
+
+    def extract_wins(
+        self,
+        wins: nocte.core.windows.Windows,
+        *,
+        align: float | nocte.core.windows.WinPoint = 'ref',
+    ) -> typing.Self:
+        """Extract each event group using its corresponding Window."""
+        if len(self) == 0:
+            raise ValueError('cannot extract Windows from an empty EventsGrouping')
+
+        missing = self.index.difference(wins.index)
+
+        if not missing.empty:
+            raise KeyError(f'Windows is missing group IDs: {missing.tolist()}')
+
+        wins = wins.sel_index(self.index)
+
+        groups = [
+            events.extract_win(
+                wins.get(win_id),
+                align=align,
+            )
+            for win_id, events in self.items()
+        ]
+
+        return self.__class__.from_items(
+            groups,
+            meta=self.meta,
+        )
+
+    def concat(self) -> Events:
+        """Concatenate all grouped Events into one collection."""
+        groups = [events for _, events in self.items()]
+
+        if not groups:
+            raise ValueError('cannot concatenate an empty EventsGrouping')
+
+        return Events.from_times(
+            np.concatenate([events._time for events in groups]),
+            meta=self._concat_meta(),
+        )

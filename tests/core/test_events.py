@@ -144,7 +144,7 @@ def test_round_supports_temporal_scales():
     assert rounded.time.tolist() == [1000.0, 2000.0]
 
 
-def test_contained_in_and_crop_use_half_open_window_semantics():
+def test_contained_in_and_extract_win_use_half_open_window_semantics():
     obj = events.Events.from_times(
         pd.Series(
             [0.0, 1.0, 2.0, 3.0],
@@ -154,7 +154,7 @@ def test_contained_in_and_crop_use_half_open_window_semantics():
     win = windows.Win(1.0, 3.0)
 
     mask = obj.contained_in(win)
-    cropped = obj.crop(win)
+    cropped = obj.extract_win(win, align=None)
 
     pdt.assert_series_equal(
         mask,

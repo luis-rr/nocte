@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nocte.core.windows import Win, WindowMatches, Windows
+from nocte.core.windows import Win, Windows, _TimeWindowPairs
 
 
 def assert_series_values(series: pd.Series, values) -> None:
@@ -393,11 +393,11 @@ def test_reanchor_preserves_realized_intervals():
     assert_series_values(result.stop, [15, 15])
 
 
-def test_crop_preserves_identity_reference_and_turns_disjoint_windows_empty():
+def test_extract_win_preserves_identity_reference_and_turns_disjoint_windows_empty():
     meta = pd.DataFrame(index=pd.Index([10, 20], name='win_id'))
     wins = Windows.from_arrays(0, 10, [100, 200], meta=meta)
 
-    cropped = wins.crop(Win(105, 115))
+    cropped = wins.extract_win(Win(105, 115), drop=False)
 
     assert cropped.index.equals(wins.index)
     assert_series_values(cropped.ref, [100, 200])
@@ -708,8 +708,8 @@ def test_match_events_returns_sparse_relation_for_overlapping_windows():
 
     matches = wins.match_events([2, 7, 12, 20])
 
-    assert isinstance(matches, WindowMatches)
-    assert set(zip(matches.event_pos, matches.win_pos, strict=True)) == {
+    assert isinstance(matches, _TimeWindowPairs)
+    assert set(zip(matches.time_pos, matches.win_pos, strict=True)) == {
         (0, 0),
         (1, 0),
         (1, 1),
@@ -725,7 +725,7 @@ def test_match_events_respects_half_open_boundaries_and_empty_windows():
 
     matches = wins.match_events([0, 10, 20, 5])
 
-    assert set(zip(matches.event_pos, matches.win_pos, strict=True)) == {
+    assert set(zip(matches.time_pos, matches.win_pos, strict=True)) == {
         (0, 0),
         (1, 1),
         (3, 0),

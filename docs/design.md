@@ -217,7 +217,6 @@ Specialized groupings expose a small, useful subset of their contained collectio
 
 * `TracesGrouping.shift_time(...)`
 * `TracesGrouping.resample(...)`
-* `TracesGrouping.crop(...)`
 * `TracesGrouping.concat()`
 
 Less common transformations remain available through `Grouping.map()`.
@@ -312,7 +311,7 @@ The in-memory payload is a small ragged container with one one-dimensional NumPy
 
 `support: Win` is explicit collection-wide state defining the period during which the entire collection was observed. It is required because empty trains are valid and rates or binned representations cannot be inferred correctly from timestamp extrema alone.
 
-Selection operates on trains and leaves support unchanged. `crop(win)` restricts every train to the requested region, preserves every train identity including trains that become silent, and updates support. `shift_time(...)` shifts both timestamps and support.
+Selection operates on trains and leaves support unchanged. `extract_win(win)` restricts every train to the requested region, preserves every train identity including trains that become silent, and updates support. `shift_time(...)` shifts both timestamps and support.
 
 `Trains` is intentionally generic rather than spike-specific. Spike-sorting import, waveform processing, unit-quality metrics, and format-specific adapters such as Kilosort live outside `core/trains.py` and construct ordinary `Trains` plus metadata.
 
@@ -440,33 +439,40 @@ The model keeps point occurrences, interval occurrences, collections of points, 
 
 ### Temporal extraction
 
-Extraction composes matching, type-specific temporal operations, grouping, and concatenation:
+Temporal collections share four extraction methods:
 
-```text
-source + Windows + Matches
-          ↓
-    group + native crop
-          ↓
- specialized Grouping
-          ↓
- shift_time / resample
-          ↓
-    concatenation
-          ↓
- source collection type
+```python
+source.extract_win(win, ...)
+source.extract_matched(wins, matches, ...)
+source.extract_all(wins, ...)
+source.extract_by(wins, by=..., ...)
 ```
 
-For `Traces`:
+`extract_win()` is the scalar primitive. The others differ only in how the source-to-window relation is constructed: explicit `Matches`, all-to-all, or metadata equality.
 
-* `Traces.extract_grouped(wins, matches)` performs the matched native crops and returns a `TracesGrouping`
-* alignment is a per-group `shift_time(...)`, not a separate temporal primitive
-* `resample(...)` explicitly places groups on a common sampling grid when required
-* `concat()` collates already-compatible groups and never silently interpolates
-* `Traces.extract(...)` is the high-level convenience composition of the same operations
+Multi-window extraction is implemented through specialized grouping:
 
-Cropping selects native observations, shifting changes coordinates without changing values, and resampling performs interpolation. These remain distinct operations.
+```text
+source + Windows
+       ↓
+     Matches
+       ↓
+specialized Grouping
+       ↓
+extract each group against its Window
+       ↓
+concat()
+       ↓
+source collection type
+```
 
-On concatenation, the former group identity and group metadata can optionally be broadcast onto the resulting items as provenance. Their column names follow the collection naming convention. High-level extraction may preserve this information by default, while generic concatenation remains configurable.
+The grouping preserves match identities, source provenance, and outer window metadata while type-specific extraction is performed independently per window. `concat()` then flattens compatible groups back into the source collection type and broadcasts grouping provenance into metadata.
+
+`align=None` is supported only by `extract_win()` and preserves absolute time. Multi-window extraction aligns groups before concatenation. Items with no surviving observations are dropped by default where the type has a valid empty representation; `drop=False` preserves them. `Events` has no empty-item representation.
+
+The type-specific restriction is simple: `Windows` intersects intervals, `Events` selects contained timestamps, `Trains` restricts timestamps and observation support, and `Traces` interpolates onto an explicit sampling grid.
+
+Concatenation never silently repairs incompatible collection-wide state. For example, `TracesGrouping` requires compatible sampling grids and `TrainsGrouping` requires a common realized support.
 
 ## Large-experiment processing
 

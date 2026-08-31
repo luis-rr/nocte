@@ -13,9 +13,11 @@ import h5py
 import numpy as np
 import pandas as pd
 
+import nocte.core.grouping
 import nocte.core.hdf
 from nocte.core import time
 from nocte.core.hdf import HDFCollection
+from nocte.core.matching import Matches
 
 logger = logging.getLogger(__name__)
 
@@ -350,7 +352,7 @@ class Win:
         if not np.isfinite(max_duration) or max_duration < 0:
             raise ValueError('Maximum duration must be finite and non-negative')
 
-        position = _position_fraction(q)
+        position = self._position_fraction(q)
 
         if self.length <= max_duration:
             return self
@@ -361,6 +363,19 @@ class Win:
             self.stop - excess * (1.0 - position),
             ref=self.ref,
         )
+
+    @staticmethod
+    def _position_fraction(q: float | WinPosition) -> float:
+        if isinstance(q, str):
+            try:
+                return {'start': 0.0, 'mid': 0.5, 'stop': 1.0}[q]
+            except KeyError:
+                raise ValueError(f'Unknown window position: {q!r}') from None
+
+        q = float(q)
+        if not np.isfinite(q) or not 0.0 <= q <= 1.0:
+            raise ValueError('Window position must be between 0 and 1')
+        return q
 
     # ------------------------------------------------------------------
     # time generation
@@ -1056,8 +1071,13 @@ class Windows(HDFCollection[Win]):
             meta=self.meta,
         )
 
-    def crop(self, win: Win) -> typing.Self:
-        """Crop every window to `win`, preserving identity and reference."""
+    def _crop(
+        self,
+        win: Win,
+        *,
+        drop: bool = False,
+    ) -> typing.Self:
+        """Intersect every window with `win`, preserving identity and reference."""
         start = self._time_at('start')
         stop = self._time_at('stop')
         win_start = win.time_at('start')
@@ -1066,11 +1086,22 @@ class Windows(HDFCollection[Win]):
         cropped_start = np.minimum(np.maximum(start, win_start), win_stop)
         cropped_stop = np.maximum(np.minimum(stop, win_stop), win_start)
 
+        if drop:
+            keep = cropped_start < cropped_stop
+
+            cropped_start = cropped_start[keep]
+            cropped_stop = cropped_stop[keep]
+            ref = self._ref[keep]
+            meta = self.meta.iloc[keep]
+        else:
+            ref = self._ref
+            meta = self.meta
+
         return self.__class__.from_arrays(
-            cropped_start - self._ref,
-            cropped_stop - self._ref,
-            self._ref,
-            meta=self.meta,
+            cropped_start - ref,
+            cropped_stop - ref,
+            ref,
+            meta=meta,
         )
 
     def drop_empty(self) -> typing.Self:
@@ -1339,14 +1370,14 @@ class Windows(HDFCollection[Win]):
     # ------------------------------------------------------------------
     # event matching and categorical operations
 
-    def match_events(self, times: TimesLike) -> WindowMatches:
+    def match_events(self, times: TimesLike) -> _TimeWindowPairs:
         """
         Return the sparse event-window relation as positional arrays.
 
         Match ordering is intentionally unspecified. Events outside all windows
         are omitted; overlapping windows may match the same event more than once.
         """
-        return WindowMatches.from_times(self, _as_time_array(times))
+        return _TimeWindowPairs.from_times(self, _as_time_array(times))
 
     def classify_events(
         self,
@@ -1372,14 +1403,14 @@ class Windows(HDFCollection[Win]):
         if collisions:
             raise ValueError(f'cols conflict with output columns: {sorted(collisions)}')
 
-        matches = WindowMatches.from_times(self, values)
+        matches = _TimeWindowPairs.from_times(self, values)
 
-        if len(matches.event_pos):
-            order = np.lexsort((matches.win_pos, matches.event_pos))
-            event_pos = matches.event_pos[order]
+        if len(matches.time_pos):
+            order = np.lexsort((matches.win_pos, matches.time_pos))
+            event_pos = matches.time_pos[order]
             win_pos = matches.win_pos[order]
         else:
-            event_pos = matches.event_pos
+            event_pos = matches.time_pos
             win_pos = matches.win_pos
 
         data: dict[str, typing.Any] = {
@@ -1410,7 +1441,7 @@ class Windows(HDFCollection[Win]):
 
         events = _as_time_series(times)
         values = events.to_numpy(dtype=float)
-        win_pos = _assign_events_exclusive(self, values)
+        win_pos = self._assign_events_exclusive(values)
         matched = win_pos >= 0
 
         generated = np.empty(len(values), dtype=object)
@@ -1422,6 +1453,35 @@ class Windows(HDFCollection[Win]):
             index=events.index,
             name=by,
         ).infer_objects()
+
+    def _assign_events_exclusive(
+        self,
+        times: np.ndarray,
+    ) -> np.ndarray:
+        """Return one window position per event, or -1 when unmatched."""
+        result = np.full(len(times), -1, dtype=int)
+        win_positions = np.flatnonzero(~self._is_empty())
+
+        if len(times) == 0 or len(win_positions) == 0:
+            return result
+
+        start = self._time_at('start')[win_positions]
+        stop = self._time_at('stop')[win_positions]
+        order = np.lexsort((stop, start))
+        start = start[order]
+        stop = stop[order]
+        win_positions = win_positions[order]
+
+        slot = np.searchsorted(start, times, side='right') - 1
+        candidate = slot >= 0
+        event_pos = np.flatnonzero(candidate)
+        slot = slot[candidate]
+        inside = times[event_pos] < stop[slot]
+
+        event_pos = event_pos[inside]
+        slot = slot[inside]
+        result[event_pos] = win_positions[slot]
+        return result
 
     def generate_contiguous(
         self,
@@ -1767,18 +1827,131 @@ class Windows(HDFCollection[Win]):
 
         return cls(data=data, meta=meta)
 
+    def groupby(
+        self,
+        by: str | list[str],
+        *,
+        sort: bool = False,
+    ) -> WindowsGrouping:
+        return WindowsGrouping.from_groupby(
+            self,
+            by=by,
+            sort=sort,
+        )
 
-def _position_fraction(q: float | WinPosition) -> float:
-    if isinstance(q, str):
-        try:
-            return {'start': 0.0, 'mid': 0.5, 'stop': 1.0}[q]
-        except KeyError:
-            raise ValueError(f'Unknown window position: {q!r}') from None
+    def extract_win(
+        self,
+        win: Win,
+        *,
+        align: float | WinPoint | None = 'ref',
+        drop: bool = True,
+    ) -> typing.Self:
+        """Extract windows intersecting `win` and optionally align them."""
+        result = self._crop(win, drop=drop)
 
-    q = float(q)
-    if not np.isfinite(q) or not 0.0 <= q <= 1.0:
-        raise ValueError('Window position must be between 0 and 1')
-    return q
+        if align is not None:
+            result = result.shift(-win.time_at(align))
+
+        return result
+
+    def extract_matched(
+        self,
+        wins: Windows,
+        matches: Matches,
+        *,
+        align: float | WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Windows:
+        """Extract windows according to an explicit Windows-to-Windows relation."""
+        grouped = WindowsGrouping.from_matches(self, wins, matches)
+
+        grouped = grouped.extract_wins(wins, align=align, drop=drop)
+
+        return grouped.concat()
+
+    def extract_all(
+        self,
+        wins: Windows,
+        *,
+        align: float | WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Windows:
+        """Extract every window from every Window."""
+        matches = Matches.from_product(self, wins)
+
+        return self.extract_matched(wins, matches, align=align, drop=drop)
+
+    def extract_by(
+        self,
+        wins: Windows,
+        *,
+        by: str | collections.abc.Sequence[str],
+        align: float | WinPoint = 'ref',
+        drop: bool = True,
+    ) -> Windows:
+        """Extract windows from Windows matched by metadata equality."""
+        matches = Matches.from_meta(self, wins, by=by)
+
+        return self.extract_matched(wins, matches, align=align, drop=drop)
+
+
+class WindowsGrouping(
+    nocte.core.grouping.Grouping[Windows],
+):
+    """
+    Homogeneous grouping of Windows.
+
+    Provides the window transformations useful at grouping level while
+    preserving outer group identities and metadata.
+
+    Concatenation reduces the grouping back to one Windows collection.
+    """
+
+    def extract_wins(
+        self,
+        wins: Windows,
+        *,
+        align: float | WinPoint = 'ref',
+        drop: bool = True,
+    ) -> typing.Self:
+        """Extract each window group using its corresponding Window."""
+        if len(self) == 0:
+            raise ValueError('cannot extract Windows from an empty WindowsGrouping')
+
+        missing = self.index.difference(wins.index)
+
+        if not missing.empty:
+            raise KeyError(f'Windows is missing group IDs: {missing.tolist()}')
+
+        wins = wins.sel_index(self.index)
+
+        groups = [
+            windows.extract_win(
+                wins.get(win_id),
+                align=align,
+                drop=drop,
+            )
+            for win_id, windows in self.items()
+        ]
+
+        return self.__class__.from_items(
+            groups,
+            meta=self.meta,
+        )
+
+    def concat(self) -> Windows:
+        """Concatenate all grouped Windows into one collection."""
+        groups = [windows for _, windows in self.items()]
+
+        if not groups:
+            raise ValueError('cannot concatenate an empty WindowsGrouping')
+
+        return Windows.from_arrays(
+            np.concatenate([windows._start for windows in groups]),
+            np.concatenate([windows._stop for windows in groups]),
+            np.concatenate([windows._ref for windows in groups]),
+            meta=self._concat_meta(),
+        )
 
 
 def _validate_neighbor_n(n: int) -> int:
@@ -1817,29 +1990,35 @@ def _as_time_series(times: TimesLike) -> pd.Series:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class WindowMatches:
-    """Aligned event and window positions for event-window matches."""
+class _TimeWindowPairs:
+    """
+    Positional pairs linking time points to windows that contain them.
 
-    event_pos: np.ndarray
+    Each `time_pos[i]` and `win_pos[i]` identifies one containment pair.
+    Positions refer to the input time sequence and the positional order of
+    `Windows`. A time point may appear more than once when windows overlap.
+    """
+
+    time_pos: np.ndarray
     win_pos: np.ndarray
 
     @classmethod
-    def build_empty(cls) -> WindowMatches:
+    def build_empty(cls) -> typing.Self:
         empty = np.empty(0, dtype=int)
-        return cls(event_pos=empty, win_pos=empty)
+        return cls(time_pos=empty, win_pos=empty)
 
     @classmethod
     def from_times(
         cls,
         windows: Windows,
         times: np.ndarray,
-    ) -> WindowMatches:
+    ) -> _TimeWindowPairs:
         """Return every event-window match without imposing presentation order."""
 
         win_positions = np.flatnonzero(~windows._is_empty())
 
         if len(times) == 0 or len(win_positions) == 0:
-            return WindowMatches.build_empty()
+            return _TimeWindowPairs.build_empty()
 
         time_order = np.argsort(times, kind='stable')
         sorted_times = times[time_order]
@@ -1862,39 +2041,9 @@ class WindowMatches:
             matched_windows.append(np.full(len(matched), win_pos, dtype=int))
 
         if not event_positions:
-            return WindowMatches.build_empty()
+            return _TimeWindowPairs.build_empty()
 
-        return WindowMatches(
-            event_pos=np.concatenate(event_positions),
+        return _TimeWindowPairs(
+            time_pos=np.concatenate(event_positions),
             win_pos=np.concatenate(matched_windows),
         )
-
-
-def _assign_events_exclusive(
-    windows: Windows,
-    times: np.ndarray,
-) -> np.ndarray:
-    """Return one window position per event, or -1 when unmatched."""
-    result = np.full(len(times), -1, dtype=int)
-    win_positions = np.flatnonzero(~windows._is_empty())
-
-    if len(times) == 0 or len(win_positions) == 0:
-        return result
-
-    start = windows._time_at('start')[win_positions]
-    stop = windows._time_at('stop')[win_positions]
-    order = np.lexsort((stop, start))
-    start = start[order]
-    stop = stop[order]
-    win_positions = win_positions[order]
-
-    slot = np.searchsorted(start, times, side='right') - 1
-    candidate = slot >= 0
-    event_pos = np.flatnonzero(candidate)
-    slot = slot[candidate]
-    inside = times[event_pos] < stop[slot]
-
-    event_pos = event_pos[inside]
-    slot = slot[inside]
-    result[event_pos] = win_positions[slot]
-    return result

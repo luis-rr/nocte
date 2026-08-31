@@ -284,6 +284,38 @@ class Matches(
         )
 
     @classmethod
+    def from_pairs(
+        cls,
+        left: Collection[typing.Any],
+        right: Collection[typing.Any],
+        left_ids: IndexLike,
+        right_ids: IndexLike,
+        *,
+        name: str = 'match',
+    ) -> typing.Self:
+        """Construct a relation from explicit pairs of source item identities."""
+        left_ids = as_ids(left_ids, side='left')
+        right_ids = as_ids(right_ids, side='right')
+
+        missing_left = left_ids.difference(left.index)
+        if not missing_left.empty:
+            raise KeyError(f'left source is missing IDs: {missing_left.tolist()}')
+
+        missing_right = right_ids.difference(right.index)
+        if not missing_right.empty:
+            raise KeyError(f'right source is missing IDs: {missing_right.tolist()}')
+
+        return cls._build(
+            left_name=left.name,
+            right_name=right.name,
+            left_ids=left_ids,
+            right_ids=right_ids,
+            meta=None,
+            name=name,
+            by=None,
+        )
+
+    @classmethod
     def from_product(
         cls,
         left: Collection[typing.Any],
