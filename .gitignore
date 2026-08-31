@@ -81,3 +81,7 @@ qodana.yaml
 # exclude data from source control by default
 /notebooks/figs/
 /notebooks/temp/
+
+
+# other
+.DS_Store
