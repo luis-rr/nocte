@@ -8,9 +8,6 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-if typing.TYPE_CHECKING:
-    import nocte.core.grouping
-
 How = typing.Literal['all', 'any']
 
 IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
@@ -469,23 +466,6 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
     def shuffle(self) -> typing.Self:
         return self.sample(
             frac=1,
-        )
-
-    # ------------------------------------------------------------------
-    # grouping
-
-    def groupby(
-        self,
-        by: str | list[str],
-        *,
-        sort: bool = False,
-    ) -> nocte.core.grouping.Grouping[typing.Self]:
-        import nocte.core.grouping
-
-        return nocte.core.grouping.Grouping.from_groupby(
-            self,
-            by=by,
-            sort=sort,
         )
 
 

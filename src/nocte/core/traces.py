@@ -16,6 +16,7 @@ import pandas as pd
 import scipy.signal
 
 import nocte.core.collection
+import nocte.core.grouping
 import nocte.core.hdf
 from nocte.core.hdf import HDFCollection
 from nocte.core.sampling import SamplingRate
@@ -1639,3 +1640,208 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         data = _TracesData.from_hdf(path, key=f'{key}/data')
 
         return cls(data=data, meta=meta)
+
+    def groupby(
+        self,
+        by: str | list[str],
+        *,
+        sort: bool = False,
+    ) -> TracesGrouping[FloatT]:
+        return TracesGrouping.from_groupby(self, by=by, sort=sort)
+
+
+class TracesGrouping(
+    nocte.core.grouping.Grouping[Traces[FloatT]],
+    typing.Generic[FloatT],
+):
+    """
+    Homogeneous grouping of Traces.
+
+    Provides the trace transformations that are useful at grouping level,
+    while preserving outer group identities and metadata.
+
+    Concatenation reduces the grouping back to one Traces collection.
+    """
+
+    def _map_traces(
+        self,
+        function: collections.abc.Callable[[Traces[FloatT]], Traces[FloatT]],
+        *,
+        pbar: nocte.core.collection.PBarParamT = None,
+    ) -> typing.Self:
+        iterator = (group for _, group in self.items())
+
+        iterator = nocte.core.collection.optional_pbar(
+            iterator,
+            total=len(self),
+            pbar=pbar,
+        )
+
+        groups = [function(group) for group in iterator]
+
+        return self.__class__.from_items(
+            groups,
+            meta=self.meta,
+        )
+
+    # ------------------------------------------------------------------
+    # temporal operations
+
+    def crop(
+        self,
+        win: Win,
+        *,
+        pbar: nocte.core.collection.PBarParamT = None,
+    ) -> typing.Self:
+        """Select the same temporal window from every group."""
+        return self._map_traces(
+            lambda traces: traces.crop(win),
+            pbar=pbar,
+        )
+
+    def shift(
+        self,
+        by: float | pd.Series,
+        *,
+        pbar: nocte.core.collection.PBarParamT = None,
+    ) -> typing.Self:
+        """
+        Shift group time coordinates.
+
+        A scalar applies the same shift to every group. A Series provides
+        one shift per outer group and must contain exactly the grouping index.
+        """
+        if not isinstance(by, pd.Series):
+            shift = float(by)
+
+            return self._map_traces(
+                lambda traces: traces.shift(shift),
+                pbar=pbar,
+            )
+
+        shifts = self._align_series(
+            by,
+            'shift',
+        ).to_numpy(dtype=float)
+
+        iterator = zip(
+            (group for _, group in self.items()),
+            shifts,
+            strict=True,
+        )
+
+        iterator = nocte.core.collection.optional_pbar(
+            iterator,
+            total=len(self),
+            pbar=pbar,
+        )
+
+        groups = [group.shift(float(shift)) for group, shift in iterator]
+
+        return self.__class__.from_items(
+            groups,
+            meta=self.meta,
+        )
+
+    def _resolve_hz(
+        self,
+        hz: float | typing.Literal['same', 'min', 'max'],
+    ) -> float:
+        rates = np.asarray(
+            [traces.hz for _, traces in self.items()],
+            dtype=float,
+        )
+
+        if rates.size == 0:
+            raise ValueError(
+                'cannot infer a sampling rate from an empty TracesGrouping'
+            )
+
+        if hz == 'min':
+            return float(rates.min())
+
+        if hz == 'max':
+            return float(rates.max())
+
+        if hz == 'same':
+            reference = rates[0]
+
+            if not np.allclose(rates, reference, rtol=1e-9, atol=0.0):
+                unique_rates = np.unique(rates)
+
+                raise ValueError(
+                    'grouped Traces do not share the same sampling rate: '
+                    f'got {len(unique_rates)} distinct rates between '
+                    f'{rates.min():g} and {rates.max():g} Hz; '
+                    "use hz='min', hz='max', or specify a rate explicitly"
+                )
+
+            return float(reference)
+
+        return float(hz)
+
+    def resample(
+        self,
+        hz: float | typing.Literal['same', 'min', 'max'] = 'same',
+        start: float | None = None,
+        stop: float | None = None,
+    ) -> typing.Self:
+
+        if len(self) == 0:
+            raise ValueError('cannot resample an empty TracesGrouping')
+
+        groups = [traces for _, traces in self.items()]
+
+        target_hz = self._resolve_hz(hz)
+
+        if start is None:
+            start = min(traces.start for traces in groups)
+
+        if stop is None:
+            stop = max(traces.stop for traces in groups)
+
+        grid = TimeGrid.from_hz_bounds(
+            hz=target_hz,
+            start=start,
+            stop=stop,
+        )
+
+        return self.__class__.from_items(
+            [traces.resample_to_grid(grid) for traces in groups],
+            meta=self.meta,
+        )
+
+    # ------------------------------------------------------------------
+    # reduction
+
+    def concat(self) -> Traces[FloatT]:
+        """Concatenate groups that share exactly the same time grid."""
+        groups = [traces for _, traces in self.items()]
+
+        if not groups:
+            raise ValueError('cannot concatenate an empty TracesGrouping')
+
+        reference = groups[0]
+
+        for traces in groups[1:]:
+            if (
+                traces.sampling != reference.sampling
+                or traces.start != reference.start
+                or traces.n_samples != reference.n_samples
+            ):
+                raise ValueError(
+                    'all grouped Traces must share the same time grid; '
+                    'resample_to_grid() first'
+                )
+
+        values = np.concatenate(
+            [traces.values for traces in groups],
+            axis=0,
+        )
+
+        return Traces.from_array(
+            values,
+            reference.hz,
+            start=reference.start,
+            meta=self._concat_meta(),
+        )

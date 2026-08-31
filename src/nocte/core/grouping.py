@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import collections.abc
-import importlib
 import pathlib
 import typing
 
@@ -31,6 +30,9 @@ class CollectionLike(typing.Protocol):
         invert: bool = False,
     ) -> typing.Self: ...
 
+    @property
+    def name(self) -> str: ...
+
 
 GroupedT = typing.TypeVar(
     'GroupedT',
@@ -48,23 +50,6 @@ MappedT = typing.TypeVar(
 )
 
 ResultT = typing.TypeVar('ResultT')
-
-
-def _resolve_type(
-    module_name: str,
-    qualname: str,
-) -> type[typing.Any]:
-    module = importlib.import_module(module_name)
-
-    obj: typing.Any = module
-
-    for name in qualname.split('.'):
-        obj = getattr(obj, name)
-
-    if not isinstance(obj, type):
-        raise TypeError(f'stored grouped type {module_name}.{qualname} is not a class')
-
-    return obj
 
 
 LoadedT = typing.TypeVar(
@@ -277,7 +262,7 @@ class Grouping(
         *,
         by: str | list[str],
         sort: bool = False,
-    ) -> Grouping[GroupedT]:
+    ) -> typing.Self:
         """
         Materialize metadata groups from a collection-like object.
 
@@ -531,3 +516,85 @@ class Grouping(
             data=data,
             meta=meta,
         )
+
+    def _concat_meta(self) -> pd.DataFrame:
+        """
+        Flatten inner metadata while preserving outer grouping provenance.
+
+        Outer group identity and metadata are broadcast onto every inner item.
+        Existing metadata is kept when consistent with the grouping and rejected
+        when contradictory.
+
+        All contained collections must share one item identity namespace, and
+        flattened item identities must remain unique.
+        """
+        groups = list(self.items())
+
+        if not groups:
+            raise ValueError('cannot concatenate an empty Grouping')
+
+        item_name = groups[0][1].name
+
+        for _, group in groups[1:]:
+            if group.name != item_name:
+                raise ValueError('all grouped collections must use the same item name')
+
+        metas: list[pd.DataFrame] = []
+
+        for position, (group_id, group) in enumerate(groups):
+            meta = group.meta.copy()
+
+            # Outer group identity.
+            if self.name in meta.columns:
+                existing = meta[self.name]
+
+                if not existing.eq(group_id).fillna(False).all():
+                    raise ValueError(
+                        f'inner metadata column {self.name!r} '
+                        'contradicts group identity'
+                    )
+            else:
+                meta[self.name] = group_id
+
+            # Outer group metadata.
+            outer = self.meta.iloc[position]
+
+            for column, value in outer.items():
+                if column not in meta.columns:
+                    meta[column] = value
+                    continue
+
+                existing = meta[column]
+
+                if pd.api.types.is_scalar(value) and bool(pd.isna(value)):
+                    same = existing.isna()
+                else:
+                    same = existing.eq(value).fillna(False)
+
+                if not same.all():
+                    raise ValueError(
+                        f'inner metadata column {column!r} contradicts group metadata'
+                    )
+
+            metas.append(meta)
+
+        meta = pd.concat(
+            metas,
+            axis=0,
+        )
+
+        if not meta.index.is_unique:
+            duplicates = meta.index[meta.index.duplicated(keep=False)].unique().tolist()
+
+            raise ValueError(
+                'concatenation would produce repeated '
+                f'{item_name} identities: {duplicates}'
+            )
+
+        meta.index = pd.Index(
+            meta.index,
+            dtype=np.int64,
+            name=item_name,
+        )
+
+        return meta
