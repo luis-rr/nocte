@@ -64,7 +64,7 @@ def assert_aligned(collection):
 
 def test_validate_meta_length():
     meta = pd.DataFrame(
-        index=pd.Index([10, 20]),
+        index=pd.Index([10, 20], name='item'),
     )
 
     with pytest.raises(ValueError, match='meta has 2 rows'):
@@ -76,7 +76,7 @@ def test_validate_meta_length():
 
 def test_validate_meta_unique_index():
     meta = pd.DataFrame(
-        index=pd.Index([10, 10]),
+        index=pd.Index([10, 10], name='item'),
     )
 
     with pytest.raises(ValueError, match='index must be unique'):
@@ -91,7 +91,7 @@ def test_validate_meta_unique_index():
     [[10.0, 20.0], ['10', '20'], [10, None]],
 )
 def test_validate_meta_integer_index(index):
-    meta = pd.DataFrame(index=index)
+    meta = pd.DataFrame(index=pd.Index(index, name='item'))
 
     with pytest.raises(ValueError, match='index .* integer|index .* missing'):
         _DummyCollection(
@@ -154,7 +154,7 @@ def test_get_without_arguments_returns_the_single_item():
 def test_get_with_selector_returns_the_single_item():
     collection = _DummyCollection(
         data=np.array([200]),
-        meta=pd.DataFrame({'prop': [42]}),
+        meta=pd.DataFrame({'prop': [42]}, index=pd.Index([0], name='item')),
     )
 
     assert collection.get(prop=42) == 200
@@ -163,7 +163,7 @@ def test_get_with_selector_returns_the_single_item():
 def test_get_with_selector_multiple_matches_raises():
     collection = _DummyCollection(
         data=np.array([200, 400]),
-        meta=pd.DataFrame({'prop': [42, 42]}),
+        meta=pd.DataFrame({'prop': [42, 42]}, index=pd.Index([0, 1], name='item')),
     )
 
     with pytest.raises(ValueError, match='exactly'):

@@ -251,22 +251,10 @@ class Grouping(
 
         self._data = data
         self.meta = meta.copy()
-
         self._validate_meta(len(self._data))
 
     # ------------------------------------------------------------------
     # construction
-
-    @staticmethod
-    def _default_meta(
-        n_items: int,
-    ) -> pd.DataFrame:
-        return pd.DataFrame(
-            index=pd.RangeIndex(
-                n_items,
-                name='group_id',
-            ),
-        )
 
     @classmethod
     def from_items(
@@ -279,7 +267,7 @@ class Grouping(
 
         return cls(
             data,
-            cls._default_meta(len(data)) if meta is None else meta,
+            cls._default_meta(len(data), name='group') if meta is None else meta,
         )
 
     @classmethod
@@ -345,7 +333,7 @@ class Grouping(
 
         meta.index = pd.RangeIndex(
             len(meta),
-            name='group_id',
+            name='group',
         )
 
         return cls.from_items(

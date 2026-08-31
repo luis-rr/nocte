@@ -9,7 +9,7 @@ from nocte.core import events, windows
 def test_from_times_builds_default_identity_and_float_payload():
     obj = events.Events.from_times([2, 1, 1])
 
-    assert obj.index.equals(pd.RangeIndex(3, name='event_id'))
+    assert obj.index.equals(pd.RangeIndex(3, name='event'))
     pdt.assert_series_equal(
         obj.time,
         pd.Series([2.0, 1.0, 1.0], index=obj.index, name='time'),
@@ -71,7 +71,7 @@ def test_selection_preserves_identity_and_time_alignment():
 
 
 def test_get_returns_scalar_time_by_event_id():
-    times = pd.Series([3.0, 7.0], index=[100, 200])
+    times = pd.Series([3.0, 7.0], index=pd.Index([100, 200], name='event'))
     obj = events.Events.from_times(times)
 
     assert obj.get(200) == 7.0
@@ -80,7 +80,7 @@ def test_get_returns_scalar_time_by_event_id():
 def test_copy_shares_immutable_payload_but_not_metadata():
     obj = events.Events.from_times(
         [1.0, 2.0],
-        meta=pd.DataFrame({'kind': ['a', 'b']}, index=[10, 20]),
+        meta=pd.DataFrame({'kind': ['a', 'b']}, index=pd.Index([10, 20], name='event')),
     )
 
     copied = obj.copy()
@@ -91,7 +91,9 @@ def test_copy_shares_immutable_payload_but_not_metadata():
 
 
 def test_sort_time_is_stable_for_duplicate_timestamps():
-    obj = events.Events.from_times(pd.Series([2.0, 1.0, 1.0], index=[30, 10, 20]))
+    obj = events.Events.from_times(
+        pd.Series([2.0, 1.0, 1.0], index=pd.Index([30, 10, 20], name='event'))
+    )
 
     ascending = obj.sort_time()
     descending = obj.sort_time(ascending=False)
@@ -103,7 +105,7 @@ def test_sort_time_is_stable_for_duplicate_timestamps():
 def test_shift_scalar_preserves_identity_and_metadata():
     obj = events.Events.from_times(
         [1.0, 2.0],
-        meta=pd.DataFrame({'kind': ['a', 'b']}, index=[10, 20]),
+        meta=pd.DataFrame({'kind': ['a', 'b']}, index=pd.Index([10, 20], name='event')),
     )
 
     shifted = obj.shift(5.0)
@@ -114,7 +116,9 @@ def test_shift_scalar_preserves_identity_and_metadata():
 
 
 def test_shift_series_aligns_by_event_identity_not_series_order():
-    obj = events.Events.from_times(pd.Series([1.0, 2.0], index=[10, 20]))
+    obj = events.Events.from_times(
+        pd.Series([1.0, 2.0], index=pd.Index([10, 20], name='event'))
+    )
     offsets = pd.Series([100.0, 1.0], index=[20, 10])
 
     shifted = obj.shift(offsets)
@@ -142,7 +146,10 @@ def test_round_supports_temporal_scales():
 
 def test_contained_in_and_crop_use_half_open_window_semantics():
     obj = events.Events.from_times(
-        pd.Series([0.0, 1.0, 2.0, 3.0], index=[10, 20, 30, 40])
+        pd.Series(
+            [0.0, 1.0, 2.0, 3.0],
+            index=pd.Index([10, 20, 30, 40], name='event'),
+        )
     )
     win = windows.Win(1.0, 3.0)
 
@@ -273,7 +280,7 @@ def test_rate_gaussian_empty_events_produce_zero_rate():
 def test_to_frame_combines_structural_time_and_metadata():
     obj = events.Events.from_times(
         [1.0, 2.0],
-        meta=pd.DataFrame({'kind': ['a', 'b']}, index=[10, 20]),
+        meta=pd.DataFrame({'kind': ['a', 'b']}, index=pd.Index([10, 20], name='event')),
     )
 
     frame = obj.to_frame()
@@ -286,7 +293,7 @@ def test_to_frame_combines_structural_time_and_metadata():
 def test_to_frame_warns_if_metadata_reuses_structural_time_name():
     obj = events.Events.from_times(
         [1.0],
-        meta=pd.DataFrame({'time': ['metadata']}, index=[10]),
+        meta=pd.DataFrame({'time': ['metadata']}, index=pd.Index([10], name='event')),
     )
 
     with pytest.warns(UserWarning, match='duplicate columns'):

@@ -203,21 +203,11 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         self._data = data
         self.meta = meta.copy()
         self.support = support
-
-        if self.meta.index.name is None:
-            self.meta.index = self.meta.index.rename('train_id')
-
         self._validate_meta(len(self._data))
         self._validate_support()
 
     # ------------------------------------------------------------------
     # core collection and access
-
-    @staticmethod
-    def _default_meta(n_items: int) -> pd.DataFrame:
-        return pd.DataFrame(
-            index=pd.RangeIndex(n_items, name='train_id'),
-        )
 
     def _sel_pos(self, positions: np.ndarray) -> typing.Self:
         return self.__class__(
@@ -260,7 +250,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
                 raise ValueError('Train mapping keys must be unique')
 
             if meta is None:
-                meta = pd.DataFrame(index=keys.copy())
+                meta = pd.DataFrame(index=keys.rename('train'))
                 arrays = list(times.values())
             else:
                 missing = meta.index.difference(keys)
@@ -271,7 +261,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         else:
             arrays = list(times)
             if meta is None:
-                meta = cls._default_meta(len(arrays))
+                meta = cls._default_meta(len(arrays), name='train')
 
         data = _TrainsData(arrays)
         return cls(data, meta, support)

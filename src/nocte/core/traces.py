@@ -819,7 +819,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
 
         return cls(
             data,
-            cls._default_meta(len(data)) if meta is None else meta,
+            cls._default_meta(len(data), name='trace') if meta is None else meta,
         )
 
     @classmethod
@@ -871,7 +871,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
 
         return cls(
             data,
-            cls._default_meta(len(data)) if meta is None else meta,
+            cls._default_meta(len(data), name='trace') if meta is None else meta,
         )
 
     # ------------------------------------------------------------------

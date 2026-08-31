@@ -117,20 +117,10 @@ class Events(nocte.core.hdf.HDFCollection[float]):
     ):
         self._data = data
         self.meta = meta.copy()
-
-        if self.meta.index.name is None:
-            self.meta.index = self.meta.index.rename('event_id')
-
         self._validate_meta(len(self._data))
 
     # ------------------------------------------------------------------
     # core collection and access
-
-    @staticmethod
-    def _default_meta(n_items: int) -> pd.DataFrame:
-        return pd.DataFrame(
-            index=pd.RangeIndex(n_items, name='event_id'),
-        )
 
     def _sel_pos(self, positions: np.ndarray) -> typing.Self:
         return self.__class__(
@@ -183,7 +173,7 @@ class Events(nocte.core.hdf.HDFCollection[float]):
             data = _EventsData.from_times(times)
 
             if meta is None:
-                meta = cls._default_meta(len(data))
+                meta = cls._default_meta(len(data), name='event')
 
         return cls(data, meta)
 

@@ -13,7 +13,7 @@ def test_from_times_builds_one_collection_item_per_train():
     )
 
     assert len(obj) == 3
-    assert obj.index.equals(pd.RangeIndex(3, name='train_id'))
+    assert obj.index.equals(pd.RangeIndex(3, name='train'))
     assert obj.counts().tolist() == [3, 0, 1]
 
 
@@ -132,7 +132,7 @@ def test_copy_shares_payload_but_not_metadata():
     obj = trains.Trains.from_times(
         [[1.0], [2.0]],
         support=windows.Win(0.0, 10.0),
-        meta=pd.DataFrame({'kind': ['a', 'b']}, index=[10, 20]),
+        meta=pd.DataFrame({'kind': ['a', 'b']}, index=pd.Index([10, 20], name='train')),
     )
 
     copied = obj.copy()
@@ -346,7 +346,7 @@ def test_to_frame_reports_train_level_summary_without_expanding_events():
     obj = trains.Trains.from_times(
         {10: [1.0, 2.0], 20: []},
         support=windows.Win(0.0, 1000.0),
-        meta=pd.DataFrame({'kind': ['a', 'b']}, index=[10, 20]),
+        meta=pd.DataFrame({'kind': ['a', 'b']}, index=pd.Index([10, 20], name='train')),
     )
 
     frame = obj.to_frame()

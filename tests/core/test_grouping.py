@@ -46,7 +46,7 @@ def test_from_groupby():
     )
 
     assert len(grouping) == 2
-    assert grouping.index.name == 'group_id'
+    assert grouping.index.name == 'group'
     assert grouping.index.tolist() == [0, 1]
 
     group_a = grouping.get(0)
@@ -159,4 +159,4 @@ def test_empty_grouping():
 
     assert len(grouping) == 0
     assert grouping.empty
-    assert grouping.index.name == 'group_id'
+    assert grouping.index.name == 'group'

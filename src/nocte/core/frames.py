@@ -212,7 +212,6 @@ class Frames(
 
         self._data = data
         self.meta = meta.copy()
-
         self._validate_meta(len(self._data))
 
     # ------------------------------------------------------------------
@@ -229,7 +228,7 @@ class Frames(
 
         return cls(
             data,
-            cls._default_meta(len(data)) if meta is None else meta,
+            cls._default_meta(len(data), name='frame') if meta is None else meta,
         )
 
     # ------------------------------------------------------------------

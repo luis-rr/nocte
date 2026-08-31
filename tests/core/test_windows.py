@@ -79,7 +79,10 @@ def test_to_frame_allows_geometry_metadata_collisions_with_warning():
         [0, 1],
         [10, 11],
         ref=[100, 200],
-        meta=pd.DataFrame({'start': [123, 456], 'state': ['a', 'b']}),
+        meta=pd.DataFrame(
+            {'start': [123, 456], 'state': ['a', 'b']},
+            index=pd.Index([0, 1], name='win'),
+        ),
     )
 
     with pytest.warns(UserWarning, match='duplicate columns'):
@@ -105,7 +108,7 @@ def test_copy_shares_geometry_but_copies_metadata_semantically():
     wins = Windows.from_arrays(
         [0, 10],
         [10, 20],
-        meta=pd.DataFrame({'state': ['a', 'b']}),
+        meta=pd.DataFrame({'state': ['a', 'b']}, index=pd.Index([0, 1], name='win')),
     )
 
     copied = wins.copy()
@@ -515,7 +518,9 @@ def test_merge_overlap_and_merge_tight_distinguish_overlap_from_touching():
 
 
 def test_merge_by_requires_same_metadata_value():
-    meta = pd.DataFrame({'state': ['a', 'b', 'b']})
+    meta = pd.DataFrame(
+        {'state': ['a', 'b', 'b']}, index=pd.Index([0, 1, 2], name='win')
+    )
     wins = Windows.from_arrays(
         start=[0, 10, 20],
         stop=[10, 20, 30],
@@ -765,7 +770,7 @@ def test_classify_events_only_computes_requested_columns():
 
 
 def test_generate_preserves_input_identity_and_fills_unmatched_times():
-    meta = pd.DataFrame({'state': ['a', 'b']})
+    meta = pd.DataFrame({'state': ['a', 'b']}, index=pd.Index([0, 1], name='win'))
     wins = Windows.from_arrays(
         start=[0, 10],
         stop=[10, 20],
@@ -792,7 +797,7 @@ def test_generate_requires_exclusive_windows():
     wins = Windows.from_arrays(
         [0, 5],
         [10, 15],
-        meta=pd.DataFrame({'state': ['a', 'b']}),
+        meta=pd.DataFrame({'state': ['a', 'b']}, index=pd.Index([0, 1], name='win')),
     )
 
     with pytest.raises(ValueError):

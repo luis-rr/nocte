@@ -31,11 +31,11 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
     @abc.abstractmethod
     def _get_pos(self, position: int) -> ItemT: ...
 
-    @staticmethod
-    def _default_meta(n_items: int) -> pd.DataFrame:
+    @classmethod
+    def _default_meta(cls, n_items: int, name: str) -> pd.DataFrame:
         """Return a default metadata DataFrame for a collection."""
         return pd.DataFrame(
-            index=pd.RangeIndex(n_items, name='item_id'),
+            index=pd.RangeIndex(n_items, name=name),
         )
 
     def __len__(self) -> int:
@@ -51,6 +51,14 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         return self.meta.index
 
     @property
+    def name(self) -> str:
+        """The item identity namespace of this collection."""
+        if not isinstance(self.meta.index.name, str) or not self.meta.index.name:
+            raise ValueError('collection index must have a non-empty string name')
+
+        return str(self.index.name)
+
+    @property
     def columns(self) -> pd.Index:
         return self.meta.columns
 
@@ -62,6 +70,7 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
 
     def _validate_meta(self, n_items: int) -> None:
         """Validate the core metadata invariants of a collection."""
+
         if len(self.meta) != n_items:
             raise ValueError(
                 f'meta has {len(self.meta)} rows, '
@@ -79,6 +88,18 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
 
         if self.meta.index.hasnans:
             raise ValueError('collection index cannot contain missing values')
+
+        if not isinstance(self.meta.index.name, str) or not self.meta.index.name:
+            raise ValueError('collection index must have a non-empty string name')
+
+    def rename(self, name: str) -> typing.Self:
+        """Return a copy with a new item identity namespace."""
+        if not isinstance(name, str) or not name:
+            raise ValueError('name must be a non-empty string')
+
+        renamed = self._sel_pos(np.arange(len(self), dtype=np.intp))
+        renamed.meta.index = renamed.meta.index.rename(name)
+        return renamed
 
     def _positions(self, labels: IndexLike) -> np.ndarray:
         labels = self._as_index(labels)

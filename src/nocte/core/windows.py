@@ -608,7 +608,6 @@ class Windows(HDFCollection[Win]):
     ):
         self._data = data
         self.meta = meta.copy()
-
         self._validate_meta(len(self._data))
 
         n_empty = int(np.count_nonzero(self._is_empty()))
@@ -677,7 +676,7 @@ class Windows(HDFCollection[Win]):
         data = _WindowsData.from_arrays(start=start, stop=stop, ref=ref)
         return cls(
             data,
-            meta=cls._default_meta(len(data)) if meta is None else meta,
+            meta=cls._default_meta(len(data), name='win') if meta is None else meta,
         )
 
     @classmethod
@@ -777,7 +776,8 @@ class Windows(HDFCollection[Win]):
                 {
                     f'start_{source_name}': source_ids[:-1],
                     f'stop_{source_name}': source_ids[1:],
-                }
+                },
+                index=pd.RangeIndex(len(refs), name='win'),
             )
 
         return cls.from_arrays(
@@ -812,7 +812,10 @@ class Windows(HDFCollection[Win]):
             start,
             stop,
             ref,
-            meta=pd.DataFrame({name: labels}),
+            meta=pd.DataFrame(
+                {name: labels},
+                index=pd.RangeIndex(len(labels), name='win'),
+            ),
         )
 
     @classmethod
@@ -849,7 +852,10 @@ class Windows(HDFCollection[Win]):
                 [],
                 [],
                 [],
-                meta=pd.DataFrame({column: pd.Series(dtype=values.dtype)}),
+                meta=pd.DataFrame(
+                    {column: pd.Series(dtype=values.dtype)},
+                    index=pd.RangeIndex(0, name='win'),
+                ),
             )
 
         times = values.index.to_numpy(dtype=float)
@@ -898,6 +904,7 @@ class Windows(HDFCollection[Win]):
         realized_stop = times[run_stop - 1] + step * 0.5
 
         meta = values.iloc[run_start].rename(column).to_frame().reset_index(drop=True)
+        meta.index = pd.RangeIndex(len(meta), name='win')
 
         return cls.from_arrays(
             start=0.0,
