@@ -10,6 +10,24 @@ The refactor preserves the core strengths of v0.1: metadata-aware experimental o
 
 `nocte v1.0` is the first intentionally designed stable API of the library.
 
+### State
+
+The current refactor has affected:
+
+- Collection, Grouping
+- Traces
+- Windows
+- Events
+- Trains
+- Frames
+
+Still pending are:
+- Registry
+- Stored and loaders
+- All of analysis
+- All of plotting
+
+
 ## Purpose and design philosophy
 
 `nocte` is a lightweight toolkit for organizing, selecting, extracting, aligning, processing, serializing, and visualizing experimental time-series and event data. It is designed primarily for electrophysiology and related neuroscience workflows.
