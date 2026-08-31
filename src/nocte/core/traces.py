@@ -2123,26 +2123,10 @@ class TracesGrouping(
 
     def concat(self) -> Traces[FloatT]:
         """Concatenate groups that share exactly the same time grid."""
-        groups = [traces for _, traces in self.items()]
-
-        if not groups:
-            raise ValueError('cannot concatenate an empty TracesGrouping')
-
-        reference = groups[0]
-
-        for traces in groups[1:]:
-            if (
-                traces.sampling != reference.sampling
-                or traces.start != reference.start
-                or traces.n_samples != reference.n_samples
-            ):
-                raise ValueError(
-                    'all grouped Traces must share the same time grid; '
-                    'resample_to_grid() first'
-                )
+        reference = self._common_ref()
 
         values = np.concatenate(
-            [traces.values for traces in groups],
+            [traces.values for _, traces in self.items()],
             axis=0,
         )
 
@@ -2153,7 +2137,16 @@ class TracesGrouping(
             meta=self._concat_meta(),
         )
 
-    def _common_grid(self) -> Traces[FloatT]:
+    # ------------------------------------------------------------------
+    # reduction
+
+    def _common_ref(self) -> Traces[FloatT]:
+        """
+        Return a reference group after verifying a common time grid.
+
+        Raises if any grouped Traces differs in sampling, start time,
+        or number of samples.
+        """
         groups = [traces for _, traces in self.items()]
 
         if not groups:
@@ -2173,18 +2166,15 @@ class TracesGrouping(
 
         return reference
 
-    def _reduce_traces(
+    def _reduce(
         self,
-        function: collections.abc.Callable[[np.ndarray], np.ndarray],
-    ) -> Traces[FloatT]:
-        reference = self._common_grid()
+        function: collections.abc.Callable[[Traces[FloatT]], pd.Series],
+    ) -> Traces:
+        reference = self._common_ref()
 
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            values = np.stack(
-                [function(traces.values) for _, traces in self.items()],
-                axis=0,
-            )
+        values = np.stack(
+            [function(traces).to_numpy() for _, traces in self.items()],
+        )
 
         return Traces.from_array(
             values,
@@ -2193,11 +2183,23 @@ class TracesGrouping(
             meta=self.meta,
         )
 
-    def mean(self) -> Traces[FloatT]:
-        return self._reduce_traces(lambda values: np.nanmean(values, axis=0))
+    def mean(self) -> Traces:
+        return self._reduce(Traces.mean)
 
-    def median(self) -> Traces[FloatT]:
-        return self._reduce_traces(lambda values: np.nanmedian(values, axis=0))
+    def median(self) -> Traces:
+        return self._reduce(Traces.median)
 
-    def std(self) -> Traces[FloatT]:
-        return self._reduce_traces(lambda values: np.nanstd(values, axis=0, ddof=1))
+    def std(self) -> Traces:
+        return self._reduce(Traces.std)
+
+    def var(self) -> Traces:
+        return self._reduce(Traces.var)
+
+    def min(self) -> Traces:
+        return self._reduce(Traces.min)
+
+    def max(self) -> Traces:
+        return self._reduce(Traces.max)
+
+    def quantile(self, q: float) -> Traces:
+        return self._reduce(lambda traces: traces.quantile(q))
