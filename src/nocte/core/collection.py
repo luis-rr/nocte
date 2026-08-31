@@ -15,6 +15,45 @@ How = typing.Literal['all', 'any']
 
 IndexLike = int | collections.abc.Iterable[int] | np.ndarray | pd.Index
 
+
+def as_ids(
+    values: IndexLike,
+    *,
+    side: str,
+) -> pd.Index:
+    if isinstance(values, pd.Index):
+        ids = values.copy()
+
+    elif isinstance(values, (int, np.integer)):
+        ids = pd.Index([values])
+
+    else:
+        ids = pd.Index(values)
+
+    if isinstance(ids, pd.MultiIndex):
+        raise TypeError(f'{side} IDs must be single-level')
+
+    if len(ids) == 0 and not pd.api.types.is_integer_dtype(ids.dtype):
+        ids = pd.Index(
+            np.empty(
+                0,
+                dtype=np.int64,
+            )
+        )
+
+    if not pd.api.types.is_integer_dtype(ids.dtype):
+        raise TypeError(f'{side} IDs must contain integers')
+
+    if ids.hasnans:
+        raise ValueError(f'{side} IDs cannot contain missing values')
+
+    return ids
+
+
+def is_valid_name(name: typing.Any) -> bool:
+    return isinstance(name, str) and bool(name)
+
+
 MaskLike = collections.abc.Sequence[bool] | np.ndarray | pd.Series
 
 ItemT = typing.TypeVar('ItemT')
@@ -53,7 +92,7 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
     @property
     def name(self) -> str:
         """The item identity namespace of this collection."""
-        if not isinstance(self.meta.index.name, str) or not self.meta.index.name:
+        if not is_valid_name(self.meta.index.name):
             raise ValueError('collection index must have a non-empty string name')
 
         return str(self.index.name)
@@ -89,12 +128,12 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         if self.meta.index.hasnans:
             raise ValueError('collection index cannot contain missing values')
 
-        if not isinstance(self.meta.index.name, str) or not self.meta.index.name:
+        if not is_valid_name(self.meta.index.name):
             raise ValueError('collection index must have a non-empty string name')
 
     def rename(self, name: str) -> typing.Self:
         """Return a copy with a new item identity namespace."""
-        if not isinstance(name, str) or not name:
+        if not is_valid_name(name):
             raise ValueError('name must be a non-empty string')
 
         renamed = self._sel_pos(np.arange(len(self), dtype=np.intp))
