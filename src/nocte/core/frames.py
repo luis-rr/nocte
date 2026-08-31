@@ -53,12 +53,6 @@ class _FramesData:
     ) -> pd.DataFrame:
         return self._frames[position].copy(deep=True)
 
-    def get_stored_pos(
-        self,
-        position: int,
-    ) -> pd.DataFrame:
-        return self._frames[position]
-
     def sel_pos(
         self,
         positions: np.ndarray,

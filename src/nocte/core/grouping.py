@@ -533,21 +533,6 @@ class Grouping(
             index=self.index.copy(),
         )
 
-    def drop_empty(self) -> typing.Self:
-        """
-        Drop groups containing no items.
-
-        Payload dimensions are not considered. For example, a Traces group
-        containing trace items with zero samples is not an empty group.
-        """
-        keep = np.fromiter(
-            (len(group) > 0 for _, group in self.items()),
-            dtype=bool,
-            count=len(self),
-        )
-
-        return self._sel_pos(keep)
-
     # ------------------------------------------------------------------
     # serialization
 
