@@ -71,8 +71,8 @@ def _validate_max_gap(max_gap: float) -> float:
 
     max_gap = float(max_gap)
 
-    if max_gap > 0:
-        raise ValueError('max_gap must be positive')
+    if max_gap < 0:
+        raise ValueError('max_gap must be non-negative')
 
     if np.isinf(max_gap):
         return max_gap
