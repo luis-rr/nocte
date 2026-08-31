@@ -168,3 +168,9 @@ class SamplingRate:
             )
 
         return rounded
+
+    def _repr_html_(self) -> str:
+        rate = f'{self.rate:.3g}'
+        period = f'{self.period_ms:.3g}'
+
+        return f'{rate} Hz ({period} ms)'
