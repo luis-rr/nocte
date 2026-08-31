@@ -20,11 +20,12 @@ The current refactor has affected:
 - Events
 - Trains
 - Frames
+- analysis / xcorr
 
 Still pending are:
 - Registry
 - Stored and loaders
-- All of analysis
+- Rest of analysis
 - All of plotting
 
 
