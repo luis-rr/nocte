@@ -20,10 +20,11 @@ The current refactor has affected:
 - Events
 - Trains
 - Frames
+- Registry
 - analysis / xcorr
+- analysis / spectral
 
 Still pending are:
-- Registry
 - Stored and loaders
 - Rest of analysis
 - All of plotting
@@ -327,24 +328,26 @@ Light-weight standard functions (e.g. `mean`) are provided as chainable methods 
 
 ### Registry
 
-`Registry` is a `Collection` of experimental entities such as experiments or recordings. It stores experiment- and recording-level metadata and supports the common indexed-collection selection model.
+`Registry` is the canonical description of a project's experimental entities and their associated resources. It is a `Collection`; each item represents whatever unit the project chooses to register, such as an experiment, recording, session, trial, or similar entity, and `Registry.name` defines that identity namespace. Its metadata table contains the cleaned project-level attributes of those items and follows the normal `Collection` identity and selection model.
 
-The registry metadata table is the authoritative representation of its items. Individual items are exposed as lightweight `RegistryEntry` view objects matching rows of the registry, allowing per-entry functionality. Additional payload that is not easily represented via a dataframe is possible.
+Registry use has two stages:
 
-`Registry` is a general-purpose, project-agnostic container for experiment- and recording-level metadata; the specific columns, paths, and conventions it holds are project-specific, but the container itself stays in core. It serves as the primary exchange mechanism between experimental protocol, experimental logs, and analysis pipeline code.
+1. **Ingestion** is project-specific: human-maintained spreadsheets and other records are interpreted, cleaned, validated, and normalized, typically through the thin `RegistryBuilder`.
+2. **Runtime use** begins with the resulting clean `Registry`, which can be serialized and reloaded independently of the original source layout and conventions.
 
-### StoredTraces
+Each Registry item may own tagged resources of three kinds:
 
-`StoredTraces` represents a collection of continuous sampled signals backed by data stored outside memory. These different sources may represent different channels of a multi-probe, different files recorded simultaneously, etc. Loading all or part of a `StoredTraces` produces materialized `Traces`.
+* `WindowsGrouping` for interval-valued temporal resources.
+* `EventsGrouping` for point-valued temporal resources.
+* `SourcesGrouping` for filesystem resources.
 
-The boundary is explicit:
+`Source` is a small Registry-specific descriptor of a concrete filesystem resource, such as a recording directory, video, tracking output, or derived data file. `Sources` is its lightweight serializable collection, and `SourcesGrouping` gives filesystem resources the same grouped structure as temporal resources. Sources describe data locations and any small interpretation metadata, but never live loaders, memmaps, file handles, or other runtime I/O state.
 
-```text
-StoredTraces = externally backed / potentially very large signals
-Traces       = materialized signal data
-```
+Every outer resource group is linked to one Registry item and carries a canonical `tag`. Tags provide a lightweight project-defined namespace, for example `'lights'`, `'injections'`, `('video', 'cam0')`, or `('tracking', 'dlc')`, while the contained `Windows`, `Events`, or `Sources` preserve their own item-level semantics.
 
-`StoredTraces` uses the normal `Collection` metadata and index machinery to describe and select its streams or channels. Its payload is a single loader object that provides access to the underlying data, exactly as `Traces` is a collection of individual traces backed by one array payload. The loader payload only needs to satisfy a small `Protocol` defined in core, next to `StoredTraces`. This keeps `StoredTraces` decoupled from any specific loader implementation: `loaders` imports and implements the core protocol, `core` never imports `loaders`.
+A `RegistryEntry` is the per-item view over the resources linked to one Registry identity. Registry selection also restricts these grouped resources, so any Registry subset remains a self-contained description of the selected entities.
+
+Projects define the entity granularity, metadata columns, tags, and ingestion rules. Core only enforces collection identity, clean metadata, resource linkage, selection, validation, and serialization.
 
 ## Managing time
 
