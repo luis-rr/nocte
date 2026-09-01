@@ -329,7 +329,7 @@ Light-weight standard functions (e.g. `mean`) are provided as chainable methods 
 
 `Registry` is a `Collection` of experimental entities such as experiments or recordings. It stores experiment- and recording-level metadata and supports the common indexed-collection selection model.
 
-The registry metadata table is the authoritative representation of its items and does not require an artificial separate payload. Individual items are exposed as lightweight `RegistryEntry` view objects matching rows of the registry, allowing per-entry functionality.
+The registry metadata table is the authoritative representation of its items. Individual items are exposed as lightweight `RegistryEntry` view objects matching rows of the registry, allowing per-entry functionality. Additional payload that is not easily represented via a dataframe is possible.
 
 `Registry` is a general-purpose, project-agnostic container for experiment- and recording-level metadata; the specific columns, paths, and conventions it holds are project-specific, but the container itself stays in core. It serves as the primary exchange mechanism between experimental protocol, experimental logs, and analysis pipeline code.
 
@@ -592,7 +592,6 @@ The implementation favors readable, idiomatic Python and static modular design.
 * Data transformations return updated objects rather than mutating containers in place.
 * Avoid runtime polymorphism and framework-style dispatch unless it solves a concrete problem.
 * Avoid over-engineering.
-* Keep public APIs flat and discoverable.
 * Preserve direct, convenient access to pandas metadata.
 
 Every transformation has clear semantics for:
@@ -603,6 +602,15 @@ Every transformation has clear semantics for:
 * ordering;
 * copies versus views when relevant;
 * missing data.
+
+Packaging:
+* The API should be self-documenting
+* Publicness is explicit.
+* public API is shallow, semantically grouped, and discoverable.
+* Imports are ordinary Python imports.
+* Prefer private modules. Their contents do not all need redundant underscores.
+* Public signatures use clean public vocabulary
+* Typing is part of the API via inline annotations. Avoid smart tricks that interfere with static code analysis tools.
 
 ### Testing
 

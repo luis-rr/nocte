@@ -22,14 +22,23 @@ dependencies = [
 dev = [
     "pytest>=8.2",
     "ruff",
+    "pyright",
     "pre-commit",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+nocte = ["py.typed"]
+
 [tool.ruff.format]
 quote-style = "single"
 
 [tool.ruff.lint]
 ignore = ["C408"]
+
+[tool.pyright]
+exclude = [
+    "**/deprecated/**",
+]
