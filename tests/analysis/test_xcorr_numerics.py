@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from nocte.analysis import xcorr
+from nocte.analysis import _xcorr_core
 
 RTOL = 1e-12
 ATOL = 1e-12
@@ -31,7 +31,7 @@ def _packed(
     right_positions: np.ndarray | None = None,
     left_bounds: tuple[np.ndarray, np.ndarray] | None = None,
     right_bounds: tuple[np.ndarray, np.ndarray] | None = None,
-) -> xcorr._PackedXCorrCore:
+) -> _xcorr_core.PackedXCorrCore:
     """
     Build numerical-core inputs without involving Traces or Matches.
 
@@ -48,6 +48,7 @@ def _packed(
 
     if left.ndim == 1:
         left = left[None, :]
+
     if right.ndim == 1:
         right = right[None, :]
 
@@ -107,7 +108,7 @@ def _packed(
     else:
         right_first, right_stop = right_bounds
 
-    return xcorr._PackedXCorrCore(
+    return _xcorr_core.PackedXCorrCore(
         left_values=left,
         right_values=right,
         left_positions=left_positions,
@@ -139,11 +140,11 @@ def _metric(
     method: str,
     *,
     kernel: np.ndarray | None = None,
-) -> xcorr._MetricCore:
+) -> _xcorr_core.MetricCore:
     if method == 'pearson':
-        code = xcorr._PEARSON
+        code = _xcorr_core.PEARSON
     elif method == 'dot':
-        code = xcorr._DOT
+        code = _xcorr_core.DOT
     else:
         raise ValueError(method)
 
@@ -153,7 +154,7 @@ def _metric(
             dtype=np.float64,
         )
 
-    return xcorr._MetricCore(
+    return _xcorr_core.MetricCore(
         method=code,
         kernel=np.ascontiguousarray(
             kernel,
@@ -191,12 +192,22 @@ def test_cross_corr_nb_sine_autocorrelation():
         offsets,
     )
 
-    actual = xcorr._cross_corr_nb(
+    actual = _xcorr_core.cross_corr_nb(
         packed,
         _metric('pearson'),
     )
 
-    expected = np.array([[1.0, -1.0, 1.0, -1.0, 1.0]])
+    expected = np.array(
+        [
+            [
+                1.0,
+                -1.0,
+                1.0,
+                -1.0,
+                1.0,
+            ]
+        ]
+    )
 
     np.testing.assert_allclose(
         actual,
@@ -261,16 +272,30 @@ def test_cross_corr_nb_pearson_matches_analytic_sine_phase():
     )
 
     left_positions = np.array(
-        [1, 0, 1],
+        [
+            1,
+            0,
+            1,
+        ],
         dtype=np.intp,
     )
     right_positions = np.array(
-        [0, 2, 1],
+        [
+            0,
+            2,
+            1,
+        ],
         dtype=np.intp,
     )
 
     offsets = np.array(
-        [-16, -8, 0, 8, 16],
+        [
+            -16,
+            -8,
+            0,
+            8,
+            16,
+        ],
         dtype=np.intp,
     )
 
@@ -294,7 +319,7 @@ def test_cross_corr_nb_pearson_matches_analytic_sine_phase():
         ),
     )
 
-    actual = xcorr._cross_corr_nb(
+    actual = _xcorr_core.cross_corr_nb(
         packed,
         _metric('pearson'),
     )
@@ -340,7 +365,13 @@ def test_cross_corr_nb_dot_matches_analytic_sine_solution():
     )
 
     offsets = np.array(
-        [-20, -10, 0, 10, 20],
+        [
+            -20,
+            -10,
+            0,
+            10,
+            20,
+        ],
         dtype=np.intp,
     )
 
@@ -360,7 +391,7 @@ def test_cross_corr_nb_dot_matches_analytic_sine_solution():
         ),
     )
 
-    actual = xcorr._cross_corr_nb(
+    actual = _xcorr_core.cross_corr_nb(
         packed,
         _metric('dot'),
     )
@@ -393,7 +424,7 @@ def test_cross_corr_nb_pearson_is_nan_when_undefined():
         ),
     )
 
-    constant_result = xcorr._cross_corr_nb(
+    constant_result = _xcorr_core.cross_corr_nb(
         packed_constant,
         _metric('pearson'),
     )
@@ -414,7 +445,7 @@ def test_cross_corr_nb_pearson_is_nan_when_undefined():
         ),
     )
 
-    no_overlap_result = xcorr._cross_corr_nb(
+    no_overlap_result = _xcorr_core.cross_corr_nb(
         packed_no_overlap,
         _metric('pearson'),
     )
@@ -448,7 +479,11 @@ def test_cross_corr_rolling_nb_matches_analytic_sine_phase():
     )
 
     offsets = np.array(
-        [-8, 0, 8],
+        [
+            -8,
+            0,
+            8,
+        ],
         dtype=np.intp,
     )
 
@@ -458,7 +493,7 @@ def test_cross_corr_rolling_nb_matches_analytic_sine_phase():
         offsets,
     )
 
-    rolling = xcorr._RollingCore(
+    rolling = _xcorr_core.RollingCore(
         window_start=0,
         window_stop=window_samples,
         anchor_start=32,
@@ -466,7 +501,7 @@ def test_cross_corr_rolling_nb_matches_analytic_sine_phase():
         n_times=20,
     )
 
-    actual = xcorr._cross_corr_rolling_nb(
+    actual = _xcorr_core.cross_corr_rolling_nb(
         packed,
         rolling,
         _metric('pearson'),
@@ -532,7 +567,7 @@ def test_cross_corr_rolling_nb_respects_finite_bounds():
         ),
     )
 
-    rolling = xcorr._RollingCore(
+    rolling = _xcorr_core.RollingCore(
         window_start=0,
         window_stop=8,
         anchor_start=0,
@@ -540,7 +575,7 @@ def test_cross_corr_rolling_nb_respects_finite_bounds():
         n_times=6,
     )
 
-    actual = xcorr._cross_corr_rolling_nb(
+    actual = _xcorr_core.cross_corr_rolling_nb(
         packed,
         rolling,
         _metric('pearson'),
@@ -591,7 +626,11 @@ def test_cross_corr_rolling_nb_weighted_dot_kernel():
     )
 
     offsets = np.array(
-        [-2, 0, 3],
+        [
+            -2,
+            0,
+            3,
+        ],
         dtype=np.intp,
     )
 
@@ -601,7 +640,7 @@ def test_cross_corr_rolling_nb_weighted_dot_kernel():
         offsets,
     )
 
-    rolling = xcorr._RollingCore(
+    rolling = _xcorr_core.RollingCore(
         window_start=-2,
         window_stop=3,
         anchor_start=10,
@@ -619,7 +658,7 @@ def test_cross_corr_rolling_nb_weighted_dot_kernel():
         ]
     )
 
-    actual = xcorr._cross_corr_rolling_nb(
+    actual = _xcorr_core.cross_corr_rolling_nb(
         packed,
         rolling,
         _metric(
@@ -643,7 +682,7 @@ def test_cross_corr_rolling_nb_weighted_dot_kernel():
     )
 
     # A unit kernel must reduce exactly to the ordinary dot product.
-    weighted_unit = xcorr._cross_corr_rolling_nb(
+    weighted_unit = _xcorr_core.cross_corr_rolling_nb(
         packed,
         rolling,
         _metric(
@@ -652,7 +691,7 @@ def test_cross_corr_rolling_nb_weighted_dot_kernel():
         ),
     )
 
-    unweighted = xcorr._cross_corr_rolling_nb(
+    unweighted = _xcorr_core.cross_corr_rolling_nb(
         packed,
         rolling,
         _metric('dot'),

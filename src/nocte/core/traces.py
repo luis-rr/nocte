@@ -910,6 +910,34 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
         )
 
     @classmethod
+    def from_grid(
+        cls,
+        values: np.ndarray,
+        grid: TimeGrid,
+        *,
+        meta: pd.DataFrame | None = None,
+    ) -> typing.Self:
+        """Build traces from samples on an explicit regular time grid."""
+        if not isinstance(grid, TimeGrid):
+            raise TypeError('grid must be a TimeGrid')
+
+        values = _validate_trace_array(values)
+
+        if values.shape[1] != grid.n_samples:
+            raise ValueError('values sample count must match grid')
+
+        data = _TracesData(
+            values,
+            grid.sampling,
+            grid.start,
+        )
+
+        return cls(
+            data,
+            cls._default_meta(len(data), name='trace') if meta is None else meta,
+        )
+
+    @classmethod
     def from_irregular(
         cls,
         values: np.ndarray,
