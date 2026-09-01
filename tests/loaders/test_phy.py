@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte.core.windows
-import nocte.loaders.phy
+import nocte._coll.windows
+import nocte.loaders._phy
 
 
 def _write_sorting(
@@ -61,7 +61,7 @@ def test_load_phy(tmp_path):
         },
     )
 
-    trains = nocte.loaders.phy.load_phy(
+    trains = nocte.loaders._phy.load_phy(
         tmp_path,
         sampling_rate=1000,
         sample_count=100,
@@ -93,7 +93,7 @@ def test_load_phy(tmp_path):
         np.array([20.0, 50.0]),
     )
 
-    assert trains.support == nocte.core.windows.Win(0, 100)
+    assert trains.support == nocte._coll.windows.Win(0, 100)
 
 
 def test_load_phy_uses_current_clusters_and_drops_stale_metadata(tmp_path):
@@ -112,7 +112,7 @@ def test_load_phy_uses_current_clusters_and_drops_stale_metadata(tmp_path):
         },
     )
 
-    trains = nocte.loaders.phy.load_phy(
+    trains = nocte.loaders._phy.load_phy(
         tmp_path,
         sampling_rate=1000,
         sample_count=100,
@@ -148,7 +148,7 @@ def test_load_phy_ignores_cluster_info(tmp_path):
         },
     )
 
-    trains = nocte.loaders.phy.load_phy(
+    trains = nocte.loaders._phy.load_phy(
         tmp_path,
         sampling_rate=1000,
         sample_count=100,
@@ -165,7 +165,7 @@ def test_load_phy_accepts_vector_and_column_arrays(tmp_path):
         spike_clusters=np.array([2, 2, 4]),
     )
 
-    trains = nocte.loaders.phy.load_phy(
+    trains = nocte.loaders._phy.load_phy(
         tmp_path,
         sampling_rate=1000,
         sample_count=100,
@@ -190,7 +190,7 @@ def test_load_phy_converts_samples_to_milliseconds(tmp_path):
         spike_clusters=[0, 0, 0],
     )
 
-    trains = nocte.loaders.phy.load_phy(
+    trains = nocte.loaders._phy.load_phy(
         tmp_path,
         sampling_rate=30_000,
         sample_count=60_000,
@@ -201,7 +201,7 @@ def test_load_phy_converts_samples_to_milliseconds(tmp_path):
         np.array([0.0, 500.0, 1000.0]),
     )
 
-    assert trains.support == nocte.core.windows.Win(
+    assert trains.support == nocte._coll.windows.Win(
         0,
         2000,
     )
@@ -218,7 +218,7 @@ def test_load_phy_rejects_mismatched_spike_arrays(tmp_path):
         ValueError,
         match='same number of entries',
     ):
-        nocte.loaders.phy.load_phy(
+        nocte.loaders._phy.load_phy(
             tmp_path,
             sampling_rate=1000,
             sample_count=100,
@@ -236,7 +236,7 @@ def test_load_phy_rejects_unsorted_spike_times(tmp_path):
         ValueError,
         match='monotonically non-decreasing',
     ):
-        nocte.loaders.phy.load_phy(
+        nocte.loaders._phy.load_phy(
             tmp_path,
             sampling_rate=1000,
             sample_count=100,
@@ -264,7 +264,7 @@ def test_load_phy_rejects_spikes_outside_recording(
         ValueError,
         match='outside the source recording',
     ):
-        nocte.loaders.phy.load_phy(
+        nocte.loaders._phy.load_phy(
             tmp_path,
             sampling_rate=1000,
             sample_count=100,

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nocte.core.traces import Traces
+from nocte._coll.traces import Traces
 
 
 def test_lookup_each_aligns_series_by_trace_identity():

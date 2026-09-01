@@ -14,13 +14,13 @@ import numpy.typing as npt
 import pandas as pd
 import scipy.signal
 
-import nocte.core.collection
-import nocte.core.grouping
-import nocte.core.hdf
-from nocte.core.hdf import HDFCollection
-from nocte.core.matching import Matches
-from nocte.core.sampling import SamplingRate, TimeGrid
-from nocte.core.windows import Win, Windows, WinPoint
+import nocte._core.collection
+import nocte._core.grouping
+import nocte._core.hdf
+from nocte._coll.windows import Win, Windows, WinPoint
+from nocte._core.hdf import HDFCollection
+from nocte._core.matching import Matches
+from nocte._core.sampling import SamplingRate, TimeGrid
 
 logger = logging.getLogger(__name__)
 
@@ -786,7 +786,7 @@ class _TracesData(typing.Generic[FloatT]):
 
         The target key must not already exist.
         """
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
 
         with h5py.File(path, mode='a') as file:
             if key in file:
@@ -810,7 +810,7 @@ class _TracesData(typing.Generic[FloatT]):
         """
         Load a trace payload previously stored with to_hdf().
         """
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -1820,7 +1820,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
 
 
 class TracesGrouping(
-    nocte.core.grouping.Grouping[Traces[FloatT]],
+    nocte._core.grouping.Grouping[Traces[FloatT]],
     typing.Generic[FloatT],
 ):
     """
@@ -1836,11 +1836,11 @@ class TracesGrouping(
         self,
         function: collections.abc.Callable[[Traces[FloatT]], Traces[FloatT]],
         *,
-        pbar: nocte.core.collection.PBarParamT = None,
+        pbar: nocte._core.collection.PBarParamT = None,
     ) -> typing.Self:
         iterator = (group for _, group in self.items())
 
-        iterator = nocte.core.collection.optional_pbar(
+        iterator = nocte._core.collection.optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,
@@ -1860,7 +1860,7 @@ class TracesGrouping(
         self,
         by: float | pd.Series,
         *,
-        pbar: nocte.core.collection.PBarParamT = None,
+        pbar: nocte._core.collection.PBarParamT = None,
     ) -> typing.Self:
         """
         Shift group time coordinates.
@@ -1887,7 +1887,7 @@ class TracesGrouping(
             strict=True,
         )
 
-        iterator = nocte.core.collection.optional_pbar(
+        iterator = nocte._core.collection.optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,

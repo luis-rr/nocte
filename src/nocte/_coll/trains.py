@@ -11,12 +11,12 @@ import h5py
 import numpy as np
 import pandas as pd
 
-import nocte.core._point_process
-import nocte.core.grouping
-import nocte.core.hdf
-import nocte.core.matching
-import nocte.core.time
-import nocte.core.windows
+import nocte._coll.windows
+import nocte._core.grouping
+import nocte._core.hdf
+import nocte._core.matching
+import nocte._core.point_process
+import nocte._core.time
 
 TrainArrayLike = collections.abc.Sequence[float] | np.ndarray | pd.Index
 TrainValuesLike = (
@@ -38,7 +38,7 @@ class _TrainsData:
         arrays = []
 
         for times in values:
-            array = nocte.core._point_process.as_sorted_times_1d(times, copy=True)
+            array = nocte._core.point_process.as_sorted_times_1d(times, copy=True)
             array.flags.writeable = False
             arrays.append(array)
 
@@ -114,7 +114,7 @@ class _TrainsData:
         key: str,
     ) -> None:
         """Store trains as flat timestamps plus cumulative offsets."""
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
         flat, offsets = self.flatten()
 
         with h5py.File(path, mode='a') as file:
@@ -133,7 +133,7 @@ class _TrainsData:
         key: str,
     ) -> typing.Self:
         """Load trains stored as flat timestamps plus cumulative offsets."""
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -176,14 +176,14 @@ class _TrainsData:
                 order='C',
                 copy=True,
             )
-            array = nocte.core._point_process.as_sorted_times_1d(array)
+            array = nocte._core.point_process.as_sorted_times_1d(array)
             array.flags.writeable = False
             arrays.append(array)
 
         return cls._from_readonly_arrays(arrays)
 
 
-class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
+class Trains(nocte._core.hdf.HDFCollection[np.ndarray]):
     """
     Indexed collection of related point-event trains.
 
@@ -200,7 +200,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         self,
         data: _TrainsData,
         meta: pd.DataFrame,
-        support: nocte.core.windows.Win,
+        support: nocte._coll.windows.Win,
     ):
         self._data = data
         self.meta = meta.copy()
@@ -233,7 +233,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         cls,
         times: TrainValuesLike,
         *,
-        support: nocte.core.windows.Win,
+        support: nocte._coll.windows.Win,
         meta: pd.DataFrame | None = None,
     ) -> typing.Self:
         """
@@ -285,7 +285,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
             raise ValueError('Mean rate is undefined for empty temporal support')
 
         rate_hz = self._data.counts() / self.support.length
-        rate_hz *= nocte.core.time.ms(seconds=1)
+        rate_hz *= nocte._core.time.ms(seconds=1)
 
         return pd.Series(
             rate_hz,
@@ -306,7 +306,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
     def _crop(
         self,
-        win: nocte.core.windows.Win,
+        win: nocte._coll.windows.Win,
     ) -> typing.Self:
         """Restrict all trains and their support to one temporal window."""
         support = self.support.crop(win)
@@ -333,9 +333,9 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
     def extract_win(
         self,
-        win: nocte.core.windows.Win,
+        win: nocte._coll.windows.Win,
         *,
-        align: float | nocte.core.windows.WinPoint | None = 'ref',
+        align: float | nocte._coll.windows.WinPoint | None = 'ref',
         drop: bool = True,
     ) -> typing.Self:
         """Extract trains inside `win` and optionally align their times."""
@@ -351,10 +351,10 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
     def extract_matched(
         self,
-        wins: nocte.core.windows.Windows,
-        matches: nocte.core.matching.Matches,
+        wins: nocte._coll.windows.Windows,
+        matches: nocte._core.matching.Matches,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
         drop: bool = True,
     ) -> Trains:
         """Extract trains according to an explicit Trains-to-Windows relation."""
@@ -374,13 +374,13 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
     def extract_all(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
         drop: bool = True,
     ) -> Trains:
         """Extract every train from every Window."""
-        matches = nocte.core.matching.Matches.from_product(
+        matches = nocte._core.matching.Matches.from_product(
             self,
             wins,
         )
@@ -394,14 +394,14 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
     def extract_by(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
         by: str | collections.abc.Sequence[str],
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
         drop: bool = True,
     ) -> Trains:
         """Extract trains from Windows matched by metadata equality."""
-        matches = nocte.core.matching.Matches.from_meta(
+        matches = nocte._core.matching.Matches.from_meta(
             self,
             wins,
             by=by,
@@ -429,13 +429,13 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
     # ------------------------------------------------------------------
     # point-process summaries over common support
 
-    def count_in(self, win: nocte.core.windows.Win) -> pd.Series:
+    def count_in(self, win: nocte._coll.windows.Win) -> pd.Series:
         """Count events from each train in one observed half-open interval."""
         self._require_within_support(win)
         start = win.time_at('start')
         stop = win.time_at('stop')
 
-        values = nocte.core._point_process.count_between_many(
+        values = nocte._core.point_process.count_between_many(
             self._data.values,
             start,
             stop,
@@ -443,19 +443,19 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
         return pd.Series(values, index=self.index, name='count')
 
-    def rate_in(self, win: nocte.core.windows.Win) -> pd.Series:
+    def rate_in(self, win: nocte._coll.windows.Win) -> pd.Series:
         """Mean rate of each train inside one observed interval, in Hz."""
         if win.length == 0:
             raise ValueError('Rate is undefined for an empty window')
 
         counts = self.count_in(win).astype(float)
-        counts *= nocte.core.time.ms(seconds=1) / win.length
+        counts *= nocte._core.time.ms(seconds=1) / win.length
         counts.name = 'rate'
         return counts
 
     def count_bins(
         self,
-        bins: nocte.core._point_process.TimeArrayLike,
+        bins: nocte._core.point_process.TimeArrayLike,
     ) -> pd.DataFrame:
         """
         Count every train in common half-open bins ``[left, right)``.
@@ -463,10 +463,10 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         Bins must lie inside known observation support so unobserved time is not
         silently represented as zero activity.
         """
-        edges = nocte.core._point_process.as_bin_edges(bins)
+        edges = nocte._core.point_process.as_bin_edges(bins)
         self._require_range_within_support(edges[0], edges[-1], name='bins')
 
-        values = nocte.core._point_process.count_bins_many(
+        values = nocte._core.point_process.count_bins_many(
             self._data.values,
             edges,
         )
@@ -482,7 +482,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         window: float,
         *,
         step: float,
-        within: nocte.core.windows.Win | None = None,
+        within: nocte._coll.windows.Win | None = None,
     ) -> pd.DataFrame:
         """Count every train in centered half-open sliding windows."""
         window = self._positive_float(window, name='window')
@@ -490,13 +490,13 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         within = self.support if within is None else within
         self._require_within_support(within)
 
-        sample_times = nocte.core._point_process.sample_centers(
+        sample_times = nocte._core.point_process.sample_centers(
             within.time_at('start'),
             within.time_at('stop'),
             step,
             margin=window * 0.5,
         )
-        values = nocte.core._point_process.count_rolling_many(
+        values = nocte._core.point_process.count_rolling_many(
             self._data.values,
             sample_times,
             window,
@@ -513,7 +513,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         sigma: float,
         *,
         step: float,
-        within: nocte.core.windows.Win | None = None,
+        within: nocte._coll.windows.Win | None = None,
         width: float = 5.0,
     ) -> pd.DataFrame:
         """
@@ -529,19 +529,19 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         within = self.support if within is None else within
         self._require_within_support(within)
 
-        sample_times = nocte.core._point_process.sample_centers(
+        sample_times = nocte._core.point_process.sample_centers(
             within.time_at('start'),
             within.time_at('stop'),
             step,
             margin=sigma * width,
         )
-        values = nocte.core._point_process.gaussian_rate_many(
+        values = nocte._core.point_process.gaussian_rate_many(
             self._data.values,
             sample_times,
             sigma,
             width,
         )
-        values *= nocte.core.time.ms(seconds=1)
+        values *= nocte._core.time.ms(seconds=1)
 
         return pd.DataFrame(
             values.T,
@@ -604,7 +604,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
         if support_values.shape != (3,):
             raise ValueError('Trains support must contain start, stop, and ref')
 
-        support = nocte.core.windows.Win(
+        support = nocte._coll.windows.Win(
             support_values[0],
             support_values[1],
             ref=support_values[2],
@@ -643,7 +643,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
                     f'[{start}, {stop})'
                 )
 
-    def _require_within_support(self, win: nocte.core.windows.Win) -> None:
+    def _require_within_support(self, win: nocte._coll.windows.Win) -> None:
         if not win.contained_in(self.support):
             raise ValueError(f'Window {win} lies outside train support {self.support}')
 
@@ -672,7 +672,7 @@ class Trains(nocte.core.hdf.HDFCollection[np.ndarray]):
 
 
 class TrainsGrouping(
-    nocte.core.grouping.Grouping[Trains],
+    nocte._core.grouping.Grouping[Trains],
 ):
     """
     Homogeneous grouping of Trains.
@@ -684,9 +684,9 @@ class TrainsGrouping(
 
     def extract_wins(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
         drop: bool = True,
     ) -> typing.Self:
         """Extract each train group using its corresponding Window."""
@@ -714,7 +714,7 @@ class TrainsGrouping(
             meta=self.meta,
         )
 
-    def _common_support(self) -> nocte.core.windows.Win:
+    def _common_support(self) -> nocte._coll.windows.Win:
         """Return the shared realized support, raising if grouped Trains differ."""
         groups = [trains for _, trains in self.items()]
 
@@ -751,7 +751,7 @@ class TrainsGrouping(
                 f'all grouped Trains must share the same support; found {summary}'
             )
 
-        return nocte.core.windows.Win(start, stop)
+        return nocte._coll.windows.Win(start, stop)
 
     def concat(self) -> Trains:
         """Concatenate groups that share exactly the same observation support."""

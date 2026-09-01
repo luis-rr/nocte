@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nocte.core.windows import Win
+from nocte._coll.windows import Win
 
 # -----------------------------------------------------------------------------
 # construction and geometry

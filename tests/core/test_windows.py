@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nocte.core.windows import Win, Windows, _TimeWindowPairs
+from nocte._coll.windows import Win, Windows, _TimeWindowPairs
 
 
 def assert_series_values(series: pd.Series, values) -> None:

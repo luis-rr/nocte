@@ -8,23 +8,23 @@ import typing
 import numpy as np
 import pandas as pd
 
-import nocte.core.collection
-import nocte.core.events
-import nocte.core.windows
-from nocte.core.registry import Registry
-from nocte.core.sources import Source, SourceKind, Sources, SourcesGrouping
+import nocte._coll.events
+import nocte._coll.windows
+import nocte._core.collection
+from nocte._coll.registry import Registry
+from nocte._coll.sources import Source, SourceKind, Sources, SourcesGrouping
 
 Tag = tuple[str, ...]
 TagLike = str | tuple[str, ...]
 
 WindowsParser = collections.abc.Callable[
     [object],
-    nocte.core.windows.Windows | None,
+    nocte._coll.windows.Windows | None,
 ]
 
 EventsParser = collections.abc.Callable[
     [object],
-    nocte.core.events.Events | None,
+    nocte._coll.events.Events | None,
 ]
 
 
@@ -112,7 +112,7 @@ class _LiteralRule:
     required: bool
 
 
-class Builder:
+class RegistryBuilder:
     """
     Thin construction helper for project-specific Registry ingestion.
 
@@ -189,7 +189,7 @@ class Builder:
 
     def drop_rows(
         self,
-        mask: nocte.core.collection.MaskLike,
+        mask: nocte._core.collection.MaskLike,
     ) -> None:
         if isinstance(mask, pd.Series):
             if (
@@ -490,7 +490,7 @@ class Builder:
         semantic namespace of those IDs, for example ``'experiment'`` or
         ``'section'``.
         """
-        if not nocte.core.collection.is_valid_name(name):
+        if not nocte._core.collection.is_valid_name(name):
             raise ValueError('name must be a non-empty string')
 
         self._validate()
@@ -766,8 +766,8 @@ class Builder:
     def _build_windows(
         self,
         name: str,
-    ) -> nocte.core.windows.WindowsGrouping:
-        groups: list[nocte.core.windows.Windows] = []
+    ) -> nocte._coll.windows.WindowsGrouping:
+        groups: list[nocte._coll.windows.Windows] = []
         entries: list[int] = []
         tags: list[Tag] = []
 
@@ -807,7 +807,7 @@ class Builder:
                 entries.append(position)
                 tags.append(spec.tag)
 
-        return nocte.core.windows.WindowsGrouping.from_items(
+        return nocte._coll.windows.WindowsGrouping.from_items(
             groups,
             meta=self._resource_meta(
                 name,
@@ -819,8 +819,8 @@ class Builder:
     def _build_events(
         self,
         name: str,
-    ) -> nocte.core.events.EventsGrouping:
-        groups: list[nocte.core.events.Events] = []
+    ) -> nocte._coll.events.EventsGrouping:
+        groups: list[nocte._coll.events.Events] = []
         entries: list[int] = []
         tags: list[Tag] = []
 
@@ -860,7 +860,7 @@ class Builder:
                 entries.append(position)
                 tags.append(spec.tag)
 
-        return nocte.core.events.EventsGrouping.from_items(
+        return nocte._coll.events.EventsGrouping.from_items(
             groups,
             meta=self._resource_meta(
                 name,
@@ -875,11 +875,11 @@ class Builder:
         *,
         spec: _WindowsSpec,
         position: int,
-    ) -> nocte.core.windows.Windows | None:
+    ) -> nocte._coll.windows.Windows | None:
         if spec.parser is None:
             if isinstance(
                 value,
-                nocte.core.windows.Windows,
+                nocte._coll.windows.Windows,
             ):
                 return value
 
@@ -902,7 +902,7 @@ class Builder:
 
         if result is not None and not isinstance(
             result,
-            nocte.core.windows.Windows,
+            nocte._coll.windows.Windows,
         ):
             raise TypeError(
                 f'windows parser for {spec.tag!r} must return Windows or None'
@@ -916,11 +916,11 @@ class Builder:
         *,
         spec: _EventsSpec,
         position: int,
-    ) -> nocte.core.events.Events | None:
+    ) -> nocte._coll.events.Events | None:
         if spec.parser is None:
             if isinstance(
                 value,
-                nocte.core.events.Events,
+                nocte._coll.events.Events,
             ):
                 return value
 
@@ -943,7 +943,7 @@ class Builder:
 
         if result is not None and not isinstance(
             result,
-            nocte.core.events.Events,
+            nocte._coll.events.Events,
         ):
             raise TypeError(
                 f'events parser for {spec.tag!r} must return Events or None'

@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nocte.core import events, matching, traces, trains, windows
+from nocte._coll import events, traces, trains, windows
+from nocte._core import matching
 
 # ----------------------------------------------------------------------
 # fixtures

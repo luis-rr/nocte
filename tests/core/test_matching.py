@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte.core.collection
-import nocte.core.matching
+import nocte._core.collection
+import nocte._core.matching
 
 
-class _TestCollection(nocte.core.collection.Collection[int]):
+class _TestCollection(nocte._core.collection.Collection[int]):
     """Minimal metadata-only Collection for matching tests."""
 
     def __init__(self, meta: pd.DataFrame):
@@ -57,7 +57,7 @@ def test_from_meta_many_to_many():
     left_meta = left.meta.copy()
     right_meta = right.meta.copy()
 
-    matches = nocte.core.matching.Matches.from_meta(
+    matches = nocte._core.matching.Matches.from_meta(
         left,
         right,
         by='exp',
@@ -106,7 +106,7 @@ def test_from_meta_no_matches():
         exp=['c', 'd'],
     )
 
-    matches = nocte.core.matching.Matches.from_meta(
+    matches = nocte._core.matching.Matches.from_meta(
         left,
         right,
         by='exp',
@@ -132,7 +132,7 @@ def test_from_product():
         name='win',
     )
 
-    matches = nocte.core.matching.Matches.from_product(
+    matches = nocte._core.matching.Matches.from_product(
         left,
         right,
     )
@@ -160,7 +160,7 @@ def test_from_identity():
         name='beta',
     )
 
-    matches = nocte.core.matching.Matches.from_identity(
+    matches = nocte._core.matching.Matches.from_identity(
         collection,
     )
 
@@ -187,7 +187,7 @@ def test_from_combinations():
         name='beta',
     )
 
-    matches = nocte.core.matching.Matches.from_combinations(
+    matches = nocte._core.matching.Matches.from_combinations(
         collection,
     )
 
@@ -220,7 +220,7 @@ def test_selection_preserves_relation_state_and_alignment():
         exp=['a', 'b', 'a'],
     )
 
-    matches = nocte.core.matching.Matches.from_meta(
+    matches = nocte._core.matching.Matches.from_meta(
         left,
         right,
         by='exp',
@@ -262,7 +262,7 @@ def test_rename_changes_only_match_identity_namespace():
         name='win',
     )
 
-    matches = nocte.core.matching.Matches.from_product(
+    matches = nocte._core.matching.Matches.from_product(
         left,
         right,
     )
@@ -303,7 +303,7 @@ def test_source_ids_resolve_to_repeated_positions():
         exp=['a', 'b', 'a'],
     )
 
-    matches = nocte.core.matching.Matches.from_meta(
+    matches = nocte._core.matching.Matches.from_meta(
         left,
         right,
         by='exp',
@@ -337,23 +337,23 @@ def test_empty_collections_are_valid():
     )
 
     relations = [
-        nocte.core.matching.Matches.from_meta(
+        nocte._core.matching.Matches.from_meta(
             empty_left,
             empty_right,
             by='exp',
         ),
-        nocte.core.matching.Matches.from_product(
+        nocte._core.matching.Matches.from_product(
             empty_left,
             right,
         ),
-        nocte.core.matching.Matches.from_product(
+        nocte._core.matching.Matches.from_product(
             right,
             empty_left,
         ),
-        nocte.core.matching.Matches.from_identity(
+        nocte._core.matching.Matches.from_identity(
             empty_left,
         ),
-        nocte.core.matching.Matches.from_combinations(
+        nocte._core.matching.Matches.from_combinations(
             empty_left,
         ),
     ]
@@ -381,7 +381,7 @@ def test_from_meta_requires_matching_columns():
         KeyError,
         match='right collection is missing',
     ):
-        nocte.core.matching.Matches.from_meta(
+        nocte._core.matching.Matches.from_meta(
             left,
             right,
             by='exp',
@@ -404,7 +404,7 @@ def test_from_meta_rejects_identity_name_as_matching_column():
         ValueError,
         match='identity name',
     ):
-        nocte.core.matching.Matches.from_meta(
+        nocte._core.matching.Matches.from_meta(
             left,
             right,
             by='exp',

@@ -9,11 +9,11 @@ import numba
 import numpy as np
 import pandas as pd
 
-import nocte.analysis._num_core
-import nocte.core.matching
-import nocte.core.sampling
-import nocte.core.traces
-import nocte.core.windows
+import nocte._coll.traces
+import nocte._coll.windows
+import nocte._core.matching
+import nocte._core.sampling
+from nocte._core import num
 
 CorrelationMethod = typing.Literal['pearson', 'dot']
 
@@ -29,7 +29,7 @@ class SignalCore(typing.NamedTuple):
 
     values: np.ndarray
     positions: np.ndarray
-    bounds: nocte.analysis._num_core.Bounds
+    bounds: num.Bounds
 
 
 class XCorrCore(typing.NamedTuple):
@@ -92,7 +92,7 @@ class PreparedXCorr:
     """Validated correlation inputs plus their canonical lag grid."""
 
     core: XCorrCore
-    lag_grid: nocte.core.sampling.TimeGrid
+    lag_grid: nocte._core.sampling.TimeGrid
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -100,7 +100,7 @@ class PreparedRolling:
     """Validated rolling geometry plus its output time grid."""
 
     core: RollingCore
-    grid: nocte.core.sampling.TimeGrid
+    grid: nocte._core.sampling.TimeGrid
 
 
 def pack_core(
@@ -129,7 +129,7 @@ def unpack_core(
         left=SignalCore(
             values=packed.left_values,
             positions=packed.left_positions,
-            bounds=nocte.analysis._num_core.Bounds(
+            bounds=num.Bounds(
                 first=packed.left_first,
                 stop=packed.left_stop,
             ),
@@ -137,7 +137,7 @@ def unpack_core(
         right=SignalCore(
             values=packed.right_values,
             positions=packed.right_positions,
-            bounds=nocte.analysis._num_core.Bounds(
+            bounds=num.Bounds(
                 first=packed.right_first,
                 stop=packed.right_stop,
             ),
@@ -467,10 +467,10 @@ def method_code(
 
 
 def validate_sampling(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
 ) -> tuple[
-    nocte.core.sampling.SamplingRate,
+    nocte._core.sampling.SamplingRate,
     int,
 ]:
     """Validate common sampling and return the right-vs-left sample offset."""
@@ -492,9 +492,9 @@ def validate_sampling(
 
 
 def prepare(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     lags: np.ndarray,
 ) -> PreparedXCorr:
     """Validate public objects and construct the numerical representation."""
@@ -503,7 +503,7 @@ def prepare(
         right,
     )
 
-    requested_lag_grid = nocte.core.sampling.TimeGrid.from_times(lags)
+    requested_lag_grid = nocte._core.sampling.TimeGrid.from_times(lags)
     lag_grid = requested_lag_grid.align_to(sampling)
     offsets = lag_grid.sample_offsets(sampling) + phase_offset
 
@@ -524,7 +524,7 @@ def prepare(
             ]
         )
 
-        bounds = nocte.analysis._num_core.Bounds.from_traces(
+        bounds = num.Bounds.from_traces(
             left,
             participating,
             desc='source traces',
@@ -534,12 +534,12 @@ def prepare(
         right_bounds = bounds
 
     else:
-        left_bounds = nocte.analysis._num_core.Bounds.from_traces(
+        left_bounds = num.Bounds.from_traces(
             left,
             left_positions,
             desc='left traces',
         )
-        right_bounds = nocte.analysis._num_core.Bounds.from_traces(
+        right_bounds = num.Bounds.from_traces(
             right,
             right_positions,
             desc='right traces',
@@ -565,16 +565,16 @@ def prepare(
 
 def prepare_rolling(
     prepared: PreparedXCorr,
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
     *,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
 ) -> PreparedRolling:
     """Validate rolling geometry and construct its output sampling grid."""
     if not isinstance(
         window,
-        nocte.core.windows.Win,
+        nocte._coll.windows.Win,
     ):
         raise TypeError('window must be a Win')
 
@@ -628,7 +628,7 @@ def prepare_rolling(
 
     n_times = (anchor_last - anchor_start) // anchor_step + 1
 
-    output_grid = nocte.core.sampling.TimeGrid(
+    output_grid = nocte._core.sampling.TimeGrid(
         sampling=sampling.strided(anchor_step),
         start=left.start + sampling.samples_to_ms(anchor_start),
         n_samples=n_times,
@@ -691,12 +691,12 @@ def prepare_metric(
 
 
 def prepare_rolling_xcorr(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     *,
     lags: np.ndarray,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
@@ -733,7 +733,7 @@ def prepare_rolling_xcorr(
 
 
 def match_meta(
-    matches: nocte.core.matching.Matches,
+    matches: nocte._core.matching.Matches,
 ) -> pd.DataFrame:
     """Source identities plus pair-specific metadata, indexed by match."""
     return pd.concat(
@@ -747,12 +747,12 @@ def match_meta(
 
 
 def cross_corr_meta(
-    matches: nocte.core.matching.Matches,
+    matches: nocte._core.matching.Matches,
 ) -> pd.DataFrame:
     """Metadata for one full xcorr result per match."""
     meta = match_meta(matches)
 
-    provenance_name = nocte.analysis._num_core.provenance_name(
+    provenance_name = num.provenance_name(
         matches.name,
         reserved=(
             'xcorr',
@@ -760,7 +760,7 @@ def cross_corr_meta(
         ),
     )
 
-    nocte.analysis._num_core.set_provenance(
+    num.set_provenance(
         meta,
         provenance_name,
         matches.index.to_numpy(copy=False),
@@ -775,13 +775,13 @@ def full_result(
     prepared: PreparedXCorr,
     metric: MetricCore,
     meta: pd.DataFrame,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     values = cross_corr_nb(
         pack_core(prepared.core),
         metric,
     )
 
-    return nocte.core.traces.Traces.from_grid(
+    return nocte._coll.traces.Traces.from_grid(
         values,
         prepared.lag_grid,
         meta=meta,
@@ -796,14 +796,14 @@ def rolling_result(
     source_meta: pd.DataFrame,
     source_ids: np.ndarray,
     source_name: str,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     values = cross_corr_rolling_nb(
         pack_core(prepared.core),
         rolling.core,
         metric,
     )
 
-    return nocte.analysis._num_core.feature_traces(
+    return num.feature_traces(
         values,
         rolling.grid,
         source_meta=source_meta,
@@ -816,13 +816,13 @@ def rolling_result(
 
 
 def cross_corr(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     *,
     lags: np.ndarray,
     method: CorrelationMethod,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     prepared = prepare(
         left,
         right,
@@ -839,12 +839,12 @@ def cross_corr(
 
 
 def auto_corr(
-    traces: nocte.core.traces.Traces,
+    traces: nocte._coll.traces.Traces,
     *,
     lags: np.ndarray,
     method: CorrelationMethod,
-) -> nocte.core.traces.Traces:
-    matches = nocte.core.matching.Matches.from_identity(traces)
+) -> nocte._coll.traces.Traces:
+    matches = nocte._core.matching.Matches.from_identity(traces)
 
     prepared = prepare(
         traces,
@@ -862,16 +862,16 @@ def auto_corr(
 
 
 def cross_corr_rolling(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     *,
     lags: np.ndarray,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     prepared, rolling, metric = prepare_rolling_xcorr(
         left,
         right,
@@ -894,15 +894,15 @@ def cross_corr_rolling(
 
 
 def auto_corr_rolling(
-    traces: nocte.core.traces.Traces,
+    traces: nocte._coll.traces.Traces,
     *,
     lags: np.ndarray,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
-) -> nocte.core.traces.Traces:
-    matches = nocte.core.matching.Matches.from_identity(traces)
+) -> nocte._coll.traces.Traces:
+    matches = nocte._core.matching.Matches.from_identity(traces)
 
     prepared, rolling, metric = prepare_rolling_xcorr(
         traces,

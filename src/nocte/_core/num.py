@@ -9,8 +9,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-import nocte.core.sampling
-import nocte.core.traces
+import nocte._coll.traces
+import nocte._core.sampling
 
 FloatArray = npt.NDArray[np.float64]
 ComplexArray = npt.NDArray[np.complex128]
@@ -26,7 +26,7 @@ class Bounds(typing.NamedTuple):
     @classmethod
     def from_traces(
         cls,
-        traces: nocte.core.traces.Traces,
+        traces: nocte._coll.traces.Traces,
         positions: np.ndarray | None = None,
         *,
         desc: str = 'traces',
@@ -51,7 +51,7 @@ class Bounds(typing.NamedTuple):
 
 
 def duration_samples(
-    sampling: nocte.core.sampling.SamplingRate,
+    sampling: nocte._core.sampling.SamplingRate,
     duration: float,
     *,
     desc: str,
@@ -95,13 +95,13 @@ def to_db(
 
 
 def traces_like(
-    source: nocte.core.traces.Traces,
+    source: nocte._coll.traces.Traces,
     values: np.ndarray,
     *,
     meta: pd.DataFrame | None = None,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """Build derived traces on the exact source grid without dtype coercion."""
-    return nocte.core.traces.Traces.from_grid(
+    return nocte._coll.traces.Traces.from_grid(
         values,
         source.grid,
         meta=(source.meta if meta is None else meta),
@@ -209,7 +209,7 @@ def feature_meta(
 
 def feature_traces(
     values: np.ndarray,
-    grid: nocte.core.sampling.TimeGrid,
+    grid: nocte._core.sampling.TimeGrid,
     *,
     source_meta: pd.DataFrame,
     source_ids: np.ndarray,
@@ -217,7 +217,7 @@ def feature_traces(
     feature_name: str,
     features: collections.abc.Sequence[typing.Any] | np.ndarray,
     result_name: str,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """
     Build traces from a `(source, feature, time)` analysis result.
 
@@ -258,7 +258,7 @@ def feature_traces(
         values.shape[2],
     )
 
-    return nocte.core.traces.Traces.from_grid(
+    return nocte._coll.traces.Traces.from_grid(
         flattened,
         grid,
         meta=meta,

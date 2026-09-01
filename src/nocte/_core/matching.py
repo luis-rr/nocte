@@ -6,7 +6,7 @@ import typing
 import numpy as np
 import pandas as pd
 
-from nocte.core.collection import Collection, IndexLike, as_ids, is_valid_name
+from nocte._core.collection import Collection, IndexLike, as_ids, is_valid_name
 
 Match = tuple[int, int]
 

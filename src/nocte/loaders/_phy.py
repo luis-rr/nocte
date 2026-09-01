@@ -8,9 +8,9 @@ import pathlib
 import numpy as np
 import pandas as pd
 
-import nocte.core.sampling
-import nocte.core.trains
-import nocte.core.windows
+import nocte._coll.trains
+import nocte._coll.windows
+import nocte._core.sampling
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ def load_phy(
     *,
     sampling_rate: float,
     sample_count: int,
-) -> nocte.core.trains.Trains:
+) -> nocte._coll.trains.Trains:
     """
     Load Phy-compatible spike-sorting output as Trains.
 
@@ -222,7 +222,7 @@ def load_phy(
     """
     folder = pathlib.Path(folder)
 
-    sampling = nocte.core.sampling.SamplingRate(sampling_rate)
+    sampling = nocte._core.sampling.SamplingRate(sampling_rate)
 
     if not isinstance(
         sample_count,
@@ -263,12 +263,12 @@ def load_phy(
         unit_ids,
     )
 
-    support = nocte.core.windows.Win(
+    support = nocte._coll.windows.Win(
         0.0,
         sampling.samples_to_ms(sample_count),
     )
 
-    return nocte.core.trains.Trains.from_times(
+    return nocte._coll.trains.Trains.from_times(
         times,
         meta=meta,
         support=support,

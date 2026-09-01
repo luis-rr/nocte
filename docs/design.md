@@ -10,25 +10,6 @@ The refactor preserves the core strengths of v0.1: metadata-aware experimental o
 
 `nocte v1.0` is the first intentionally designed stable API of the library.
 
-### State
-
-The current refactor has affected:
-
-- Collection, Grouping
-- Traces
-- Windows
-- Events
-- Trains
-- Frames
-- Registry
-- analysis / xcorr
-- analysis / spectral
-
-Still pending are:
-- Stored and loaders
-- Rest of analysis
-- All of plotting
-
 
 ## Purpose and design philosophy
 
@@ -71,42 +52,52 @@ nocte/
     └── notebooks/
 ```
 
-The package is organized by responsibility:
+The source tree distinguishes public API from implementation structure. Public namespaces are exposed explicitly through package `__init__.py` files, which act as static API manifests. Implementation modules and packages are private by default and use underscore-prefixed paths; their contents need not repeat that privacy marker individually. Public symbols are re-exported from stable, shallow semantic namespaces rather than exposing their physical implementation paths.
+
+The layout is roughly:
 
 ```text
 src/nocte/
-├── core/
+│
+├── __init__.py
+├── py.typed
+│
+├── _core/
+│   ├── __init__.py
 │   ├── collection.py
 │   ├── grouping.py
-│   ├── matching.py
+│   ├── matches.py
 │   ├── hdf.py
-│   │
-│   ├── frames.py
+│   ├── sampling.py
+│   ├── num.py
+│   └── time.py
+│
+├── _collections/
+│   ├── __init__.py
 │   ├── traces.py
-│   ├── stored.py
 │   ├── windows.py
 │   ├── events.py
 │   ├── trains.py
-│   └── registry.py
+│   ├── frames.py
+│   ├── registry.py
+│   └── registry_builder.py
 │
+├── xcorr/
+│   ├── __init__.py
+│   ├── _xcorr.py
+│   └── _core.py
+│
+├── spec/
+│   ├── __init__.py
+│   ├── _spec.py
+│   └── _core.py
+│
+├── waves/
+│   └── ...
 ├── loaders/
-│   ├── common.py
-│   ├── neuralynx.py
-│   └── neuropixels.py
-│
-├── analysis/
-│   ├── extract.py
-│   ├── spectral.py
-│   ├── xcorr.py
-│   ├── cycles.py
-│   ├── waves.py
-│   └── sne.py
-│
+│   └── ...
 └── plot/
-    ├── axes.py
-    ├── grid.py
-    ├── windows.py
-    └── traces.py
+    └── ...
 ```
 
 Within `core`, `collection.py`, `grouping.py`, `matching.py`, and `hdf.py` form the generic collection substrate. The remaining modules define the main scientific collections and reusable processing infrastructure built on it.
@@ -427,9 +418,9 @@ New train identities are created from the grouping keys. Arbitrary event-level m
        Events ─────────────────────► Windows
           ▲                            │
           │ flatten                    │ choose ref/start/
-          │                            │ stop/mid/quantile
+                               │ stop/mid/quantile
        Trains                          ▼
-          │                          Events
+                             Events
           │ bin / smooth
           ▼
         Traces
@@ -606,14 +597,21 @@ Every transformation has clear semantics for:
 * copies versus views when relevant;
 * missing data.
 
-Packaging:
-* The API should be self-documenting
-* Publicness is explicit.
-* public API is shallow, semantically grouped, and discoverable.
-* Imports are ordinary Python imports.
-* Prefer private modules. Their contents do not all need redundant underscores.
-* Public signatures use clean public vocabulary
-* Typing is part of the API via inline annotations. Avoid smart tricks that interfere with static code analysis tools.
+### Packaging and public API
+
+* The public API should be self-documenting, shallow, semantically grouped, and easy to discover.
+* Publicness is explicit. Public packages define their supported surface deliberately, typically through `__all__`.
+* `__init__.py` files are API manifests, not implementation modules.
+* Prefer private implementation modules and packages, marked by underscore-prefixed paths. Their contents do not all need redundant underscore prefixes.
+* Expose public symbols from stable semantic namespaces, not implementation paths. Avoid organizational nesting that adds no meaning.
+* Internal code imports definitions from their owning modules, not back through the public `nocte` facade.
+* Public signatures should use clean public vocabulary and avoid leaking implementation paths.
+* Use ordinary Python imports. Avoid lazy imports, dynamic exports, automatic discovery, generated namespaces, and import-time side effects.
+* Typing is part of the API. Use inline annotations, ship `py.typed`, and avoid patterns that hinder static analysis by tools such as Pyright and Pylance.
+* A leading underscore marks unsupported implementation detail, not inaccessible state.
+* Prefer absolute imports throughout the package, including internal imports.
+* Internal code imports definitions from their owning modules, not back through the public `nocte` facade.
+
 
 ### Testing
 

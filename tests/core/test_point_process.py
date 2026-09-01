@@ -3,7 +3,7 @@ import typing
 import numpy as np
 import pytest
 
-import nocte.core._point_process as point_process
+from nocte._core import point_process
 
 
 def test_as_times_1d_accepts_scalar_and_returns_float_array():

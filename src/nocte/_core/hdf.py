@@ -8,7 +8,7 @@ import warnings
 import h5py
 import pandas as pd
 
-from nocte.core.collection import Collection, ItemT, PBarParamT
+from nocte._core.collection import Collection, ItemT, PBarParamT
 
 
 def normalize_hdf_key(key: str) -> str:
@@ -276,9 +276,9 @@ class HDFCollection(Collection[ItemT], abc.ABC):
         pbar: PBarParamT = False,
     ):
         """Load a grouping containing collections of this type."""
-        import nocte.core.grouping
+        import nocte._core.grouping
 
-        return nocte.core.grouping.Grouping.from_hdf(
+        return nocte._core.grouping.Grouping.from_hdf(
             path,
             item_type=cls,
             key=key,

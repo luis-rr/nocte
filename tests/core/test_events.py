@@ -3,7 +3,7 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from nocte.core import events, windows
+from nocte._coll import events, windows
 
 
 def test_from_times_builds_default_identity_and_float_payload():

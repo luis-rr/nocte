@@ -11,12 +11,12 @@ import h5py
 import numpy as np
 import pandas as pd
 
-import nocte.core._point_process
-import nocte.core.grouping
-import nocte.core.hdf
-import nocte.core.matching
-import nocte.core.time
-import nocte.core.windows
+import nocte._coll.windows
+import nocte._core.grouping
+import nocte._core.hdf
+import nocte._core.matching
+import nocte._core.point_process
+import nocte._core.time
 
 TimeArrayLike = float | collections.abc.Sequence[float] | np.ndarray | pd.Index
 TimesLike = TimeArrayLike | pd.Series
@@ -65,7 +65,7 @@ class _EventsData:
         key: str,
     ) -> None:
         """Store event times as one HDF5 dataset."""
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
 
         with h5py.File(path, mode='a') as file:
             if key in file:
@@ -84,7 +84,7 @@ class _EventsData:
         key: str,
     ) -> typing.Self:
         """Load event times previously stored with ``to_hdf()``."""
-        key = nocte.core.hdf.normalize_hdf_key(key)
+        key = nocte._core.hdf.normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -99,7 +99,7 @@ class _EventsData:
         return cls(values)
 
 
-class Events(nocte.core.hdf.HDFCollection[float]):
+class Events(nocte._core.hdf.HDFCollection[float]):
     """
     Indexed collection of point-like temporal occurrences.
 
@@ -200,10 +200,10 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         self,
         decimals: int = 0,
         *,
-        scale: nocte.core.time.TimeScale | float = 'milliseconds',
+        scale: nocte._core.time.TimeScale | float = 'milliseconds',
     ) -> typing.Self:
         """Round event times to a temporal scale."""
-        scale_ms = nocte.core.time.scale_to_ms(scale)
+        scale_ms = nocte._core.time.scale_to_ms(scale)
         values = np.round(self._time / scale_ms, decimals=decimals) * scale_ms
         return self.__class__(
             _EventsData(values),
@@ -213,7 +213,7 @@ class Events(nocte.core.hdf.HDFCollection[float]):
     # ------------------------------------------------------------------
     # temporal restriction and point-process summaries
 
-    def contained_in(self, win: nocte.core.windows.Win) -> pd.Series:
+    def contained_in(self, win: nocte._coll.windows.Win) -> pd.Series:
         """Return an event-indexed mask for the half-open window ``win``."""
         start = win.time_at('start')
         stop = win.time_at('stop')
@@ -247,8 +247,8 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         Events outside the supplied bin range are ignored. The final right edge
         remains exclusive so temporal bin semantics are uniform across bins.
         """
-        edges = nocte.core._point_process.as_bin_edges(bins)
-        values = nocte.core._point_process.count_bins_many(
+        edges = nocte._core.point_process.as_bin_edges(bins)
+        values = nocte._core.point_process.count_bins_many(
             self._point_processes(),
             edges,
         )[0]
@@ -268,19 +268,19 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         window: float,
         *,
         step: float,
-        within: nocte.core.windows.Win,
+        within: nocte._coll.windows.Win,
     ) -> pd.Series:
         """Count events in centered, half-open sliding windows."""
         window = self._positive_float(window, name='window')
         step = self._positive_float(step, name='step')
 
-        sample_times = nocte.core._point_process.sample_centers(
+        sample_times = nocte._core.point_process.sample_centers(
             within.time_at('start'),
             within.time_at('stop'),
             step,
             margin=window * 0.5,
         )
-        values = nocte.core._point_process.count_rolling_many(
+        values = nocte._core.point_process.count_rolling_many(
             self._point_processes(),
             sample_times,
             window,
@@ -297,7 +297,7 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         sigma: float,
         *,
         step: float,
-        within: nocte.core.windows.Win,
+        within: nocte._coll.windows.Win,
         width: float = 5.0,
     ) -> pd.Series:
         """
@@ -312,19 +312,19 @@ class Events(nocte.core.hdf.HDFCollection[float]):
         step = self._positive_float(step, name='step')
         width = self._positive_float(width, name='width')
 
-        sample_times = nocte.core._point_process.sample_centers(
+        sample_times = nocte._core.point_process.sample_centers(
             within.time_at('start'),
             within.time_at('stop'),
             step,
             margin=sigma * width,
         )
-        values = nocte.core._point_process.gaussian_rate_many(
+        values = nocte._core.point_process.gaussian_rate_many(
             self._point_processes(),
             sample_times,
             sigma,
             width,
         )[0]
-        values *= nocte.core.time.ms(seconds=1)
+        values *= nocte._core.time.ms(seconds=1)
 
         return pd.Series(
             values,
@@ -447,9 +447,9 @@ class Events(nocte.core.hdf.HDFCollection[float]):
 
     def extract_win(
         self,
-        win: nocte.core.windows.Win,
+        win: nocte._coll.windows.Win,
         *,
-        align: float | nocte.core.windows.WinPoint | None = 'ref',
+        align: float | nocte._coll.windows.WinPoint | None = 'ref',
     ) -> typing.Self:
         """Extract events inside `win` and optionally align their times."""
         mask = self.contained_in(win).to_numpy()
@@ -462,10 +462,10 @@ class Events(nocte.core.hdf.HDFCollection[float]):
 
     def extract_matched(
         self,
-        wins: nocte.core.windows.Windows,
-        matches: nocte.core.matching.Matches,
+        wins: nocte._coll.windows.Windows,
+        matches: nocte._core.matching.Matches,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
     ) -> Events:
         """Extract events according to an explicit Events-to-Windows relation."""
         grouped = EventsGrouping.from_matches(
@@ -483,13 +483,13 @@ class Events(nocte.core.hdf.HDFCollection[float]):
 
     def extract_by(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
         by: str | collections.abc.Sequence[str],
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
     ) -> Events:
         """Extract events from Windows matched by metadata equality."""
-        matches = nocte.core.matching.Matches.from_meta(
+        matches = nocte._core.matching.Matches.from_meta(
             self,
             wins,
             by=by,
@@ -503,17 +503,17 @@ class Events(nocte.core.hdf.HDFCollection[float]):
 
     def extract_all(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
     ) -> Events:
         """Extract every event contained in every Window."""
-        pairs = nocte.core.windows._TimeWindowPairs.from_times(
+        pairs = nocte._coll.windows._TimeWindowPairs.from_times(
             wins,
             self._time,
         )
 
-        matches = nocte.core.matching.Matches.from_pairs(
+        matches = nocte._core.matching.Matches.from_pairs(
             self,
             wins,
             left_ids=self.index.to_numpy()[pairs.time_pos],
@@ -528,7 +528,7 @@ class Events(nocte.core.hdf.HDFCollection[float]):
 
 
 class EventsGrouping(
-    nocte.core.grouping.Grouping[Events],
+    nocte._core.grouping.Grouping[Events],
 ):
     """
     Homogeneous grouping of Events.
@@ -540,9 +540,9 @@ class EventsGrouping(
 
     def extract_wins(
         self,
-        wins: nocte.core.windows.Windows,
+        wins: nocte._coll.windows.Windows,
         *,
-        align: float | nocte.core.windows.WinPoint = 'ref',
+        align: float | nocte._coll.windows.WinPoint = 'ref',
     ) -> typing.Self:
         """Extract each event group using its corresponding Window."""
         if len(self) == 0:

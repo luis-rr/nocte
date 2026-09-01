@@ -10,22 +10,22 @@ import typing
 
 import numpy as np
 
-import nocte.core.matching
-import nocte.core.traces
-import nocte.core.windows
-from nocte.analysis import _xcorr_core
+import nocte._coll.traces
+import nocte._coll.windows
+import nocte._core.matching
+from nocte.xcorr import _core
 
 CorrelationMethod = typing.Literal['pearson', 'dot']
 
 
 def cross_corr(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     *,
     lags: np.ndarray,
     method: CorrelationMethod = 'pearson',
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """
     Cross-correlate matched traces over their available finite overlap.
 
@@ -37,7 +37,7 @@ def cross_corr(
     The result contains one trace per match, with lag as its sampled temporal
     coordinate.
     """
-    return _xcorr_core.cross_corr(
+    return _core.cross_corr(
         left,
         right,
         matches,
@@ -47,18 +47,18 @@ def cross_corr(
 
 
 def auto_corr(
-    traces: nocte.core.traces.Traces,
+    traces: nocte._coll.traces.Traces,
     *,
     lags: np.ndarray,
     method: CorrelationMethod = 'pearson',
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """
     Autocorrelate every trace over its available finite overlap.
 
     This is the identity-match specialization of ``cross_corr``. Trace
     identities and metadata are preserved.
     """
-    return _xcorr_core.auto_corr(
+    return _core.auto_corr(
         traces,
         lags=lags,
         method=method,
@@ -66,16 +66,16 @@ def auto_corr(
 
 
 def cross_corr_rolling(
-    left: nocte.core.traces.Traces,
-    right: nocte.core.traces.Traces,
-    matches: nocte.core.matching.Matches,
+    left: nocte._coll.traces.Traces,
+    right: nocte._coll.traces.Traces,
+    matches: nocte._core.matching.Matches,
     *,
     lags: np.ndarray,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
     method: CorrelationMethod = 'pearson',
     kernel: np.ndarray | None = None,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """
     Cross-correlate matched traces through fixed windows in time.
 
@@ -89,7 +89,7 @@ def cross_corr_rolling(
     supplies unnormalized sample-wise weights for ``method='dot'`` and must
     contain exactly one value per sample in ``window``.
     """
-    return _xcorr_core.cross_corr_rolling(
+    return _core.cross_corr_rolling(
         left,
         right,
         matches,
@@ -102,20 +102,20 @@ def cross_corr_rolling(
 
 
 def auto_corr_rolling(
-    traces: nocte.core.traces.Traces,
+    traces: nocte._coll.traces.Traces,
     *,
     lags: np.ndarray,
-    window: nocte.core.windows.Win,
+    window: nocte._coll.windows.Win,
     step: float,
     method: CorrelationMethod = 'pearson',
     kernel: np.ndarray | None = None,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     """
     Rolling autocorrelation for every trace and requested lag.
 
     The result contains one trace per ``(source trace, lag)`` pair.
     """
-    return _xcorr_core.auto_corr_rolling(
+    return _core.auto_corr_rolling(
         traces,
         lags=lags,
         window=window,

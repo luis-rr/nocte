@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-import nocte.core.traces
-from nocte.analysis import _num_core, _spec_core
+import nocte._coll.traces
+from nocte._core import num
+from nocte.spec import _core
 
 RTOL = 1e-11
 ATOL = 1e-11
@@ -13,7 +14,7 @@ def _traces(
     values: np.ndarray,
     *,
     hz: float,
-) -> nocte.core.traces.Traces:
+) -> nocte._coll.traces.Traces:
     values = np.asarray(
         values,
         dtype=np.float64,
@@ -22,7 +23,7 @@ def _traces(
     if values.ndim == 1:
         values = values[None, :]
 
-    return nocte.core.traces.Traces.from_array(
+    return nocte._coll.traces.Traces.from_array(
         values,
         hz,
         start=0.0,
@@ -110,12 +111,12 @@ def test_analytic_signal_exact_complex_exponential():
 
     values = np.exp(1j * expected_phase)[None, :]
 
-    analytic = _spec_core.Analytic(
+    analytic = _core.Analytic(
         values=np.ascontiguousarray(
             values,
             dtype=np.complex128,
         ),
-        bounds=_num_core.Bounds(
+        bounds=num.Bounds(
             first=np.array(
                 [0],
                 dtype=np.intp,
@@ -192,7 +193,7 @@ def test_hilbert_of_cosine_is_complex_exponential_with_finite_support():
         hz=hz,
     )
 
-    analytic = _spec_core.Analytic.from_traces(traces)
+    analytic = _core.Analytic.from_traces(traces)
 
     finite_positions = np.arange(
         finite_samples,
@@ -239,7 +240,7 @@ def test_butterworth_zero_phase_gain_is_half_at_cutoff():
 
     cases = [
         (
-            _spec_core.Butterworth.low_pass(
+            _core.Butterworth.low_pass(
                 hz=hz,
                 cutoff=32.0,
                 order=order,
@@ -247,7 +248,7 @@ def test_butterworth_zero_phase_gain_is_half_at_cutoff():
             32.0,
         ),
         (
-            _spec_core.Butterworth.high_pass(
+            _core.Butterworth.high_pass(
                 hz=hz,
                 cutoff=32.0,
                 order=order,
@@ -255,7 +256,7 @@ def test_butterworth_zero_phase_gain_is_half_at_cutoff():
             32.0,
         ),
         (
-            _spec_core.Butterworth.band_pass(
+            _core.Butterworth.band_pass(
                 hz=hz,
                 band=(
                     24.0,
@@ -266,7 +267,7 @@ def test_butterworth_zero_phase_gain_is_half_at_cutoff():
             24.0,
         ),
         (
-            _spec_core.Butterworth.band_pass(
+            _core.Butterworth.band_pass(
                 hz=hz,
                 band=(
                     24.0,
@@ -334,7 +335,7 @@ def test_welch_bin_centred_cosine_matches_closed_form_hann_psd():
         hz=hz,
     )
 
-    estimate = _spec_core.Welch.from_traces(
+    estimate = _core.Welch.from_traces(
         traces,
         segment=1000.0,
     )
@@ -377,7 +378,7 @@ def test_band_power_of_bin_centred_cosine_equals_mean_square():
         d=1.0 / hz,
     )
 
-    estimate = _spec_core.Welch(
+    estimate = _core.Welch(
         hz=hz,
         nperseg=nperseg,
         frequency=np.asarray(
@@ -386,7 +387,7 @@ def test_band_power_of_bin_centred_cosine_equals_mean_square():
         ),
     )
 
-    plan = _spec_core.BandPlan.from_bands(
+    plan = _core.BandPlan.from_bands(
         {
             'tone': (
                 31.0,
@@ -452,12 +453,12 @@ def test_rolling_welch_of_stationary_cosine_matches_closed_form_at_every_time():
         hz=hz,
     )
 
-    estimate = _spec_core.Welch.from_traces(
+    estimate = _core.Welch.from_traces(
         traces,
         segment=500.0,
     )
 
-    rolling = _spec_core.Rolling.from_traces(
+    rolling = _core.Rolling.from_traces(
         traces,
         window=500.0,
         step=1000.0 * step_samples / hz,
@@ -525,14 +526,14 @@ def test_rolling_band_power_of_stationary_cosine_equals_mean_square():
         hz=hz,
     )
 
-    estimate = _spec_core.Welch.from_traces(
+    estimate = _core.Welch.from_traces(
         traces,
         segment=500.0,
     )
 
     df = hz / window_samples
 
-    plan = _spec_core.BandPlan.from_bands(
+    plan = _core.BandPlan.from_bands(
         {
             'tone': (
                 frequency - df,
@@ -542,7 +543,7 @@ def test_rolling_band_power_of_stationary_cosine_equals_mean_square():
         estimate,
     )
 
-    rolling = _spec_core.Rolling.from_traces(
+    rolling = _core.Rolling.from_traces(
         traces,
         window=500.0,
         step=1000.0 * step_samples / hz,

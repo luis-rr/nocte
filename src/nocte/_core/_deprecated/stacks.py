@@ -35,18 +35,17 @@ import itertools
 import logging
 
 import h5py
+import nocte.core.sampling
+import nocte.core.time
 import numpy as np
 import pandas as pd
 import scipy.signal
 import scipy.stats
 import xarray as xr
 import xarray.core.coordinates
-from tqdm.auto import tqdm
-
-import nocte.core.sampling
-import nocte.core.time
 from nocte.core import windows as timeslice
 from nocte.core.time import MS_TO_S, S_TO_MS
+from tqdm.auto import tqdm
 
 
 def _expose(parent_method):

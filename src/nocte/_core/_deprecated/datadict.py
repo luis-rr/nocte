@@ -1,10 +1,9 @@
 import functools
 from typing import Self
 
+import nocte.core.windows
 import numpy as np
 import pandas as pd
-
-import nocte.core.windows
 from nocte.core.collection import Collection
 
 

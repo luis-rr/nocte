@@ -5,7 +5,7 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from nocte.core import events, trains, windows
+from nocte._coll import events, trains, windows
 
 
 def test_from_times_builds_one_collection_item_per_train():
