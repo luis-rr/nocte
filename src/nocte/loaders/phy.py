@@ -71,9 +71,20 @@ def _load_cluster_meta(
         if 'cluster_id' not in table.columns:
             raise ValueError(f'{path.name} does not contain cluster_id')
 
-        cluster_ids = pd.to_numeric(
-            table.pop('cluster_id'),
-            errors='raise',
+        cluster_id_column = table['cluster_id']
+
+        if not isinstance(cluster_id_column, pd.Series):
+            raise TypeError(f'{path.name} contains duplicate cluster_id columns')
+
+        table = table.drop(
+            columns=['cluster_id'],
+        )
+
+        cluster_ids = np.asarray(
+            pd.to_numeric(
+                cluster_id_column.to_numpy(),
+                errors='raise',
+            )
         )
 
         if not np.equal(
@@ -98,14 +109,22 @@ def _load_cluster_meta(
         for column in table.columns:
             incoming = table[column]
 
+            if not isinstance(incoming, pd.Series):
+                raise TypeError(
+                    f'{path.name} contains duplicate metadata column {column!r}'
+                )
+
             if column not in meta.columns:
                 meta[column] = incoming
                 continue
 
             existing = meta[column]
-            overlap = existing.notna() & incoming.notna()
 
-            same = existing[overlap].eq(incoming[overlap])
+            if not isinstance(existing, pd.Series):
+                raise TypeError(f'duplicate metadata column {column!r}')
+
+            overlap = existing.notna() & incoming.notna()
+            same = existing.eq(incoming) | ~overlap
 
             if not same.fillna(False).all():
                 logger.warning(

@@ -1,3 +1,5 @@
+import typing
+
 import numpy as np
 import pytest
 
@@ -13,8 +15,10 @@ def test_as_times_1d_accepts_scalar_and_returns_float_array():
 
 
 def test_as_times_1d_rejects_non_1d_and_nonfinite_values():
+    non_1d: typing.Any = [[1.0, 2.0]]
+
     with pytest.raises(ValueError, match='one-dimensional'):
-        point_process.as_times_1d([[1.0, 2.0]])
+        point_process.as_times_1d(non_1d)
 
     with pytest.raises(ValueError, match='finite'):
         point_process.as_times_1d([1.0, np.nan])

@@ -21,7 +21,7 @@ class _TestCollection(nocte.core.collection.Collection[int]):
         )
 
     def _get_pos(self, position: int) -> int:
-        return int(self.index[position])
+        return int(self.index.to_numpy(copy=False)[position])
 
 
 def _collection(

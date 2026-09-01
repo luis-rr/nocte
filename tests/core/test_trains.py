@@ -1,3 +1,5 @@
+import typing
+
 import numpy as np
 import pandas as pd
 import pandas.testing as pdt
@@ -46,9 +48,13 @@ def test_mapping_with_explicit_meta_is_reordered_to_meta_identity():
 
 
 def test_mapping_rejects_noninteger_keys_and_key_meta_mismatch():
+    invalid_keys: typing.Any = {
+        'unit-a': [1.0],
+    }
+
     with pytest.raises(ValueError, match='integers'):
         trains.Trains.from_times(
-            {'unit-a': [1.0]},
+            invalid_keys,
             support=windows.Win(0.0, 10.0),
         )
 

@@ -15,6 +15,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
   - repo: local
     hooks:
       - id: check-src-tests-not-executable
@@ -23,3 +24,11 @@ repos:
         language: system
         pass_filenames: false
 
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: pyright
+        language: system
+        pass_filenames: false
+        types: [python]

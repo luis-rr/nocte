@@ -1007,9 +1007,7 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
     def _get_pos(self, position: int) -> pd.Series:
         """Return one trace as a time-indexed Series."""
         trace = self._data.get_pos(position)
-
-        trace.name = self.meta.index[position]
-
+        trace.name = self.index.to_numpy(copy=False)[position]
         return trace
 
     def to_frame(self) -> pd.DataFrame:
@@ -1300,6 +1298,11 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
 
             row = values[position]
 
+            item_id = self.index[position]
+
+            if not isinstance(item_id, (int, np.integer)):
+                raise TypeError('trace ID must be an integer')
+
             observed = ~np.isnan(row)
 
             if not observed.any():
@@ -1311,11 +1314,11 @@ class Traces(HDFCollection[pd.Series], typing.Generic[FloatT]):
             support = row[row_first:row_stop]
 
             if np.isnan(support).any():
-                gap_ids.append(int(self.index[position]))
+                gap_ids.append(int(item_id))
                 continue
 
             if not np.isfinite(support).all():
-                nonfinite_ids.append(int(self.index[position]))
+                nonfinite_ids.append(int(item_id))
                 continue
 
             first[position] = row_first

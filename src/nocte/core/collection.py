@@ -328,7 +328,15 @@ class Collection(abc.ABC, typing.Generic[ItemT]):
         invert: bool = False,
         **col_values: collections.abc.Iterable[typing.Any],
     ) -> pd.Series:
-        criteria = [self.meta[col].isin(values) for col, values in col_values.items()]
+        criteria: list[pd.Series] = []
+
+        for col, values in col_values.items():
+            column = self.meta[col]
+
+            if not isinstance(column, pd.Series):
+                raise TypeError(f'metadata column {col!r} is not unique')
+
+            criteria.append(column.isin(list(values)))
 
         return self._combine_masks(
             criteria,

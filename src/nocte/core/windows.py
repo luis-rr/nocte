@@ -1540,14 +1540,22 @@ class Windows(HDFCollection[Win]):
         """Return items bracketed by equal, different categorical neighbors."""
         if by not in self.meta.columns:
             raise KeyError(f'Unknown metadata column: {by!r}')
-        if self.meta[by].isna().any():
+
+        category_column = self.meta[by]
+
+        if not isinstance(category_column, pd.Series):
+            raise TypeError(f'metadata column {by!r} is not unique')
+
+        if category_column.isna().any():
             raise ValueError(f'{by!r} contains missing values')
+
         if not self.are_exclusive() or not self.are_tight():
             raise ValueError('is_sandwiched requires tight, exclusive windows')
 
         order = self._time_order()
         order = order[~self._is_empty()[order]]
-        categories = self.meta[by].to_numpy()[order]
+
+        categories = category_column.to_numpy()[order]
         mask = np.zeros(len(self), dtype=bool)
 
         if len(order) >= 3:
@@ -1557,21 +1565,31 @@ class Windows(HDFCollection[Win]):
 
         if max_length is not None:
             max_length = float(max_length)
+
             if not np.isfinite(max_length) or max_length < 0:
                 raise ValueError('max_length must be finite and non-negative')
+
             mask &= self._lengths <= max_length
 
         if only is not None:
-            if isinstance(only, collections.abc.Iterable) and not isinstance(
+            if isinstance(
+                only,
+                collections.abc.Iterable,
+            ) and not isinstance(
                 only,
                 (str, bytes),
             ):
                 values = list(only)
             else:
                 values = [only]
-            mask &= self.meta[by].isin(values).to_numpy()
 
-        return pd.Series(mask, index=self.index, name='is_sandwiched')
+            mask &= category_column.isin(values).to_numpy()
+
+        return pd.Series(
+            mask,
+            index=self.index,
+            name='is_sandwiched',
+        )
 
     def merge_sandwiched(
         self,
@@ -1722,12 +1740,20 @@ class Windows(HDFCollection[Win]):
             raise ValueError("'source_win_ids' must contain tuples")
 
         categories = None
+
         if by is not None:
             if by not in self.meta.columns:
                 raise KeyError(f'Unknown metadata column: {by!r}')
-            if self.meta[by].isna().any():
+
+            category_column = self.meta[by]
+
+            if not isinstance(category_column, pd.Series):
+                raise ValueError(f'metadata column {by!r} is not unique')
+
+            if category_column.isna().any():
                 raise ValueError(f'{by!r} contains missing values')
-            categories = self.meta[by].to_numpy()
+
+            categories = category_column.to_numpy()
 
         start = self._time_at('start')
         stop = self._time_at('stop')

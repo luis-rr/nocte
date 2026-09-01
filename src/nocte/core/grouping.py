@@ -650,14 +650,27 @@ class Grouping(
             if group.name != item_name:
                 raise ValueError('all grouped collections must use the same item name')
 
-        def _matches_value(existing: pd.Series, value: typing.Any) -> pd.Series:
+        def _series_column(
+            frame: pd.DataFrame,
+            column: typing.Hashable,
+        ) -> pd.Series:
+            values = frame[column]
+
+            if not isinstance(values, pd.Series):
+                raise TypeError(f'metadata column {column!r} is not unique')
+
+            return values
+
+        def _matches_value(
+            existing: pd.Series,
+            value: typing.Any,
+        ) -> pd.Series:
             if pd.api.types.is_scalar(value) and bool(pd.isna(value)):
                 return existing.isna()
 
             return existing.eq(value).fillna(False)
 
-        # Determine conflicts globally so every output row uses the same schema.
-        conflicting_columns: set[str] = set()
+        conflicting_columns: set[typing.Hashable] = set()
 
         for position, (_, group) in enumerate(groups):
             outer = self.meta.iloc[position]
@@ -667,7 +680,7 @@ class Grouping(
                     continue
 
                 same = _matches_value(
-                    group.meta[column],
+                    _series_column(group.meta, column),
                     value,
                 )
 
@@ -679,9 +692,8 @@ class Grouping(
         for position, (group_id, group) in enumerate(groups):
             meta = group.meta.copy()
 
-            # Outer group identity is structural and must agree if already present.
             if self.name in meta.columns:
-                existing = meta[self.name]
+                existing = _series_column(meta, self.name)
 
                 if not existing.eq(group_id).fillna(False).all():
                     raise ValueError(
@@ -691,7 +703,6 @@ class Grouping(
             else:
                 meta[self.name] = group_id
 
-            # Outer group metadata.
             outer = self.meta.iloc[position]
 
             for column, value in outer.items():
@@ -710,9 +721,6 @@ class Grouping(
                 if column not in meta.columns:
                     meta[column] = value
                     continue
-
-                # No action needed: the global pass established that the existing
-                # inner column is consistent with the outer metadata.
 
             metas.append(meta)
 

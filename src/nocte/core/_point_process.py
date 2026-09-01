@@ -137,7 +137,7 @@ def count_bins_many(
 
 def count_rolling_many(
     trains: SortedTimes,
-    sample_times: np.ndarray,
+    sample_times: TimeArrayLike,
     window: float,
 ) -> np.ndarray:
     """Count each sorted point process in centered half-open windows.
@@ -192,7 +192,7 @@ def _gaussian_rate_sorted_nb(
 
 def gaussian_rate_many(
     trains: SortedTimes,
-    sample_times: np.ndarray,
+    sample_times: TimeArrayLike,
     sigma: float,
     width: float = 5.0,
 ) -> np.ndarray:
