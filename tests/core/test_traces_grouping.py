@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte._coll.traces
+from nocte._coll.traces import Traces, TracesGrouping
+from nocte._core.sampling import TimeGrid
 
 
 def _trace(
@@ -21,7 +22,7 @@ def _trace(
         index=pd.Index([idx], name=name),
     )
 
-    return nocte._coll.traces.Traces.from_array(
+    return Traces.from_array(
         values,
         hz,
         start=start,
@@ -62,14 +63,14 @@ def _grouping(
         index=pd.Index(ids, name=name),
     )
 
-    return nocte._coll.traces.TracesGrouping.from_items(
+    return TracesGrouping.from_items(
         traces,
         meta=group_meta,
     )
 
 
 def test_time_grid_from_bounds():
-    grid = nocte._coll.traces.TimeGrid.from_hz_bounds(
+    grid = TimeGrid.from_hz_bounds(
         hz=100,
         start=0,
         stop=25,
@@ -87,7 +88,7 @@ def test_time_grid_from_bounds():
 
 
 def test_time_grid_empty_bounds():
-    grid = nocte._coll.traces.TimeGrid.from_hz_bounds(
+    grid = TimeGrid.from_hz_bounds(
         hz=100,
         start=15,
         stop=15,
@@ -107,7 +108,7 @@ def test_resample_to_grid_same_hz_different_phase():
         idx=10,
     )
 
-    grid = nocte._coll.traces.TimeGrid.from_hz_bounds(
+    grid = TimeGrid.from_hz_bounds(
         hz=100,
         start=5,
         stop=25,
@@ -300,7 +301,7 @@ def test_zero_item_group_is_valid():
         )
     )
 
-    empty = nocte._coll.traces.Traces.from_array(
+    empty = Traces.from_array(
         np.empty((0, 3)),
         100,
         start=0,
@@ -346,13 +347,13 @@ def test_all_zero_item_groups_can_concat():
     )
     meta1 = meta0.copy()
 
-    left = nocte._coll.traces.Traces.from_array(
+    left = Traces.from_array(
         np.empty((0, 3)),
         100,
         start=0,
         meta=meta0,
     )
-    right = nocte._coll.traces.Traces.from_array(
+    right = Traces.from_array(
         np.empty((0, 3)),
         100,
         start=0,
@@ -375,7 +376,7 @@ def test_all_zero_item_groups_can_concat():
 
 
 def test_empty_grouping_cannot_infer_concat_grid():
-    grouped = nocte._coll.traces.TracesGrouping.from_items(
+    grouped = TracesGrouping.from_items(
         [],
         meta=pd.DataFrame(
             index=pd.Index(

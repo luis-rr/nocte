@@ -8,23 +8,26 @@ import typing
 import numpy as np
 import pandas as pd
 
-import nocte._coll.events
-import nocte._coll.windows
-import nocte._core.collection
+from nocte._coll.events import Events, EventsGrouping
 from nocte._coll.registry import Registry
 from nocte._coll.sources import Source, SourceKind, Sources, SourcesGrouping
+from nocte._coll.windows import (
+    Windows,
+    WindowsGrouping,
+)
+from nocte._core.collection import MaskLike, is_valid_name
 
 Tag = tuple[str, ...]
 TagLike = str | tuple[str, ...]
 
 WindowsParser = collections.abc.Callable[
     [object],
-    nocte._coll.windows.Windows | None,
+    Windows | None,
 ]
 
 EventsParser = collections.abc.Callable[
     [object],
-    nocte._coll.events.Events | None,
+    Events | None,
 ]
 
 
@@ -189,7 +192,7 @@ class RegistryBuilder:
 
     def drop_rows(
         self,
-        mask: nocte._core.collection.MaskLike,
+        mask: MaskLike,
     ) -> None:
         if isinstance(mask, pd.Series):
             if (
@@ -490,7 +493,7 @@ class RegistryBuilder:
         semantic namespace of those IDs, for example ``'experiment'`` or
         ``'section'``.
         """
-        if not nocte._core.collection.is_valid_name(name):
+        if not is_valid_name(name):
             raise ValueError('name must be a non-empty string')
 
         self._validate()
@@ -766,8 +769,8 @@ class RegistryBuilder:
     def _build_windows(
         self,
         name: str,
-    ) -> nocte._coll.windows.WindowsGrouping:
-        groups: list[nocte._coll.windows.Windows] = []
+    ) -> WindowsGrouping:
+        groups: list[Windows] = []
         entries: list[int] = []
         tags: list[Tag] = []
 
@@ -807,7 +810,7 @@ class RegistryBuilder:
                 entries.append(position)
                 tags.append(spec.tag)
 
-        return nocte._coll.windows.WindowsGrouping.from_items(
+        return WindowsGrouping.from_items(
             groups,
             meta=self._resource_meta(
                 name,
@@ -819,8 +822,8 @@ class RegistryBuilder:
     def _build_events(
         self,
         name: str,
-    ) -> nocte._coll.events.EventsGrouping:
-        groups: list[nocte._coll.events.Events] = []
+    ) -> EventsGrouping:
+        groups: list[Events] = []
         entries: list[int] = []
         tags: list[Tag] = []
 
@@ -860,7 +863,7 @@ class RegistryBuilder:
                 entries.append(position)
                 tags.append(spec.tag)
 
-        return nocte._coll.events.EventsGrouping.from_items(
+        return EventsGrouping.from_items(
             groups,
             meta=self._resource_meta(
                 name,
@@ -875,11 +878,11 @@ class RegistryBuilder:
         *,
         spec: _WindowsSpec,
         position: int,
-    ) -> nocte._coll.windows.Windows | None:
+    ) -> Windows | None:
         if spec.parser is None:
             if isinstance(
                 value,
-                nocte._coll.windows.Windows,
+                Windows,
             ):
                 return value
 
@@ -902,7 +905,7 @@ class RegistryBuilder:
 
         if result is not None and not isinstance(
             result,
-            nocte._coll.windows.Windows,
+            Windows,
         ):
             raise TypeError(
                 f'windows parser for {spec.tag!r} must return Windows or None'
@@ -916,11 +919,11 @@ class RegistryBuilder:
         *,
         spec: _EventsSpec,
         position: int,
-    ) -> nocte._coll.events.Events | None:
+    ) -> Events | None:
         if spec.parser is None:
             if isinstance(
                 value,
-                nocte._coll.events.Events,
+                Events,
             ):
                 return value
 
@@ -943,7 +946,7 @@ class RegistryBuilder:
 
         if result is not None and not isinstance(
             result,
-            nocte._coll.events.Events,
+            Events,
         ):
             raise TypeError(
                 f'events parser for {spec.tag!r} must return Events or None'

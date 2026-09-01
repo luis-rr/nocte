@@ -8,9 +8,19 @@ import h5py
 import numpy as np
 import pandas as pd
 
-import nocte._core.collection
-import nocte._core.hdf
-import nocte._core.matching
+from nocte._core.collection import (
+    Collection,
+    IndexLike,
+    PBarParamT,
+    optional_pbar,
+)
+from nocte._core.hdf import (
+    HDFCollection,
+    HDFCollectionInfo,
+    normalize_hdf_key,
+    prepare_hdf_key,
+)
+from nocte._core.matching import Matches
 
 
 class CollectionLike(typing.Protocol):
@@ -25,7 +35,7 @@ class CollectionLike(typing.Protocol):
 
     def sel_index(
         self,
-        labels: nocte._core.collection.IndexLike,
+        labels: IndexLike,
         /,
         *,
         invert: bool = False,
@@ -42,7 +52,7 @@ GroupedT = typing.TypeVar(
 
 HDFGroupedT = typing.TypeVar(
     'HDFGroupedT',
-    bound=nocte._core.hdf.HDFCollection[typing.Any],
+    bound=HDFCollection[typing.Any],
 )
 
 MappedT = typing.TypeVar(
@@ -55,7 +65,7 @@ ResultT = typing.TypeVar('ResultT')
 
 LoadedT = typing.TypeVar(
     'LoadedT',
-    bound=nocte._core.hdf.HDFCollection,
+    bound=HDFCollection,
 )
 
 
@@ -104,7 +114,7 @@ class _GroupingData(typing.Generic[GroupedT]):
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
     ) -> None:
         """
         Store the grouped payload.
@@ -112,7 +122,7 @@ class _GroupingData(typing.Generic[GroupedT]):
         The payload is an HDF5 group containing one complete serialized
         child collection per position. The target key must not already exist.
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='a') as file:
             if key in file:
@@ -120,7 +130,7 @@ class _GroupingData(typing.Generic[GroupedT]):
 
             file.create_group(key)
 
-        positions = nocte._core.collection.optional_pbar(
+        positions = optional_pbar(
             range(len(self)),
             total=len(self),
             pbar=pbar,
@@ -143,7 +153,7 @@ class _GroupingData(typing.Generic[GroupedT]):
         *,
         key: str,
         item_type: type[LoadedT],
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
     ) -> _GroupingData[LoadedT]:
         """
         Load a homogeneous grouped payload.
@@ -151,7 +161,7 @@ class _GroupingData(typing.Generic[GroupedT]):
         ``item_type`` supplies the concrete collection class responsible for
         loading each serialized child.
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -190,7 +200,7 @@ class _GroupingData(typing.Generic[GroupedT]):
                 'Grouping payload positions must be contiguous and start at zero'
             )
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             positions,
             total=len(positions),
             pbar=pbar,
@@ -211,7 +221,7 @@ class _GroupingData(typing.Generic[GroupedT]):
 
 
 class Grouping(
-    nocte._core.collection.Collection[GroupedT],
+    Collection[GroupedT],
     typing.Generic[GroupedT],
 ):
     """
@@ -331,8 +341,8 @@ class Grouping(
     def from_matches(
         cls,
         left: GroupedT,
-        right: nocte._core.collection.Collection[typing.Any],
-        matches: nocte._core.matching.Matches,
+        right: Collection[typing.Any],
+        matches: Matches,
     ) -> typing.Self:
         """
         Group the left collection by its matches to the right collection.
@@ -345,12 +355,12 @@ class Grouping(
         """
         if not isinstance(
             left,
-            nocte._core.collection.Collection,
+            Collection,
         ):
             raise TypeError('left must be a Collection')
 
         left_source = typing.cast(
-            nocte._core.collection.Collection[typing.Any],
+            Collection[typing.Any],
             left,
         )
 
@@ -464,7 +474,7 @@ class Grouping(
         function: collections.abc.Callable[..., MappedT],
         /,
         *args: typing.Any,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
         **kwargs: typing.Any,
     ) -> Grouping[MappedT]:
         """
@@ -477,7 +487,7 @@ class Grouping(
         """
         iterator = (group for _, group in self.items())
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,
@@ -502,7 +512,7 @@ class Grouping(
         function: collections.abc.Callable[..., ResultT],
         /,
         *args: typing.Any,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
         **kwargs: typing.Any,
     ) -> pd.Series:
         """
@@ -513,7 +523,7 @@ class Grouping(
         """
         iterator = (group for _, group in self.items())
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,
@@ -542,7 +552,7 @@ class Grouping(
         *,
         key: str = 'grouping',
         overwrite: bool = False,
-        pbar: nocte._core.collection.PBarParamT = False,
+        pbar: PBarParamT = False,
     ) -> None:
         """
         Store this Grouping in HDF5.
@@ -569,7 +579,7 @@ class Grouping(
         FileExistsError. If True, the complete existing subtree is removed
         before writing.
         """
-        key = nocte._core.hdf.prepare_hdf_key(
+        key = prepare_hdf_key(
             path,
             key,
             overwrite=overwrite,
@@ -582,7 +592,7 @@ class Grouping(
             format='fixed',
         )
 
-        info = nocte._core.hdf.HDFCollectionInfo.new(kind='grouping')
+        info = HDFCollectionInfo.new(kind='grouping')
         info.to_hdf(path, key)
 
         self._data.to_hdf(
@@ -598,9 +608,9 @@ class Grouping(
         *,
         item_type: type[HDFGroupedT],
         key: str = 'grouping',
-        pbar: nocte._core.collection.PBarParamT = False,
+        pbar: PBarParamT = False,
     ) -> Grouping[HDFGroupedT]:
-        info = nocte._core.hdf.HDFCollectionInfo.from_hdf(path, key)
+        info = HDFCollectionInfo.from_hdf(path, key)
         info.validate(key, 'grouping')
 
         meta = pd.read_hdf(

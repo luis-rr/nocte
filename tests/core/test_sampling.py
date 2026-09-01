@@ -3,11 +3,11 @@ import logging
 import numpy as np
 import pytest
 
-import nocte._core.sampling
+from nocte._core.sampling import SamplingRate, TimeGrid
 
 
 def test_sampling_rate():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     assert sr.rate == 30_000.0
     assert isinstance(sr.rate, float)
@@ -24,11 +24,11 @@ def test_sampling_rate():
 )
 def test_sampling_rate_rejects_invalid_rate(rate):
     with pytest.raises(ValueError):
-        nocte._core.sampling.SamplingRate(rate)
+        SamplingRate(rate)
 
 
 def test_from_period_ms():
-    sr = nocte._core.sampling.SamplingRate.from_period_ms(0.5)
+    sr = SamplingRate.from_period_ms(0.5)
 
     assert sr.rate == 2000.0
 
@@ -44,11 +44,11 @@ def test_from_period_ms():
 )
 def test_from_period_ms_rejects_invalid_period(period_ms):
     with pytest.raises(ValueError):
-        nocte._core.sampling.SamplingRate.from_period_ms(period_ms)
+        SamplingRate.from_period_ms(period_ms)
 
 
 def test_period_ms():
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     assert sr.period_ms == 0.5
 
@@ -63,7 +63,7 @@ def test_period_ms():
     ],
 )
 def test_stride_for(target_hz, expected_stride):
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     assert sr.stride_for(target_hz) == expected_stride
 
@@ -79,20 +79,20 @@ def test_stride_for(target_hz, expected_stride):
     ],
 )
 def test_stride_for_rejects_invalid_target_rate(target_hz):
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     with pytest.raises(ValueError):
         sr.stride_for(target_hz)
 
 
 def test_match_hz_exact():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     assert sr.match_hz(1000) == 1000.0
 
 
 def test_match_hz_returns_nearest_integer_stride():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     matched = sr.match_hz(1100)
 
@@ -101,7 +101,7 @@ def test_match_hz_returns_nearest_integer_stride():
 
 
 def test_match_hz_warns_when_adjusted(caplog):
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     with caplog.at_level(logging.WARNING):
         sr.match_hz(1100)
@@ -110,7 +110,7 @@ def test_match_hz_warns_when_adjusted(caplog):
 
 
 def test_check_stride():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     assert sr.check_stride(1000)
     assert sr.check_stride(1200)
@@ -118,7 +118,7 @@ def test_check_stride():
 
 
 def test_assert_stride():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     sr.assert_stride(1000)
 
@@ -127,7 +127,7 @@ def test_assert_stride():
 
 
 def test_ms_to_samples_scalar():
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     samples = sr.ms_to_samples(1.5)
 
@@ -136,7 +136,7 @@ def test_ms_to_samples_scalar():
 
 
 def test_ms_to_samples_array():
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     time_ms = np.array([0.0, 0.5, 1.0, 2.0])
     samples = sr.ms_to_samples(time_ms)
@@ -150,7 +150,7 @@ def test_ms_to_samples_array():
 
 
 def test_samples_to_ms_scalar():
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     time_ms = sr.samples_to_ms(3)
 
@@ -159,7 +159,7 @@ def test_samples_to_ms_scalar():
 
 
 def test_samples_to_ms_array():
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     samples = np.array([0, 1, 2, 4])
     time_ms = sr.samples_to_ms(samples)
@@ -171,7 +171,7 @@ def test_samples_to_ms_array():
 
 
 def test_sample_time_roundtrip():
-    sr = nocte._core.sampling.SamplingRate(30_000)
+    sr = SamplingRate(30_000)
 
     samples = np.array([0, 1, 2, 100, 10_000])
 
@@ -190,13 +190,13 @@ def test_sample_time_roundtrip():
     ],
 )
 def test_round_to_period(value_ms, expected):
-    sr = nocte._core.sampling.SamplingRate(2000)
+    sr = SamplingRate(2000)
 
     assert sr.round_to_period(value_ms) == expected
 
 
 def test_round_to_period_warns_with_description(caplog):
-    sr = nocte._core.sampling.SamplingRate(1000)
+    sr = SamplingRate(1000)
 
     with caplog.at_level(logging.WARNING):
         result = sr.round_to_period(10.4, desc='window length')
@@ -214,8 +214,8 @@ def test_round_to_period_warns_with_description(caplog):
     ],
 )
 def test_time_grid_from_start_last(start, last, expected_times):
-    grid = nocte._core.sampling.TimeGrid.from_start_last(
-        sampling=nocte._core.sampling.SamplingRate(100),
+    grid = TimeGrid.from_start_last(
+        sampling=SamplingRate(100),
         start=start,
         last=last,
     )

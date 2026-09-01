@@ -13,10 +13,9 @@ import h5py
 import numpy as np
 import pandas as pd
 
-import nocte._core.grouping
-import nocte._core.hdf
 from nocte._core import time
-from nocte._core.hdf import HDFCollection
+from nocte._core.grouping import Grouping
+from nocte._core.hdf import HDFCollection, normalize_hdf_key
 from nocte._core.matching import Matches
 
 logger = logging.getLogger(__name__)
@@ -564,7 +563,7 @@ class _WindowsData:
 
         The target key must not already exist.
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='a') as file:
             if key in file:
@@ -585,7 +584,7 @@ class _WindowsData:
         """
         Load window geometry previously stored with to_hdf().
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -1922,7 +1921,7 @@ class Windows(HDFCollection[Win]):
 
 
 class WindowsGrouping(
-    nocte._core.grouping.Grouping[Windows],
+    Grouping[Windows],
 ):
     """
     Homogeneous grouping of Windows.

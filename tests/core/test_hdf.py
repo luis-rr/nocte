@@ -6,33 +6,42 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte._coll.frames
-import nocte._coll.traces
-import nocte._coll.windows
-import nocte._core.grouping
-import nocte._core.hdf
+from nocte._coll.frames import Frames
+from nocte._coll.traces import Traces
+from nocte._coll.windows import (
+    Windows,
+)
+from nocte._core.grouping import Grouping
+from nocte._core.hdf import (
+    HDFCollectionInfo,
+    get_hdf_save_timestamp,
+    get_nocte_version,
+    hdf_attr_as_str,
+    normalize_hdf_key,
+    prepare_hdf_key,
+)
 
 # -----------------------------------------------------------------------------
 # HDF helpers
 
 
 def test_normalize_hdf_key():
-    assert nocte._core.hdf.normalize_hdf_key('foo') == 'foo'
-    assert nocte._core.hdf.normalize_hdf_key('/foo') == 'foo'
-    assert nocte._core.hdf.normalize_hdf_key('/foo/bar/') == 'foo/bar'
+    assert normalize_hdf_key('foo') == 'foo'
+    assert normalize_hdf_key('/foo') == 'foo'
+    assert normalize_hdf_key('/foo/bar/') == 'foo/bar'
 
     with pytest.raises(ValueError, match='cannot be empty'):
-        nocte._core.hdf.normalize_hdf_key('')
+        normalize_hdf_key('')
 
     with pytest.raises(ValueError, match='cannot be empty'):
-        nocte._core.hdf.normalize_hdf_key('/')
+        normalize_hdf_key('/')
 
 
 def test_hdf_scalar_helpers():
-    assert nocte._core.hdf.hdf_attr_as_str('abc') == 'abc'
-    assert nocte._core.hdf.hdf_attr_as_str(b'abc') == 'abc'
+    assert hdf_attr_as_str('abc') == 'abc'
+    assert hdf_attr_as_str(b'abc') == 'abc'
 
-    version = nocte._core.hdf.get_nocte_version()
+    version = get_nocte_version()
 
     assert isinstance(version, str)
     assert version
@@ -46,13 +55,13 @@ def test_prepare_hdf_key_overwrite(tmp_path: pathlib.Path):
         file.create_group('keep')
 
     with pytest.raises(FileExistsError):
-        nocte._core.hdf.prepare_hdf_key(
+        prepare_hdf_key(
             path,
             'target',
             overwrite=False,
         )
 
-    key = nocte._core.hdf.prepare_hdf_key(
+    key = prepare_hdf_key(
         path,
         '/target/',
         overwrite=True,
@@ -66,7 +75,7 @@ def test_prepare_hdf_key_overwrite(tmp_path: pathlib.Path):
 
 
 def test_get_hdf_save_timestamp():
-    timestamp = nocte._core.hdf.get_hdf_save_timestamp()
+    timestamp = get_hdf_save_timestamp()
 
     assert isinstance(timestamp, str)
     assert datetime.datetime.fromisoformat(timestamp).tzinfo is not None
@@ -80,7 +89,7 @@ def test_collection_hdf_attrs(tmp_path: pathlib.Path):
 
     before = datetime.datetime.now(datetime.timezone.utc)
 
-    info = nocte._core.hdf.HDFCollectionInfo.new(kind='traces')
+    info = HDFCollectionInfo.new(kind='traces')
     info.to_hdf(path, 'object')
 
     after = datetime.datetime.now(datetime.timezone.utc)
@@ -89,16 +98,16 @@ def test_collection_hdf_attrs(tmp_path: pathlib.Path):
         node = file['object']
 
         assert isinstance(node, h5py.Group)
-        assert nocte._core.hdf.hdf_attr_as_str(node.attrs['kind']) == 'traces'
+        assert hdf_attr_as_str(node.attrs['kind']) == 'traces'
         assert 'nocte_version' in node.attrs
 
         timestamp = datetime.datetime.fromisoformat(
-            nocte._core.hdf.hdf_attr_as_str(node.attrs['timestamp'])
+            hdf_attr_as_str(node.attrs['timestamp'])
         )
 
         assert before <= timestamp <= after
 
-    info = nocte._core.hdf.HDFCollectionInfo.from_hdf(
+    info = HDFCollectionInfo.from_hdf(
         path,
         '/object/',
     )
@@ -121,13 +130,13 @@ def test_hdf_collection_info_roundtrip(tmp_path: pathlib.Path):
     with h5py.File(path, mode='w') as file:
         file.create_group('object')
 
-    info = nocte._core.hdf.HDFCollectionInfo.new(kind='traces')
+    info = HDFCollectionInfo.new(kind='traces')
     info.to_hdf(path, 'object')
 
-    info = nocte._core.hdf.HDFCollectionInfo.from_hdf(path, 'object')
+    info = HDFCollectionInfo.from_hdf(path, 'object')
 
     assert info.kind == 'traces'
-    assert info.nocte_version == nocte._core.hdf.get_nocte_version()
+    assert info.nocte_version == get_nocte_version()
     assert isinstance(info.timestamp, str)
     assert datetime.datetime.fromisoformat(info.timestamp).tzinfo is not None
 
@@ -139,7 +148,7 @@ def test_hdf_collection_info_missing_attrs(tmp_path: pathlib.Path):
         file.create_group('object')
 
     with pytest.raises(KeyError, match='missing attributes'):
-        nocte._core.hdf.HDFCollectionInfo.from_hdf(path, 'object')
+        HDFCollectionInfo.from_hdf(path, 'object')
 
 
 # -----------------------------------------------------------------------------
@@ -168,7 +177,7 @@ def test_traces_hdf_roundtrip(tmp_path: pathlib.Path):
         ),
     )
 
-    traces = nocte._coll.traces.Traces.from_array(
+    traces = Traces.from_array(
         values,
         hz=2_000,
         start=-12.5,
@@ -180,7 +189,7 @@ def test_traces_hdf_roundtrip(tmp_path: pathlib.Path):
         key='test',
     )
 
-    loaded = nocte._coll.traces.Traces.from_hdf(
+    loaded = Traces.from_hdf(
         path,
         key='test',
     )
@@ -207,7 +216,7 @@ def test_traces_hdf_roundtrip(tmp_path: pathlib.Path):
 def test_hdf_collection_hdf_info(tmp_path: pathlib.Path):
     path = tmp_path / 'traces.h5'
 
-    traces = nocte._coll.traces.Traces.from_array(
+    traces = Traces.from_array(
         np.array([[1.0, 2.0]], dtype=np.float32),
         hz=100,
         start=0,
@@ -215,17 +224,17 @@ def test_hdf_collection_hdf_info(tmp_path: pathlib.Path):
 
     traces.to_hdf(path, key='test')
 
-    info = nocte._coll.traces.Traces.hdf_info(path, key='test')
+    info = Traces.hdf_info(path, key='test')
 
     assert info.kind == 'traces'
-    assert info.nocte_version == nocte._core.hdf.get_nocte_version()
+    assert info.nocte_version == get_nocte_version()
     assert isinstance(info.timestamp, str)
 
 
 def test_empty_traces_hdf_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'traces_empty.h5'
 
-    traces = nocte._coll.traces.Traces.from_array(
+    traces = Traces.from_array(
         np.empty(
             (0, 0),
             dtype=np.float32,
@@ -236,7 +245,7 @@ def test_empty_traces_hdf_roundtrip(tmp_path: pathlib.Path):
 
     traces.to_hdf(path)
 
-    loaded = nocte._coll.traces.Traces.from_hdf(path)
+    loaded = Traces.from_hdf(path)
 
     assert len(loaded) == 0
     assert loaded.shape == (0, 0)
@@ -268,7 +277,7 @@ def test_windows_hdf_roundtrip(tmp_path: pathlib.Path):
         ),
     )
 
-    windows = nocte._coll.windows.Windows.from_arrays(
+    windows = Windows.from_arrays(
         start=[-10, 0, -5],
         stop=[20, 100, 15],
         ref=[1_000, 2_000, 3_000],
@@ -280,7 +289,7 @@ def test_windows_hdf_roundtrip(tmp_path: pathlib.Path):
         key='test',
     )
 
-    loaded = nocte._coll.windows.Windows.from_hdf(
+    loaded = Windows.from_hdf(
         path,
         key='test',
     )
@@ -309,7 +318,7 @@ def test_windows_hdf_roundtrip(tmp_path: pathlib.Path):
 def test_empty_windows_hdf_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'windows_empty.h5'
 
-    windows = nocte._coll.windows.Windows.from_arrays(
+    windows = Windows.from_arrays(
         [],
         [],
         [],
@@ -317,7 +326,7 @@ def test_empty_windows_hdf_roundtrip(tmp_path: pathlib.Path):
 
     windows.to_hdf(path)
 
-    loaded = nocte._coll.windows.Windows.from_hdf(path)
+    loaded = Windows.from_hdf(path)
 
     assert len(loaded) == 0
 
@@ -382,7 +391,7 @@ def test_frames_hdf_roundtrip(tmp_path: pathlib.Path):
         ),
     )
 
-    frames = nocte._coll.frames.Frames.from_items(
+    frames = Frames.from_items(
         [frame0, frame1],
         meta=meta,
     )
@@ -392,7 +401,7 @@ def test_frames_hdf_roundtrip(tmp_path: pathlib.Path):
         key='test',
     )
 
-    loaded = nocte._coll.frames.Frames.from_hdf(
+    loaded = Frames.from_hdf(
         path,
         key='test',
     )
@@ -414,13 +423,13 @@ def test_frames_hdf_roundtrip(tmp_path: pathlib.Path):
 def test_empty_frames_hdf_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'frames_empty.h5'
 
-    frames = nocte._coll.frames.Frames.from_items(
+    frames = Frames.from_items(
         [],
     )
 
     frames.to_hdf(path)
 
-    loaded = nocte._coll.frames.Frames.from_hdf(path)
+    loaded = Frames.from_hdf(path)
 
     assert len(loaded) == 0
 
@@ -437,7 +446,7 @@ def test_empty_frames_hdf_roundtrip(tmp_path: pathlib.Path):
 def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'grouping.h5'
 
-    traces0 = nocte._coll.traces.Traces.from_array(
+    traces0 = Traces.from_array(
         np.array(
             [
                 [1.0, 2.0, 3.0],
@@ -458,7 +467,7 @@ def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
         ),
     )
 
-    traces1 = nocte._coll.traces.Traces.from_array(
+    traces1 = Traces.from_array(
         np.array(
             [
                 [10.0, 20.0],
@@ -489,7 +498,7 @@ def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
         ),
     )
 
-    grouping = nocte._core.grouping.Grouping.from_items(
+    grouping = Grouping.from_items(
         [traces0, traces1],
         meta=meta,
     )
@@ -499,9 +508,9 @@ def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
         key='test',
     )
 
-    loaded = nocte._core.grouping.Grouping.from_hdf(
+    loaded = Grouping.from_hdf(
         path,
-        item_type=nocte._coll.traces.Traces,
+        item_type=Traces,
         key='test',
     )
 
@@ -538,7 +547,7 @@ def test_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
 def test_empty_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
     path = tmp_path / 'grouping_empty.h5'
 
-    grouping = nocte._core.grouping.Grouping.from_items(
+    grouping = Grouping.from_items(
         [],
     )
 
@@ -547,9 +556,9 @@ def test_empty_grouping_hdf_roundtrip(tmp_path: pathlib.Path):
         key='test',
     )
 
-    loaded = nocte._core.grouping.Grouping.from_hdf(
+    loaded = Grouping.from_hdf(
         path,
-        item_type=nocte._coll.traces.Traces,
+        item_type=Traces,
         key='test',
     )
 

@@ -8,11 +8,8 @@ import typing
 import numpy as np
 import pandas as pd
 
-import nocte._coll.events
-import nocte._coll.windows
-import nocte._core.collection
-import nocte._core.grouping
-import nocte._core.hdf
+from nocte._core.grouping import Grouping
+from nocte._core.hdf import HDFCollection
 
 SourceKind = typing.Literal['file', 'dir', 'any']
 
@@ -33,7 +30,7 @@ class Source:
         object.__setattr__(self, 'extra', dict(self.extra))
 
 
-class Sources(nocte._core.hdf.HDFCollection[Source]):
+class Sources(HDFCollection[Source]):
     """Indexed collection of concrete filesystem Sources."""
 
     def __init__(
@@ -198,6 +195,6 @@ class Sources(nocte._core.hdf.HDFCollection[Source]):
 
 
 class SourcesGrouping(
-    nocte._core.grouping.Grouping[Sources],
+    Grouping[Sources],
 ):
     """Homogeneous grouping of Sources collections."""

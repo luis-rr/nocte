@@ -2,12 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte._coll.frames
-import nocte._coll.traces
-import nocte._core.grouping
+from nocte._coll.frames import Frames
+from nocte._coll.traces import Traces
+from nocte._core.grouping import Grouping
 
 
-def _make_traces() -> nocte._coll.traces.Traces:
+def _make_traces() -> Traces:
     values = np.array(
         [
             [1.0, 2.0, 3.0],
@@ -29,7 +29,7 @@ def _make_traces() -> nocte._coll.traces.Traces:
         ),
     )
 
-    return nocte._coll.traces.Traces.from_array(
+    return Traces.from_array(
         values,
         hz=1_000,
         meta=meta,
@@ -39,7 +39,7 @@ def _make_traces() -> nocte._coll.traces.Traces:
 def test_from_groupby():
     traces = _make_traces()
 
-    grouping = nocte._core.grouping.Grouping.from_groupby(
+    grouping = Grouping.from_groupby(
         traces,
         by='animal',
         sort=True,
@@ -66,7 +66,7 @@ def test_from_groupby():
 def test_from_groupby_multiple_columns():
     traces = _make_traces()
 
-    grouping = nocte._core.grouping.Grouping.from_groupby(
+    grouping = Grouping.from_groupby(
         traces,
         by=['animal', 'side'],
         sort=True,
@@ -84,7 +84,7 @@ def test_from_groupby_multiple_columns():
 def test_grouping_selection_preserves_outer_ids():
     traces = _make_traces()
 
-    grouping = nocte._core.grouping.Grouping.from_groupby(
+    grouping = Grouping.from_groupby(
         traces,
         by='animal',
         sort=True,
@@ -101,19 +101,19 @@ def test_grouping_selection_preserves_outer_ids():
 def test_grouping_requires_homogeneous_concrete_type():
     traces = _make_traces()
 
-    frames = nocte._coll.frames.Frames.from_items([pd.DataFrame({'x': [1, 2]})])
+    frames = Frames.from_items([pd.DataFrame({'x': [1, 2]})])
 
     with pytest.raises(
         TypeError,
         match='same concrete type',
     ):
-        nocte._core.grouping.Grouping.from_items([traces, frames])
+        Grouping.from_items([traces, frames])
 
 
 def test_grouping_map():
     traces = _make_traces()
 
-    grouping = nocte._core.grouping.Grouping.from_groupby(
+    grouping = Grouping.from_groupby(
         traces,
         by='animal',
         sort=True,
@@ -135,7 +135,7 @@ def test_grouping_map():
 def test_grouping_apply():
     traces = _make_traces()
 
-    grouping = nocte._core.grouping.Grouping.from_groupby(
+    grouping = Grouping.from_groupby(
         traces,
         by='animal',
         sort=True,
@@ -155,7 +155,7 @@ def test_grouping_apply():
 
 
 def test_empty_grouping():
-    grouping = nocte._core.grouping.Grouping.from_items([])
+    grouping = Grouping.from_items([])
 
     assert len(grouping) == 0
     assert grouping.empty

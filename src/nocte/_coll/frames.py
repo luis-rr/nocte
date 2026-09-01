@@ -8,8 +8,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-import nocte._core.collection
-import nocte._core.hdf
+from nocte._core.collection import PBarParamT, optional_pbar
+from nocte._core.hdf import HDFCollection, normalize_hdf_key
 
 ResultT = typing.TypeVar('ResultT')
 
@@ -72,7 +72,7 @@ class _FramesData:
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
     ) -> None:
         """
         Store the DataFrame payload.
@@ -80,7 +80,7 @@ class _FramesData:
         The payload is an HDF5 group containing one pandas DataFrame per
         positional item. The target key must not already exist.
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='a') as file:
             if key in file:
@@ -88,7 +88,7 @@ class _FramesData:
 
             file.create_group(key)
 
-        positions = nocte._core.collection.optional_pbar(
+        positions = optional_pbar(
             range(len(self)),
             total=len(self),
             pbar=pbar,
@@ -109,14 +109,14 @@ class _FramesData:
         path: str | pathlib.Path,
         *,
         key: str,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
     ) -> typing.Self:
         """
         Load a DataFrame payload previously stored with to_hdf().
 
         Stored item positions must be contiguous and start at zero.
         """
-        key = nocte._core.hdf.normalize_hdf_key(key)
+        key = normalize_hdf_key(key)
 
         with h5py.File(path, mode='r') as file:
             if key not in file:
@@ -155,7 +155,7 @@ class _FramesData:
                 'Frames payload positions must be contiguous and start at zero'
             )
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             positions,
             total=len(positions),
             pbar=pbar,
@@ -179,7 +179,7 @@ class _FramesData:
 
 
 class Frames(
-    nocte._core.hdf.HDFCollection[pd.DataFrame],
+    HDFCollection[pd.DataFrame],
 ):
     """
     Indexed collection with one pandas DataFrame per item.
@@ -257,7 +257,7 @@ class Frames(
         function: collections.abc.Callable[..., pd.DataFrame],
         /,
         *args: typing.Any,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
         **kwargs: typing.Any,
     ) -> typing.Self:
         """
@@ -268,7 +268,7 @@ class Frames(
         """
         iterator = (frame for _, frame in self.items())
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,
@@ -293,7 +293,7 @@ class Frames(
         function: collections.abc.Callable[..., ResultT],
         /,
         *args: typing.Any,
-        pbar: nocte._core.collection.PBarParamT = None,
+        pbar: PBarParamT = None,
         **kwargs: typing.Any,
     ) -> pd.Series:
         """
@@ -304,7 +304,7 @@ class Frames(
         """
         iterator = (frame for _, frame in self.items())
 
-        iterator = nocte._core.collection.optional_pbar(
+        iterator = optional_pbar(
             iterator,
             total=len(self),
             pbar=pbar,

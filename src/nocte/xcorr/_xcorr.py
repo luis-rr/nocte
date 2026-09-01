@@ -10,22 +10,24 @@ import typing
 
 import numpy as np
 
-import nocte._coll.traces
-import nocte._coll.windows
-import nocte._core.matching
+from nocte._coll.traces import Traces
+from nocte._coll.windows import (
+    Win,
+)
+from nocte._core.matching import Matches
 from nocte.xcorr import _core
 
 CorrelationMethod = typing.Literal['pearson', 'dot']
 
 
 def cross_corr(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     *,
     lags: np.ndarray,
     method: CorrelationMethod = 'pearson',
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Cross-correlate matched traces over their available finite overlap.
 
@@ -47,11 +49,11 @@ def cross_corr(
 
 
 def auto_corr(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     lags: np.ndarray,
     method: CorrelationMethod = 'pearson',
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Autocorrelate every trace over its available finite overlap.
 
@@ -66,16 +68,16 @@ def auto_corr(
 
 
 def cross_corr_rolling(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     *,
     lags: np.ndarray,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
     method: CorrelationMethod = 'pearson',
     kernel: np.ndarray | None = None,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Cross-correlate matched traces through fixed windows in time.
 
@@ -102,14 +104,14 @@ def cross_corr_rolling(
 
 
 def auto_corr_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     lags: np.ndarray,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
     method: CorrelationMethod = 'pearson',
     kernel: np.ndarray | None = None,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Rolling autocorrelation for every trace and requested lag.
 

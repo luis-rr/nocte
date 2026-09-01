@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte._coll.windows
 import nocte.loaders._phy
+from nocte._coll.windows import (
+    Win,
+)
 
 
 def _write_sorting(
@@ -93,7 +95,7 @@ def test_load_phy(tmp_path):
         np.array([20.0, 50.0]),
     )
 
-    assert trains.support == nocte._coll.windows.Win(0, 100)
+    assert trains.support == Win(0, 100)
 
 
 def test_load_phy_uses_current_clusters_and_drops_stale_metadata(tmp_path):
@@ -201,7 +203,7 @@ def test_load_phy_converts_samples_to_milliseconds(tmp_path):
         np.array([0.0, 500.0, 1000.0]),
     )
 
-    assert trains.support == nocte._coll.windows.Win(
+    assert trains.support == Win(
         0,
         2000,
     )

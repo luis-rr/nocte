@@ -10,9 +10,9 @@ import pandas as pd
 import scipy.integrate
 import scipy.signal
 
-import nocte._coll.traces
-import nocte._core.sampling
+from nocte._coll.traces import Traces
 from nocte._core import num
+from nocte._core.sampling import TimeGrid
 
 Band = tuple[float, float]
 Bands = collections.abc.Mapping[str, Band]
@@ -174,8 +174,8 @@ class Butterworth(typing.NamedTuple):
 
     def apply(
         self,
-        traces: nocte._coll.traces.Traces,
-    ) -> nocte._coll.traces.Traces:
+        traces: Traces,
+    ) -> Traces:
         """Apply the prepared filter over each trace's finite support."""
         bounds = num.Bounds.from_traces(traces)
 
@@ -228,7 +228,7 @@ class Analytic(typing.NamedTuple):
     @classmethod
     def from_traces(
         cls,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
     ) -> typing.Self:
         bounds = num.Bounds.from_traces(traces)
 
@@ -367,7 +367,7 @@ class Welch(typing.NamedTuple):
     @classmethod
     def from_traces(
         cls,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
         *,
         segment: float,
     ) -> typing.Self:
@@ -423,7 +423,7 @@ class Welch(typing.NamedTuple):
 
     def power_traces(
         self,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
         bounds: num.Bounds,
     ) -> FloatArray:
         """Calculate one PSD per trace over its complete finite support."""
@@ -597,12 +597,12 @@ class Rolling(typing.NamedTuple):
 
     window_samples: int
     step_samples: int
-    grid: nocte._core.sampling.TimeGrid
+    grid: TimeGrid
 
     @classmethod
     def from_traces(
         cls,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
         *,
         window: float,
         step: float,
@@ -624,7 +624,7 @@ class Rolling(typing.NamedTuple):
         n_times = (traces.n_samples - window_samples) // step_samples + 1
         center_offset = traces.sampling.samples_to_ms(window_samples) / 2.0
 
-        grid = nocte._core.sampling.TimeGrid(
+        grid = TimeGrid(
             sampling=traces.sampling.strided(step_samples),
             start=traces.start + center_offset,
             n_samples=n_times,
@@ -638,7 +638,7 @@ class Rolling(typing.NamedTuple):
 
     def windows(
         self,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
     ) -> np.ndarray:
         """Return a zero-copy view of rolling source windows."""
         num.Bounds.from_traces(traces)
@@ -664,7 +664,7 @@ class Rolling(typing.NamedTuple):
 
     def welch(
         self,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
         welch: Welch,
     ) -> FloatArray:
         """Calculate rolling PSD without copying source windows."""
@@ -715,7 +715,7 @@ class Rolling(typing.NamedTuple):
 
     def band_power(
         self,
-        traces: nocte._coll.traces.Traces,
+        traces: Traces,
         welch: Welch,
         bands: BandPlan,
     ) -> FloatArray:
@@ -768,11 +768,11 @@ class Rolling(typing.NamedTuple):
 
 
 def low_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     cutoff: float,
     *,
     order: int,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     filter_ = Butterworth.low_pass(
         hz=traces.hz,
         cutoff=cutoff,
@@ -783,11 +783,11 @@ def low_pass(
 
 
 def high_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     cutoff: float,
     *,
     order: int,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     filter_ = Butterworth.high_pass(
         hz=traces.hz,
         cutoff=cutoff,
@@ -798,11 +798,11 @@ def high_pass(
 
 
 def band_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     band: Band,
     *,
     order: int,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     filter_ = Butterworth.band_pass(
         hz=traces.hz,
         band=band,
@@ -813,16 +813,16 @@ def band_pass(
 
 
 def hilbert(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
 ) -> ComplexArray:
     return Analytic.from_traces(traces).values
 
 
 def hilbert_phase(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     unwrap: bool,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     analytic = Analytic.from_traces(traces)
 
     return num.traces_like(
@@ -832,8 +832,8 @@ def hilbert_phase(
 
 
 def hilbert_amplitude(
-    traces: nocte._coll.traces.Traces,
-) -> nocte._coll.traces.Traces:
+    traces: Traces,
+) -> Traces:
     analytic = Analytic.from_traces(traces)
 
     return num.traces_like(
@@ -843,8 +843,8 @@ def hilbert_amplitude(
 
 
 def instantaneous_frequency(
-    traces: nocte._coll.traces.Traces,
-) -> nocte._coll.traces.Traces:
+    traces: Traces,
+) -> Traces:
     analytic = Analytic.from_traces(traces)
 
     return num.traces_like(
@@ -854,7 +854,7 @@ def instantaneous_frequency(
 
 
 def welch(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     segment: float,
     db: bool,
@@ -884,7 +884,7 @@ def welch(
 
 
 def band_power(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     bands: Bands,
     *,
     segment: float,
@@ -920,13 +920,13 @@ def band_power(
 
 
 def welch_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     window: float,
     step: float,
     segment: float,
     db: bool,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     estimate = Welch.from_traces(
         traces,
         segment=segment,
@@ -958,14 +958,14 @@ def welch_rolling(
 
 
 def band_power_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     bands: Bands,
     *,
     window: float,
     step: float,
     segment: float,
     db: bool,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     estimate = Welch.from_traces(
         traces,
         segment=segment,

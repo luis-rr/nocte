@@ -7,16 +7,16 @@ import typing
 import numpy as np
 import pandas as pd
 
-import nocte._coll.events
-import nocte._coll.windows
-import nocte._core.collection
-import nocte._core.grouping
-import nocte._core.hdf
+from nocte._coll.events import Events, EventsGrouping
 from nocte._coll.sources import Sources, SourcesGrouping
+from nocte._coll.windows import Windows, WindowsGrouping
+from nocte._core.collection import is_valid_name
+from nocte._core.grouping import Grouping
+from nocte._core.hdf import HDFCollection
 
 GroupingT = typing.TypeVar(
     'GroupingT',
-    bound=nocte._core.grouping.Grouping[typing.Any],
+    bound=Grouping[typing.Any],
 )
 
 
@@ -24,8 +24,8 @@ GroupingT = typing.TypeVar(
 class _RegistryData:
     """Registry resources grouped by type."""
 
-    wins: nocte._coll.windows.WindowsGrouping
-    events: nocte._coll.events.EventsGrouping
+    wins: WindowsGrouping
+    events: EventsGrouping
     sources: SourcesGrouping
 
 
@@ -33,7 +33,7 @@ RegistryEntry = _RegistryData
 
 
 class Registry(
-    nocte._core.hdf.HDFCollection[RegistryEntry],
+    HDFCollection[RegistryEntry],
 ):
     """
     Indexed metadata registry with grouped temporal and filesystem resources.
@@ -68,8 +68,8 @@ class Registry(
         cls,
         *,
         meta: pd.DataFrame,
-        wins: nocte._coll.windows.WindowsGrouping,
-        events: nocte._coll.events.EventsGrouping,
+        wins: WindowsGrouping,
+        events: EventsGrouping,
         sources: SourcesGrouping,
     ) -> typing.Self:
         return cls(
@@ -87,13 +87,13 @@ class Registry(
     @property
     def wins(
         self,
-    ) -> nocte._coll.windows.WindowsGrouping:
+    ) -> WindowsGrouping:
         return self._data.wins
 
     @property
     def events(
         self,
-    ) -> nocte._coll.events.EventsGrouping:
+    ) -> EventsGrouping:
         return self._data.events
 
     @property
@@ -106,7 +106,7 @@ class Registry(
     # collection interface
     def _entry_values(
         self,
-        grouping: nocte._core.grouping.Grouping[typing.Any],
+        grouping: Grouping[typing.Any],
     ) -> np.ndarray:
         column = grouping.meta[self.name]
 
@@ -214,7 +214,7 @@ class Registry(
         The Registry identity is also the foreign-key column used by all
         resource Groupings, so it is renamed there as well.
         """
-        if not nocte._core.collection.is_valid_name(name):
+        if not is_valid_name(name):
             raise ValueError('name must be a non-empty string')
 
         old_name = self.name
@@ -246,13 +246,13 @@ class Registry(
     ) -> None:
         self._validate_grouping(
             self.wins,
-            expected_type=(nocte._coll.windows.WindowsGrouping),
+            expected_type=(WindowsGrouping),
             name='wins',
         )
 
         self._validate_grouping(
             self.events,
-            expected_type=(nocte._coll.events.EventsGrouping),
+            expected_type=(EventsGrouping),
             name='events',
         )
 
@@ -264,9 +264,9 @@ class Registry(
 
     def _validate_grouping(
         self,
-        grouping: nocte._core.grouping.Grouping[typing.Any],
+        grouping: Grouping[typing.Any],
         *,
-        expected_type: type[nocte._core.grouping.Grouping[typing.Any]],
+        expected_type: type[Grouping[typing.Any]],
         name: str,
     ) -> None:
         if not isinstance(
@@ -385,19 +385,19 @@ class Registry(
         key: str,
         meta: pd.DataFrame,
     ) -> typing.Self:
-        wins = nocte._core.grouping.Grouping.from_hdf(
+        wins = Grouping.from_hdf(
             path,
-            key=f'{key}/data/wins',
-            item_type=(nocte._coll.windows.Windows),
+            key=f'{key}/wins',
+            item_type=(Windows),
         )
 
-        events = nocte._core.grouping.Grouping.from_hdf(
+        events = Grouping.from_hdf(
             path,
-            key=f'{key}/data/events',
-            item_type=(nocte._coll.events.Events),
+            key=f'{key}/events',
+            item_type=(Events),
         )
 
-        sources = nocte._core.grouping.Grouping.from_hdf(
+        sources = Grouping.from_hdf(
             path,
             key=f'{key}/data/sources',
             item_type=Sources,
@@ -406,13 +406,13 @@ class Registry(
         return cls(
             _RegistryData(
                 wins=(
-                    nocte._coll.windows.WindowsGrouping.from_items(
+                    WindowsGrouping.from_items(
                         tuple(item for _, item in wins.items()),
                         meta=wins.meta,
                     )
                 ),
                 events=(
-                    nocte._coll.events.EventsGrouping.from_items(
+                    EventsGrouping.from_items(
                         tuple(item for _, item in events.items()),
                         meta=events.meta,
                     )

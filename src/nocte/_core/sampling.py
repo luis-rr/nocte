@@ -7,7 +7,7 @@ import warnings
 
 import numpy as np
 
-import nocte._core.time
+from nocte._core.time import S_TO_MS
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +41,12 @@ class SamplingRate:
         if not np.isfinite(period_ms) or period_ms <= 0:
             raise ValueError('Sampling period must be finite and positive')
 
-        return cls(nocte._core.time.S_TO_MS / period_ms)
+        return cls(S_TO_MS / period_ms)
 
     @property
     def period_ms(self) -> float:
         """Sampling period in milliseconds."""
-        return nocte._core.time.S_TO_MS / self.rate
+        return S_TO_MS / self.rate
 
     def _sample_positions(
         self,

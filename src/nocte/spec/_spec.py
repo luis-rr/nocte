@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-import nocte._coll.traces
+from nocte._coll.traces import Traces
 from nocte.spec import _core
 
 Band = tuple[float, float]
@@ -16,11 +16,11 @@ Bands = collections.abc.Mapping[str, Band]
 
 
 def low_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     cutoff: float,
     *,
     order: int = 2,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """Zero-phase Butterworth low-pass filtering."""
     return _core.low_pass(
         traces,
@@ -30,11 +30,11 @@ def low_pass(
 
 
 def high_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     cutoff: float,
     *,
     order: int = 2,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """Zero-phase Butterworth high-pass filtering."""
     return _core.high_pass(
         traces,
@@ -44,11 +44,11 @@ def high_pass(
 
 
 def band_pass(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     band: Band,
     *,
     order: int = 2,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """Zero-phase Butterworth band-pass filtering."""
     return _core.band_pass(
         traces,
@@ -58,7 +58,7 @@ def band_pass(
 
 
 def hilbert(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
 ) -> npt.NDArray[np.complex128]:
     """
     Return the complex analytic signal for every trace.
@@ -70,10 +70,10 @@ def hilbert(
 
 
 def hilbert_phase(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     unwrap: bool = False,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """Return Hilbert phase in radians, optionally unwrapped in time."""
     return _core.hilbert_phase(
         traces,
@@ -82,15 +82,15 @@ def hilbert_phase(
 
 
 def hilbert_amplitude(
-    traces: nocte._coll.traces.Traces,
-) -> nocte._coll.traces.Traces:
+    traces: Traces,
+) -> Traces:
     """Return the magnitude of each trace's complex analytic signal."""
     return _core.hilbert_amplitude(traces)
 
 
 def instantaneous_frequency(
-    traces: nocte._coll.traces.Traces,
-) -> nocte._coll.traces.Traces:
+    traces: Traces,
+) -> Traces:
     """
     Return instantaneous frequency in Hz from unwrapped Hilbert phase.
 
@@ -101,7 +101,7 @@ def instantaneous_frequency(
 
 
 def welch(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     segment: float = 4_000.0,
     db: bool = False,
@@ -120,7 +120,7 @@ def welch(
 
 
 def band_power(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     bands: Bands,
     *,
     segment: float = 4_000.0,
@@ -136,13 +136,13 @@ def band_power(
 
 
 def welch_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     window: float = 10_000.0,
     step: float = 1_000.0,
     segment: float = 4_000.0,
     db: bool = False,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Estimate Welch power spectral density through fixed sliding windows.
 
@@ -160,14 +160,14 @@ def welch_rolling(
 
 
 def band_power_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     bands: Bands,
     *,
     window: float = 10_000.0,
     step: float = 1_000.0,
     segment: float = 4_000.0,
     db: bool = False,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     """
     Integrate Welch power within named bands through fixed sliding windows.
 

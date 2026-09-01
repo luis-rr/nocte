@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nocte._core.collection
+from nocte._core.collection import Collection
 
 
-class _DummyCollection(nocte._core.collection.Collection[float]):
+class _DummyCollection(Collection[float]):
     def __init__(self, data: np.ndarray, meta: pd.DataFrame):
         self.data = np.asarray(data)
         self.meta = meta.copy()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-import nocte._coll.traces
+from nocte._coll.traces import Traces
 from nocte._core import num
 from nocte.spec import _core
 
@@ -14,7 +14,7 @@ def _traces(
     values: np.ndarray,
     *,
     hz: float,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     values = np.asarray(
         values,
         dtype=np.float64,
@@ -23,7 +23,7 @@ def _traces(
     if values.ndim == 1:
         values = values[None, :]
 
-    return nocte._coll.traces.Traces.from_array(
+    return Traces.from_array(
         values,
         hz,
         start=0.0,

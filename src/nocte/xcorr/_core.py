@@ -9,11 +9,13 @@ import numba
 import numpy as np
 import pandas as pd
 
-import nocte._coll.traces
-import nocte._coll.windows
-import nocte._core.matching
-import nocte._core.sampling
+from nocte._coll.traces import Traces
+from nocte._coll.windows import (
+    Win,
+)
 from nocte._core import num
+from nocte._core.matching import Matches
+from nocte._core.sampling import SamplingRate, TimeGrid
 
 CorrelationMethod = typing.Literal['pearson', 'dot']
 
@@ -92,7 +94,7 @@ class PreparedXCorr:
     """Validated correlation inputs plus their canonical lag grid."""
 
     core: XCorrCore
-    lag_grid: nocte._core.sampling.TimeGrid
+    lag_grid: TimeGrid
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -100,7 +102,7 @@ class PreparedRolling:
     """Validated rolling geometry plus its output time grid."""
 
     core: RollingCore
-    grid: nocte._core.sampling.TimeGrid
+    grid: TimeGrid
 
 
 def pack_core(
@@ -467,10 +469,10 @@ def method_code(
 
 
 def validate_sampling(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
+    left: Traces,
+    right: Traces,
 ) -> tuple[
-    nocte._core.sampling.SamplingRate,
+    SamplingRate,
     int,
 ]:
     """Validate common sampling and return the right-vs-left sample offset."""
@@ -492,9 +494,9 @@ def validate_sampling(
 
 
 def prepare(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     lags: np.ndarray,
 ) -> PreparedXCorr:
     """Validate public objects and construct the numerical representation."""
@@ -503,7 +505,7 @@ def prepare(
         right,
     )
 
-    requested_lag_grid = nocte._core.sampling.TimeGrid.from_times(lags)
+    requested_lag_grid = TimeGrid.from_times(lags)
     lag_grid = requested_lag_grid.align_to(sampling)
     offsets = lag_grid.sample_offsets(sampling) + phase_offset
 
@@ -565,16 +567,16 @@ def prepare(
 
 def prepare_rolling(
     prepared: PreparedXCorr,
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
+    left: Traces,
+    right: Traces,
     *,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
 ) -> PreparedRolling:
     """Validate rolling geometry and construct its output sampling grid."""
     if not isinstance(
         window,
-        nocte._coll.windows.Win,
+        Win,
     ):
         raise TypeError('window must be a Win')
 
@@ -628,7 +630,7 @@ def prepare_rolling(
 
     n_times = (anchor_last - anchor_start) // anchor_step + 1
 
-    output_grid = nocte._core.sampling.TimeGrid(
+    output_grid = TimeGrid(
         sampling=sampling.strided(anchor_step),
         start=left.start + sampling.samples_to_ms(anchor_start),
         n_samples=n_times,
@@ -691,12 +693,12 @@ def prepare_metric(
 
 
 def prepare_rolling_xcorr(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     *,
     lags: np.ndarray,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
@@ -733,7 +735,7 @@ def prepare_rolling_xcorr(
 
 
 def match_meta(
-    matches: nocte._core.matching.Matches,
+    matches: Matches,
 ) -> pd.DataFrame:
     """Source identities plus pair-specific metadata, indexed by match."""
     return pd.concat(
@@ -747,7 +749,7 @@ def match_meta(
 
 
 def cross_corr_meta(
-    matches: nocte._core.matching.Matches,
+    matches: Matches,
 ) -> pd.DataFrame:
     """Metadata for one full xcorr result per match."""
     meta = match_meta(matches)
@@ -775,13 +777,13 @@ def full_result(
     prepared: PreparedXCorr,
     metric: MetricCore,
     meta: pd.DataFrame,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     values = cross_corr_nb(
         pack_core(prepared.core),
         metric,
     )
 
-    return nocte._coll.traces.Traces.from_grid(
+    return Traces.from_grid(
         values,
         prepared.lag_grid,
         meta=meta,
@@ -796,7 +798,7 @@ def rolling_result(
     source_meta: pd.DataFrame,
     source_ids: np.ndarray,
     source_name: str,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     values = cross_corr_rolling_nb(
         pack_core(prepared.core),
         rolling.core,
@@ -816,13 +818,13 @@ def rolling_result(
 
 
 def cross_corr(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     *,
     lags: np.ndarray,
     method: CorrelationMethod,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     prepared = prepare(
         left,
         right,
@@ -839,12 +841,12 @@ def cross_corr(
 
 
 def auto_corr(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     lags: np.ndarray,
     method: CorrelationMethod,
-) -> nocte._coll.traces.Traces:
-    matches = nocte._core.matching.Matches.from_identity(traces)
+) -> Traces:
+    matches = Matches.from_identity(traces)
 
     prepared = prepare(
         traces,
@@ -862,16 +864,16 @@ def auto_corr(
 
 
 def cross_corr_rolling(
-    left: nocte._coll.traces.Traces,
-    right: nocte._coll.traces.Traces,
-    matches: nocte._core.matching.Matches,
+    left: Traces,
+    right: Traces,
+    matches: Matches,
     *,
     lags: np.ndarray,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
-) -> nocte._coll.traces.Traces:
+) -> Traces:
     prepared, rolling, metric = prepare_rolling_xcorr(
         left,
         right,
@@ -894,15 +896,15 @@ def cross_corr_rolling(
 
 
 def auto_corr_rolling(
-    traces: nocte._coll.traces.Traces,
+    traces: Traces,
     *,
     lags: np.ndarray,
-    window: nocte._coll.windows.Win,
+    window: Win,
     step: float,
     method: CorrelationMethod,
     kernel: np.ndarray | None,
-) -> nocte._coll.traces.Traces:
-    matches = nocte._core.matching.Matches.from_identity(traces)
+) -> Traces:
+    matches = Matches.from_identity(traces)
 
     prepared, rolling, metric = prepare_rolling_xcorr(
         traces,

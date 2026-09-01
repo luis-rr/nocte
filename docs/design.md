@@ -611,7 +611,7 @@ Every transformation has clear semantics for:
 * A leading underscore marks unsupported implementation detail, not inaccessible state.
 * Prefer absolute imports throughout the package, including internal imports.
 * Internal code imports definitions from their owning modules, not back through the public `nocte` facade.
-
+* Prefer direct symbol imports for types and symbols that form part of the public vocabulary, especially in public signatures. Import private implementation dependencies as modules and access their contents through the module namespace, keeping their origin and private status explicit.
 
 ### Testing
 
