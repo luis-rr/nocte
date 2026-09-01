@@ -40,5 +40,9 @@ ignore = ["C408"]
 
 [tool.pyright]
 exclude = [
-    "**/deprecated/**",
+    "**/_deprecated/**",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/__editable__.*",
+    "**/.*",
 ]
