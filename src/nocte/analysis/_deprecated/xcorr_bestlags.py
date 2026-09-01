@@ -10,9 +10,9 @@ import matplotlib.colors
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from nocte.core.datadict import DataDict
 from nocte.core.stacks import Stack
 
-from nocte.core.datadict import DataDict
 from nocte.core.time import ms
 from nocte.plot import plot as splot
 

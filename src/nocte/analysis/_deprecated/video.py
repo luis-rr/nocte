@@ -10,11 +10,11 @@ import cv2
 import h5py
 import numpy as np
 import pandas as pd
+from nocte.io import neuralynx
 from tqdm.auto import tqdm
 
 from nocte.core import stacks, timeslice
 from nocte.core import traces as tr
-from nocte.io import neuralynx
 
 MICROS_TO_MS = 0.001
 

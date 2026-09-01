@@ -15,6 +15,7 @@ from socket import gethostname
 import numpy as np
 import pandas as pd
 import requests
+from nocte.core.datadict import DataDict
 from nocte.core.stacks import Stack
 from tqdm.auto import tqdm
 
@@ -23,7 +24,6 @@ import nocte.core.time
 import nocte.core.traces
 from nocte.core import windows as timeslice
 from nocte.core.collection import Collection
-from nocte.core.datadict import DataDict
 
 logger = logging.getLogger(__name__)
 
