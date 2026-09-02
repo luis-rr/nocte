@@ -1,48 +1,51 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ['setuptools>=68']
+build-backend = 'setuptools.build_meta'
 
 [project]
-name = "nocte"
-version = "1.0.0.dev0"
-description = "Analysis of neuronal oscillations, cycles and time events in electrophysiological recordings"
-requires-python = ">=3.10"
+name = 'nocte'
+version = '1.0.0.dev0'
+description = 'Analysis of neuronal oscillations, cycles and time events in electrophysiological recordings'
+requires-python = '>=3.10'
 dependencies = [
-    "numpy>=1.26",
-    "pandas>=2.1",
-    "scipy>=1.11",
-    "matplotlib>=3.8",
-    "tqdm>=4.65",
-    "numba>=0.59",
-    "h5py>=3.10",
-    "tables>=3.10",
+    'numpy>=1.26',
+    'pandas>=2.1',
+    'scipy>=1.11',
+    'matplotlib>=3.8',
+    'tqdm>=4.65',
+    'numba>=0.59',
+    'h5py>=3.10',
+    'tables>=3.10',
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=8.2",
-    "ruff",
-    "pyright",
-    "pre-commit",
+    'pre-commit',
+    'pyright',
+    'pytest',
+    'ruff',
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ['src']
 
 [tool.setuptools.package-data]
-nocte = ["py.typed"]
+nocte = ['py.typed']
+
+[tool.ruff]
+extend-exclude = ['**/_deprecated/**']
 
 [tool.ruff.format]
-quote-style = "single"
+quote-style = 'single'
 
 [tool.ruff.lint]
-ignore = ["C408"]
+extend-select = ['I', 'UP', 'B']
 
 [tool.pyright]
 exclude = [
-    "**/_deprecated/**",
-    "**/node_modules",
-    "**/__pycache__",
-    "**/__editable__.*",
-    "**/.*",
+    '**/_deprecated/**',
+    '**/node_modules',
+    '**/__pycache__',
+    '**/__editable__.*',
+    '**/.*',
 ]
