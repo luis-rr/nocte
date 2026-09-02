@@ -606,6 +606,7 @@ Every transformation has clear semantics for:
 * Prefer absolute imports throughout the package, including internal imports.
 * Internal code imports definitions from their owning modules, not back through the public `nocte` facade.
 * Prefer direct symbol imports for types and symbols that form part of the public vocabulary, especially in public signatures. Import private implementation dependencies as modules and access their contents through the module namespace, keeping their origin and private status explicit.
+* Maintain concise, versioned agent-facing guidance alongside the codebase (`SKILL.md`), derived from `design.md` and focused on core abstractions, invariants, idiomatic usage, and common mistakes.
 
 ### Testing
 
