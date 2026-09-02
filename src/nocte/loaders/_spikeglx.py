@@ -1,3 +1,16 @@
+"""
+Loading for recordings written by SpikeGLX.
+
+SpikeGLX is acquisition software widely used with Neuropixels probes,
+including Neuropixels 1.0 and 2.0 systems. It stores each data stream as
+paired binary `.bin` and text `.meta` files; imec probe recordings commonly
+use AP/LF stream names. This module currently focuses on the imec/Neuropixels
+recording path.
+
+See the (SpikeGLX User Manual)[https://billkarsh.github.io/SpikeGLX] and
+the (Neuropixels Documentation)[https://www.neuropixels.org] for the
+authoritative acquisition and file-format descriptions."""
+
 from __future__ import annotations
 
 import collections.abc
