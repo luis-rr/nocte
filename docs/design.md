@@ -167,7 +167,6 @@ Selection acts on collection items through metadata and preserves item identitie
 Traces       → select animals, channels, hemispheres
 Windows      → select conditions or event classes
 Trains       → select units by cell metadata
-StoredTraces → select recordings or channels
 Registry     → select experiments or recordings
 ```
 
@@ -475,7 +474,7 @@ Concatenation never silently repairs incompatible collection-wide state. For exa
 Its job is orchestration:
 
 ```text
-StoredTraces / DataLoader(s)
+Data Loader(s)
     ↓
 chunk plan
     ↓
@@ -522,14 +521,9 @@ Analysis code follows these boundaries:
 
 A `DataLoader` is a lightweight, format-specific object that provides access to data stored outside memory. A loader is not itself a `Collection`. It is a low-level object that knows how to read samples from its underlying storage format.
 
-`DataLoader` acts as a payload class to `StoredTraces` and is concerned only with providing access to the underlying stored samples. The `Protocol` it must satisfy is defined in core, next to `StoredTraces`; `loaders/common.py` only provides shared implementation helpers that concrete format-specific loaders use to satisfy that protocol.
+Loaders are concerned only with providing access to the underlying stored samples. They expose raw/large data without forcing a heavyweight external object model or duplicating collection semantics.
 
-Format-specific loaders implement this interface directly:
-
-* `neuralynx.py` provides direct Neuralynx access.
-* `neuropixels.py` provides lightweight Neuropixels access.
-
-Loaders expose raw/large data without forcing a heavyweight external object model or duplicating collection semantics.
+`nocte` provides lightweight continuous-data loaders for three common electrophysiology acquisition stacks: **Neuralynx**, covering the Cheetah/Neuralynx file family such as NCS continuous signals; **SpikeGLX**, currently focused on imec streams recorded from Neuropixels probes; and **Open Ephys**, using the official Python tools to access recordings produced by the Open Ephys GUI. Loader names describe the acquisition or storage ecosystem rather than the probe manufacturer: for example, Neuropixels data may be loaded through either SpikeGLX or Open Ephys depending on how it was recorded.
 
 ## Plotting
 
